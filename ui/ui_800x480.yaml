@@ -446,6 +446,1236 @@ lvgl:
               - script.execute:
                   id: select_slot
                   slot: 9
+        - obj:
+            id: ac10
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai10
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq10
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad10
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 10
+        - obj:
+            id: ac11
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai11
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq11
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad11
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 11
+        - obj:
+            id: ac12
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai12
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq12
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad12
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 12
+        - obj:
+            id: ac13
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai13
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq13
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad13
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 13
+        - obj:
+            id: ac14
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai14
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq14
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad14
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 14
+        - obj:
+            id: ac15
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai15
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq15
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad15
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 15
+        - obj:
+            id: ac16
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai16
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq16
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad16
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 16
+        - obj:
+            id: ac17
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai17
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq17
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad17
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 17
+        - obj:
+            id: ac18
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai18
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq18
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad18
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 18
+        - obj:
+            id: ac19
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai19
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq19
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad19
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 19
+        - obj:
+            id: ac20
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai20
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq20
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad20
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 20
+        - obj:
+            id: ac21
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai21
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq21
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad21
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 21
+        - obj:
+            id: ac22
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai22
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq22
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad22
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 22
+        - obj:
+            id: ac23
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai23
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq23
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad23
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 23
+        - obj:
+            id: ac24
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai24
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq24
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad24
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 24
+        - obj:
+            id: ac25
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai25
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq25
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad25
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 25
+        - obj:
+            id: ac26
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai26
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq26
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad26
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 26
+        - obj:
+            id: ac27
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai27
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq27
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad27
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 27
+        - obj:
+            id: ac28
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai28
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq28
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad28
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 28
+        - obj:
+            id: ac29
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai29
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq29
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad29
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 29
+        - obj:
+            id: ac30
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai30
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq30
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad30
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 30
+        - obj:
+            id: ac31
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai31
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq31
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad31
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 31
+        - obj:
+            id: ac32
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai32
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq32
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad32
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 32
+        - obj:
+            id: ac33
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai33
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq33
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad33
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 33
+        - obj:
+            id: ac34
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai34
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq34
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad34
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 34
+        - obj:
+            id: ac35
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai35
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq35
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad35
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 35
+        - obj:
+            id: ac36
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai36
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq36
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad36
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 36
+        - obj:
+            id: ac37
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai37
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq37
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad37
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 37
+        - obj:
+            id: ac38
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai38
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq38
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad38
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 38
+        - obj:
+            id: ac39
+            x: -200
+            y: -200
+            width: 122
+            height: 64
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            clickable: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - image:
+                  id: ai39
+                  x: 0
+                  y: 6
+                  src: plane_img
+              - obj:
+                  id: sq39
+                  x: 11
+                  y: 17
+                  width: 6
+                  height: 6
+                  bg_color: 0x00FF41
+                  bg_opa: COVER
+                  border_width: 0
+                  radius: 0
+                  pad_all: 0
+                  hidden: true
+              - label:
+                  id: ad39
+                  x: 32
+                  y: 4
+                  text: ""
+                  text_font: font_tiny
+                  text_color: 0x9AE6B4
+            on_click:
+              - script.execute:
+                  id: select_slot
+                  slot: 39
         # ===== ATC 模式:速度向量線 + 歷史軌跡尾跡(平常隱藏,atc_on 時才顯示)=====
         - line:
             id: vec0
@@ -503,6 +1733,186 @@ lvgl:
             hidden: true
         - line:
             id: vec9
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec10
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec11
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec12
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec13
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec14
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec15
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec16
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec17
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec18
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec19
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec20
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec21
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec22
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec23
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec24
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec25
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec26
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec27
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec28
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec29
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec30
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec31
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec32
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec33
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec34
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec35
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec36
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec37
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec38
+            points: ["0, 0", "0, 0"]
+            line_color: 0x00FF41
+            line_width: 1
+            hidden: true
+        - line:
+            id: vec39
             points: ["0, 0", "0, 0"]
             line_color: 0x00FF41
             line_width: 1
@@ -1227,6 +2637,2166 @@ lvgl:
             border_width: 0
             pad_all: 0
             hidden: true
+        - obj:
+            id: tr10_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr10_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr10_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr10_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr10_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr10_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr11_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr11_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr11_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr11_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr11_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr11_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr12_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr12_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr12_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr12_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr12_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr12_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr13_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr13_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr13_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr13_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr13_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr13_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr14_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr14_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr14_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr14_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr14_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr14_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr15_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr15_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr15_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr15_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr15_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr15_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr16_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr16_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr16_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr16_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr16_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr16_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr17_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr17_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr17_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr17_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr17_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr17_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr18_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr18_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr18_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr18_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr18_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr18_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr19_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr19_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr19_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr19_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr19_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr19_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr20_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr20_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr20_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr20_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr20_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr20_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr21_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr21_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr21_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr21_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr21_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr21_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr22_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr22_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr22_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr22_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr22_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr22_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr23_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr23_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr23_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr23_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr23_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr23_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr24_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr24_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr24_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr24_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr24_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr24_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr25_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr25_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr25_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr25_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr25_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr25_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr26_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr26_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr26_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr26_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr26_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr26_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr27_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr27_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr27_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr27_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr27_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr27_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr28_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr28_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr28_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr28_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr28_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr28_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr29_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr29_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr29_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr29_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr29_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr29_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr30_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr30_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr30_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr30_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr30_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr30_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr31_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr31_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr31_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr31_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr31_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr31_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr32_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr32_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr32_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr32_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr32_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr32_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr33_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr33_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr33_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr33_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr33_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr33_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr34_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr34_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr34_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr34_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr34_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr34_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr35_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr35_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr35_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr35_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr35_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr35_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr36_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr36_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr36_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr36_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr36_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr36_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr37_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr37_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr37_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr37_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr37_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr37_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr38_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr38_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr38_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr38_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr38_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr38_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr39_0
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 90%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr39_1
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 80%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr39_2
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 65%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr39_3
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 50%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr39_4
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 40%
+            border_width: 0
+            pad_all: 0
+            hidden: true
+        - obj:
+            id: tr39_5
+            x: -20
+            y: -20
+            width: 3
+            height: 3
+            radius: 2
+            bg_color: 0x00E048
+            bg_opa: 30%
+            border_width: 0
+            pad_all: 0
+            hidden: true
         # 中心點(你的位置)
         - obj:
             x: 236
@@ -1400,28 +4970,22 @@ lvgl:
                   lv_textarea_set_text((lv_obj_t *) id(ta_lat), b);
                   snprintf(b, sizeof(b), "%.4f", id(home_lon).state);
                   lv_textarea_set_text((lv_obj_t *) id(ta_lon), b);
-                  snprintf(b, sizeof(b), "%.0f", id(radar_range).state);
+                  // RANGE:內部一律存 km,英制時顯示 mi
+                  snprintf(b, sizeof(b), "%.0f",
+                           id(radar_range).state * (id(units_imperial) ? 0.6214f : 1.0f));
                   lv_textarea_set_text((lv_obj_t *) id(ta_rng), b);
-                  snprintf(b, sizeof(b), "%.0f", id(poll_interval).state);
+                  lv_label_set_text(id(rng_unit_l), id(units_imperial) ? "mi" : "km");
+                  // 單一 POLL 欄位:顯示目前 SRC 對應的間隔
+                  snprintf(b, sizeof(b), "%.0f", id(data_src) == 0 ? id(poll_interval).state
+                                                                   : id(poll_interval_alt).state);
                   lv_textarea_set_text((lv_obj_t *) id(ta_poll), b);
-                  snprintf(b, sizeof(b), "%.0f", id(poll_interval_alt).state);
-                  lv_textarea_set_text((lv_obj_t *) id(ta_poll2), b);
-                  // SRC 三鈕與 data_src 同步(checked 態 + 文字色)
-                  lv_obj_t *sb[3] = {(lv_obj_t *) id(src_btn0), (lv_obj_t *) id(src_btn1),
-                                     (lv_obj_t *) id(src_btn2)};
-                  lv_obj_t *sl[3] = {id(src_btn0_l), id(src_btn1_l), id(src_btn2_l)};
-                  for (int k = 0; k < 3; k++) {
-                    if (k == id(data_src)) lv_obj_add_state(sb[k], LV_STATE_CHECKED);
-                    else lv_obj_clear_state(sb[k], LV_STATE_CHECKED);
-                    lv_obj_set_style_text_color(sl[k],
-                        lv_color_hex(k == id(data_src) ? 0x04180C : 0x00C060), 0);
-                  }
+                  // SRC 下拉與 data_src 同步
+                  lv_dropdown_set_selected(id(src_dd)->obj, id(data_src));
                   id(kb_target) = 0;
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lat), lv_color_hex(0x00E66E), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll2), lv_color_hex(0x006030), 0);
               - lvgl.page.show: settings_page
         - line:
             points: ["490, 196", "792, 196"]
@@ -1571,10 +5135,18 @@ lvgl:
               pad_all: 4
             on_value:
               - lambda: |-
+                  #if RADAR_BL_PWM
                   auto call = id(backlight).turn_on();
                   call.set_brightness(x / 100.0f);
                   call.set_transition_length(0);
                   call.perform();
+                  #else
+                  // 背光只有開/關(CH422G 無 PWM)→ 滑桿改控全螢幕暗化遮罩
+                  id(night_level) = (int) x;
+                  if (id(night_ov) != nullptr)
+                    lv_obj_set_style_bg_opa(id(night_ov),
+                        (lv_opa_t) ((100.0f - x) / 95.0f * 200.0f), 0);
+                  #endif
 
         # ===== ATC 圖層設定面板(ATC 模式且未選機時取代右下天氣;不透明,直接蓋住底下文字)=====
         - obj:
@@ -1788,32 +5360,22 @@ lvgl:
         - label:
             x: 30
             y: 20
-            text: "LOCATION / RANGE / POLL / SRC"
+            text: "LOCATION / RANGE / SRC / POLL / UNIT"
             text_font: font_mid
             text_color: 0x00E66E
-        # 依 LAT/RANGE/POLL 即時估算每日 OpenSky credits 消耗(1s interval 更新);免費來源顯示無額度提示
-        - label:
-            id: est_l
-            x: 30
-            y: 434
-            width: 410
-            text: ""
-            text_font: font_small
-            text_color: 0x9AE6B4
-            long_mode: WRAP
-        - label: { x: 30,  y: 78,  text: "LAT",   text_font: font_small, text_color: 0x9AE6B4 }
-        - label: { x: 30,  y: 138, text: "LON",   text_font: font_small, text_color: 0x9AE6B4 }
-        - label: { x: 30,  y: 198, text: "RANGE", text_font: font_small, text_color: 0x9AE6B4 }
+        - label: { x: 30,  y: 62,  text: "LAT",   text_font: font_small, text_color: 0x9AE6B4 }
+        - label: { x: 30,  y: 106, text: "LON",   text_font: font_small, text_color: 0x9AE6B4 }
+        - label: { x: 30,  y: 150, text: "RANGE", text_font: font_small, text_color: 0x9AE6B4 }
         - textarea: &ta_style
             id: ta_lat
             x: 110
-            y: 68
-            width: 220
-            height: 44
+            y: 56
+            width: 200
+            height: 36
             one_line: true
             max_length: 10
             accepted_chars: "0123456789.-"
-            text_font: font_mid
+            text_font: font_small
             text_color: 0xD2E6D7
             bg_color: 0x0A2416
             border_color: 0x00A050
@@ -1826,11 +5388,10 @@ lvgl:
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll2), lv_color_hex(0x006030), 0);
         - textarea:
             <<: *ta_style
             id: ta_lon
-            y: 128
+            y: 100
             on_click:
               - lambda: |-
                   id(kb_target) = 1;
@@ -1838,11 +5399,10 @@ lvgl:
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x00E66E), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll2), lv_color_hex(0x006030), 0);
         - textarea:
             <<: *ta_style
             id: ta_rng
-            y: 188
+            y: 144
             on_click:
               - lambda: |-
                   id(kb_target) = 2;
@@ -1850,18 +5410,20 @@ lvgl:
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x00E66E), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll2), lv_color_hex(0x006030), 0);
         - label:
-            x: 350
-            y: 200
+            id: rng_unit_l
+            x: 318
+            y: 150
             text: "km"
             text_font: font_small
             text_color: 0x6E8273
-        - label: { x: 30,  y: 258, text: "POLL",  text_font: font_small, text_color: 0x9AE6B4 }
+        - label: { x: 30,  y: 296, text: "POLL",  text_font: font_small, text_color: 0x9AE6B4 }
         - textarea:
             <<: *ta_style
             id: ta_poll
-            y: 248
+            x: 148
+            y: 288
+            width: 100
             max_length: 3
             accepted_chars: "0123456789"
             on_click:
@@ -1871,41 +5433,18 @@ lvgl:
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x00E66E), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll2), lv_color_hex(0x006030), 0);
         - label:
-            x: 350
-            y: 260
-            text: "s"
-            text_font: font_small
-            text_color: 0x6E8273
-        # 免費來源(airplanes.live / adsb.lol)專用抓取間隔
-        - label: { x: 30,  y: 318, text: "POLL2", text_font: font_small, text_color: 0x9AE6B4 }
-        - textarea:
-            <<: *ta_style
-            id: ta_poll2
-            y: 308
-            max_length: 3
-            accepted_chars: "0123456789"
-            on_click:
-              - lambda: |-
-                  id(kb_target) = 4;
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_lat), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x006030), 0);
-                  lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll2), lv_color_hex(0x00E66E), 0);
-        - label:
-            x: 350
-            y: 320
+            x: 256
+            y: 296
             text: "s"
             text_font: font_small
             text_color: 0x6E8273
         # SET / CANCEL
         - button:
             x: 30
-            y: 368
-            width: 145
-            height: 56
+            y: 190
+            width: 110
+            height: 42
             radius: 6
             bg_color: 0x00C060
             widgets:
@@ -1915,6 +5454,7 @@ lvgl:
                   float la = atof(lv_textarea_get_text((lv_obj_t *) id(ta_lat)));
                   float lo = atof(lv_textarea_get_text((lv_obj_t *) id(ta_lon)));
                   float rg = atof(lv_textarea_get_text((lv_obj_t *) id(ta_rng)));
+                  if (id(units_imperial)) rg *= 1.6093f;   // 英制輸入(mi)→ 內部 km
                   if (la >= -90 && la <= 90) {
                     auto c = id(home_lat).make_call(); c.set_value(la); c.perform();
                   }
@@ -1924,20 +5464,21 @@ lvgl:
                   if (rg >= 10 && rg <= 500) {
                     auto c = id(radar_range).make_call(); c.set_value(rg); c.perform();
                   }
+                  // 單一 POLL 欄位:寫回目前 SRC 對應的間隔(兩份各自留在 NVS)
                   int ps = atoi(lv_textarea_get_text((lv_obj_t *) id(ta_poll)));
-                  if (ps >= 10 && ps <= 300) {
-                    auto c = id(poll_interval).make_call(); c.set_value(ps); c.perform();
-                  }
-                  int p2 = atoi(lv_textarea_get_text((lv_obj_t *) id(ta_poll2)));
-                  if (p2 >= 5 && p2 <= 300) {
-                    auto c = id(poll_interval_alt).make_call(); c.set_value(p2); c.perform();
+                  if (id(data_src) == 0) {
+                    if (ps >= 10 && ps <= 300) {
+                      auto c = id(poll_interval).make_call(); c.set_value(ps); c.perform();
+                    }
+                  } else if (ps >= 5 && ps <= 300) {
+                    auto c = id(poll_interval_alt).make_call(); c.set_value(ps); c.perform();
                   }
               - lvgl.page.show: main_page
         - button:
-            x: 195
-            y: 368
-            width: 145
-            height: 56
+            x: 150
+            y: 190
+            width: 110
+            height: 42
             radius: 6
             bg_color: 0x0A2416
             border_width: 1
@@ -1946,116 +5487,13 @@ lvgl:
               - label: { align: CENTER, text: "CANCEL", text_font: font_mid, text_color: 0x00C060 }
             on_click:
               - lvgl.page.show: main_page
-        # 航班資料來源(radio 三選一;OpenSky 失敗自動 fallback 到免費來源 10 分鐘)
-        - button:
-            id: src_btn0
-            x: 460
-            y: 16
-            width: 104
-            height: 44
-            radius: 4
-            checkable: true
-            bg_color: 0x040C08
-            border_width: 1
-            border_color: 0x00A050
-            checked:
-              bg_color: 0x00C060
-              border_color: 0x00C060
-            widgets:
-              - label:
-                  id: src_btn0_l
-                  align: CENTER
-                  text: "OPENSKY"
-                  text_font: font_small
-                  text_color: 0x00C060
-            on_click:
-              - lambda: |-
-                  id(data_src) = 0;
-                  lv_obj_t *sb[3] = {(lv_obj_t *) id(src_btn0), (lv_obj_t *) id(src_btn1),
-                                     (lv_obj_t *) id(src_btn2)};
-                  lv_obj_t *sl[3] = {id(src_btn0_l), id(src_btn1_l), id(src_btn2_l)};
-                  for (int m = 0; m < 3; m++) {
-                    if (m == 0) lv_obj_add_state(sb[m], LV_STATE_CHECKED);
-                    else lv_obj_clear_state(sb[m], LV_STATE_CHECKED);
-                    lv_obj_set_style_text_color(sl[m],
-                        lv_color_hex(m == 0 ? 0x04180C : 0x00C060), 0);
-                  }
-                  radar_bg::g_os_cooldown_until = 0;   // 手動選來源即重置 fallback 冷卻
-        - button:
-            id: src_btn1
-            x: 572
-            y: 16
-            width: 104
-            height: 44
-            radius: 4
-            checkable: true
-            bg_color: 0x040C08
-            border_width: 1
-            border_color: 0x00A050
-            checked:
-              bg_color: 0x00C060
-              border_color: 0x00C060
-            widgets:
-              - label:
-                  id: src_btn1_l
-                  align: CENTER
-                  text: "A.LIVE"
-                  text_font: font_small
-                  text_color: 0x00C060
-            on_click:
-              - lambda: |-
-                  id(data_src) = 1;
-                  lv_obj_t *sb[3] = {(lv_obj_t *) id(src_btn0), (lv_obj_t *) id(src_btn1),
-                                     (lv_obj_t *) id(src_btn2)};
-                  lv_obj_t *sl[3] = {id(src_btn0_l), id(src_btn1_l), id(src_btn2_l)};
-                  for (int m = 0; m < 3; m++) {
-                    if (m == 1) lv_obj_add_state(sb[m], LV_STATE_CHECKED);
-                    else lv_obj_clear_state(sb[m], LV_STATE_CHECKED);
-                    lv_obj_set_style_text_color(sl[m],
-                        lv_color_hex(m == 1 ? 0x04180C : 0x00C060), 0);
-                  }
-                  radar_bg::g_os_cooldown_until = 0;
-        - button:
-            id: src_btn2
-            x: 684
-            y: 16
-            width: 112
-            height: 44
-            radius: 4
-            checkable: true
-            bg_color: 0x040C08
-            border_width: 1
-            border_color: 0x00A050
-            checked:
-              bg_color: 0x00C060
-              border_color: 0x00C060
-            widgets:
-              - label:
-                  id: src_btn2_l
-                  align: CENTER
-                  text: "ADSB.LOL"
-                  text_font: font_small
-                  text_color: 0x00C060
-            on_click:
-              - lambda: |-
-                  id(data_src) = 2;
-                  lv_obj_t *sb[3] = {(lv_obj_t *) id(src_btn0), (lv_obj_t *) id(src_btn1),
-                                     (lv_obj_t *) id(src_btn2)};
-                  lv_obj_t *sl[3] = {id(src_btn0_l), id(src_btn1_l), id(src_btn2_l)};
-                  for (int m = 0; m < 3; m++) {
-                    if (m == 2) lv_obj_add_state(sb[m], LV_STATE_CHECKED);
-                    else lv_obj_clear_state(sb[m], LV_STATE_CHECKED);
-                    lv_obj_set_style_text_color(sl[m],
-                        lv_color_hex(m == 2 ? 0x04180C : 0x00C060), 0);
-                  }
-                  radar_bg::g_os_cooldown_until = 0;
         # 背光關閉時是否持續抓取(勾選=關屏也更新;耗 API 額度,估算列會反映)
         - button:
             id: poff_btn
-            x: 460
-            y: 74
-            width: 336
-            height: 44
+            x: 30
+            y: 376
+            width: 278
+            height: 38
             radius: 4
             checkable: true
             bg_color: 0x040C08
@@ -2076,34 +5514,83 @@ lvgl:
                   id(poll_when_off) = lv_obj_has_state((lv_obj_t *) id(poff_btn), LV_STATE_CHECKED);
                   lv_obj_set_style_text_color(id(poff_btn_l),
                       lv_color_hex(id(poll_when_off) ? 0x04180C : 0x00C060), 0);
-        # 顯示單位切換(左下角空位;公制/英制,影響溫度/速度/距離/高度/範圍顯示)
-        - button:
-            id: units_btn
-            x: 30
-            y: 378
-            width: 408
-            height: 44
-            radius: 4
-            checkable: true
-            bg_color: 0x040C08
+        # 顯示單位(下拉;公制/英制,影響溫度/速度/距離/高度/範圍顯示)
+        # options 的 index 對齊 units_imperial:0=METRIC 1=IMPERIAL
+        - label: { x: 30, y: 340, text: "UNIT", text_font: font_small, text_color: 0x9AE6B4 }
+        - dropdown:
+            id: unit_dd
+            x: 148
+            y: 332
+            width: 160
+            height: 38
+            text_font: font_small
+            text_color: 0x9AE6B4
+            bg_color: 0x0A2416
             border_width: 1
             border_color: 0x00A050
-            checked:
-              bg_color: 0x00C060
-              border_color: 0x00C060
-            widgets:
-              - label:
-                  id: units_btn_l
-                  align: CENTER
-                  text: "UNITS: METRIC"
-                  text_font: font_small
-                  text_color: 0x00C060
-            on_click:
+            dropdown_list:
+              bg_color: 0x0A2416
+              text_color: 0x9AE6B4
+              text_font: font_small
+              border_width: 1
+              border_color: 0x006030
+              radius: 6
+              selected:
+                bg_color: 0x00C060
+                text_color: 0x04180C
+            options:
+              - "METRIC"
+              - "IMPERIAL"
+            on_value:
               - lambda: |-
-                  id(units_imperial) = lv_obj_has_state((lv_obj_t *) id(units_btn), LV_STATE_CHECKED);
-                  lv_label_set_text(id(units_btn_l), id(units_imperial) ? "UNITS: IMPERIAL" : "UNITS: METRIC");
-                  lv_obj_set_style_text_color(id(units_btn_l),
-                      lv_color_hex(id(units_imperial) ? 0x04180C : 0x00C060), 0);
+                  bool imp = ((int) x) == 1;
+                  if (imp == id(units_imperial)) return;   // set_selected 會回打
+                  id(units_imperial) = imp;
+                  // RANGE 欄位與單位標籤即時換算(值本身不變,只換顯示單位)
+                  char rb[12];
+                  snprintf(rb, sizeof(rb), "%.0f",
+                           id(radar_range).state * (imp ? 0.6214f : 1.0f));
+                  lv_textarea_set_text((lv_obj_t *) id(ta_rng), rb);
+                  lv_label_set_text(id(rng_unit_l), imp ? "mi" : "km");
+        # 航班資料來源(下拉三選一;OpenSky 失敗自動 fallback 到免費來源 10 分鐘)
+        # options 的 index 必須對齊 data_src:0=OpenSky 1=airplanes.live 2=adsb.lol
+        - label: { x: 30, y: 252, text: "ADS-B SRC", text_font: font_small, text_color: 0x9AE6B4 }
+        - dropdown:
+            id: src_dd
+            x: 148
+            y: 244
+            width: 160
+            height: 38
+            text_font: font_small
+            text_color: 0x9AE6B4
+            bg_color: 0x0A2416
+            border_width: 1
+            border_color: 0x00A050
+            dropdown_list:
+              bg_color: 0x0A2416
+              text_color: 0x9AE6B4
+              text_font: font_small
+              border_width: 1
+              border_color: 0x006030
+              radius: 6
+              selected:
+                bg_color: 0x00C060
+                text_color: 0x04180C
+            options:
+              - "OPENSKY"
+              - "A.LIVE"
+              - "ADSB.LOL"
+            on_value:
+              - lambda: |-
+                  int i = (int) x;
+                  if (i == id(data_src)) return;   // set_selected 會回打,值沒變就跳過
+                  id(data_src) = i;
+                  radar_bg::g_os_cooldown_until = 0;   // 手動選來源即重置 fallback 冷卻
+                  // POLL 欄位自動匹配新來源的間隔
+                  char pb[8];
+                  snprintf(pb, sizeof(pb), "%.0f", i == 0 ? id(poll_interval).state
+                                                          : id(poll_interval_alt).state);
+                  lv_textarea_set_text((lv_obj_t *) id(ta_poll), pb);
         # 手搓數字鍵盤(與整體風格一致)
         - button:
             x: 460
@@ -2121,8 +5608,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '7');
         - button:
             x: 544
@@ -2140,8 +5626,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '8');
         - button:
             x: 628
@@ -2159,8 +5644,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '9');
         - button:
             x: 712
@@ -2178,8 +5662,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_del_char(ta);
         - button:
             x: 460
@@ -2197,8 +5680,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '4');
         - button:
             x: 544
@@ -2216,8 +5698,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '5');
         - button:
             x: 628
@@ -2235,8 +5716,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '6');
         - button:
             x: 712
@@ -2254,8 +5734,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '.');
         - button:
             x: 460
@@ -2273,8 +5752,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '1');
         - button:
             x: 544
@@ -2292,8 +5770,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '2');
         - button:
             x: 628
@@ -2311,8 +5788,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '3');
         - button:
             x: 712
@@ -2330,8 +5806,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '-');
         - button:
             x: 460
@@ -2349,8 +5824,7 @@ lvgl:
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
-                               : id(kb_target) == 3 ? (lv_obj_t *) id(ta_poll)
-                                                    : (lv_obj_t *) id(ta_poll2);
+                                                    : (lv_obj_t *) id(ta_poll);
                   lv_textarea_add_char(ta, '0');
         - button:
             x: 628
@@ -2366,6 +5840,7 @@ lvgl:
                   float la = atof(lv_textarea_get_text((lv_obj_t *) id(ta_lat)));
                   float lo = atof(lv_textarea_get_text((lv_obj_t *) id(ta_lon)));
                   float rg = atof(lv_textarea_get_text((lv_obj_t *) id(ta_rng)));
+                  if (id(units_imperial)) rg *= 1.6093f;   // 英制輸入(mi)→ 內部 km
                   if (la >= -90 && la <= 90) {
                     auto c = id(home_lat).make_call(); c.set_value(la); c.perform();
                   }
@@ -2375,13 +5850,14 @@ lvgl:
                   if (rg >= 10 && rg <= 500) {
                     auto c = id(radar_range).make_call(); c.set_value(rg); c.perform();
                   }
+                  // 單一 POLL 欄位:寫回目前 SRC 對應的間隔(兩份各自留在 NVS)
                   int ps = atoi(lv_textarea_get_text((lv_obj_t *) id(ta_poll)));
-                  if (ps >= 10 && ps <= 300) {
-                    auto c = id(poll_interval).make_call(); c.set_value(ps); c.perform();
-                  }
-                  int p2 = atoi(lv_textarea_get_text((lv_obj_t *) id(ta_poll2)));
-                  if (p2 >= 5 && p2 <= 300) {
-                    auto c = id(poll_interval_alt).make_call(); c.set_value(p2); c.perform();
+                  if (id(data_src) == 0) {
+                    if (ps >= 10 && ps <= 300) {
+                      auto c = id(poll_interval).make_call(); c.set_value(ps); c.perform();
+                    }
+                  } else if (ps >= 5 && ps <= 300) {
+                    auto c = id(poll_interval_alt).make_call(); c.set_value(ps); c.perform();
                   }
               - lvgl.page.show: main_page
 
@@ -3417,18 +6893,20 @@ lvgl:
                 bg_color: 0x00C060
                 text_color: 0x04180C
             # 顯示名的 index 必須對齊 radar_bg::tz_posix() 的 POSIX 陣列
+            # 括號內為標準時間偏移;有日光節約的時區(LONDON/PARIS/BERLIN/NEW YORK/
+            # LOS ANGELES)夏季實際會 +1,實際換算由 tz_posix() 的 POSIX 字串處理
             options:
-              - "TAIPEI"
-              - "TOKYO"
-              - "SHANGHAI"
-              - "HONG KONG"
-              - "SEOUL"
-              - "BANGKOK"
-              - "LONDON"
-              - "PARIS"
-              - "BERLIN"
-              - "NEW YORK"
-              - "LOS ANGELES"
+              - "TAIPEI (UTC+8)"
+              - "TOKYO (UTC+9)"
+              - "SHANGHAI (UTC+8)"
+              - "HONG KONG (UTC+8)"
+              - "SEOUL (UTC+9)"
+              - "BANGKOK (UTC+7)"
+              - "LONDON (UTC+0)"
+              - "PARIS (UTC+1)"
+              - "BERLIN (UTC+1)"
+              - "NEW YORK (UTC-5)"
+              - "LOS ANGELES (UTC-8)"
               - "UTC"
             on_value:
               - lambda: |-

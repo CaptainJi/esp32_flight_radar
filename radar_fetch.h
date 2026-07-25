@@ -21,6 +21,16 @@
 #ifndef RADAR_DISPLAY_RGB
 #define RADAR_DISPLAY_RGB 1
 #endif
+// 背光是否接在可 PWM 的原生 GPIO。Waveshare ESP32-S3-Touch-LCD-5/5B 的背光走
+// CH422G 擴充腳(EXIO2),官方 waveshare_lcd_port.h 的 EXAMPLE_LCD_BL_IO = -1,
+// 且 CH422G 無 PWM 通道 → 只能開/關。那些板子設 0,亮度滑桿改控 LVGL 暗化遮罩。
+#ifndef RADAR_BL_PWM
+#define RADAR_BL_PWM 1
+#endif
+// 雷達可同時顯示的航班數(= ui/*.yaml 裡 ac/ai/sq/ad/vec/tr 這幾組 widget 的組數)。
+// 資料端不設上限:radar_fetch 依距離由近而遠排序,超過這個數的遠機不繪出。
+// 改這個值必須同步 ui/ui_800x480.yaml 的 widget 組數(並重跑 tools/scale_layout.py)。
+#define AC_SLOTS 40
 #define RADAR_CX (RADAR_CANVAS / 2)        // canvas center
 #define RADAR_R  (RADAR_CANVAS / 2 - 2)    // usable radar radius
 // UI scale factor vs the reference 800x480 layout (456px canvas). The LVGL

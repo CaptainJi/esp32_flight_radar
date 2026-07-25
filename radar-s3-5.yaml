@@ -1,0 +1,27 @@
+# =============================================================
+# Flight Radar — Waveshare ESP32-S3-Touch-LCD-5 (800x480 版)
+#   ESP32-S3 + 800x480 parallel-RGB (ST7262) 面板 + GT911 觸控(CH422G)。
+#
+# 與 radar-s3-5b.yaml 是同一片 PCB,只有面板解析度/時序不同,所以共用
+# ui/ui_800x480.yaml(與通用板 radar.yaml 同一份版面),board 套件換成
+# Waveshare 版(CH422G 走 reset/enable/背光/觸控 reset)。
+#
+# 背光在 CH422G EXIO2、無 PWM → 亮度滑桿改控 LVGL 全螢幕暗化遮罩
+# (夜間模式),詳見 boards/waveshare_esp32s3_rgb_800x480.yaml。
+# =============================================================
+
+substitutions:
+  disp_w: "800"          # panel width  (px)
+  disp_h: "480"          # panel height (px)
+  radar_canvas: "456"    # square radar canvas side (px) — matches ui/ui_800x480.yaml
+  # font sizes (scaled per resolution)
+  f_small: "22"
+  f_mid: "28"
+  f_clock: "64"
+  f_mono: "18"
+  f_tiny: "14"
+
+packages:
+  core:  !include common/core.yaml
+  board: !include boards/waveshare_esp32s3_rgb_800x480.yaml
+  ui:    !include ui/ui_800x480.yaml

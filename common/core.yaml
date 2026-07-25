@@ -26,7 +26,8 @@ esphome:
       - lambda: |-
           // 開機重建底圖(map_on/echo_on 已自 NVS 還原),同時蓋掉 PSRAM 未初始化雜訊
           // 喇叭下拉選單:字型無 FontAwesome 箭頭字形(U+F078),移除符號免警告
-          LvDropdownType *dds[6] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd), id(tz_dd) };
+          LvDropdownType *dds[8] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd), id(tz_dd),
+                                     id(src_dd), id(unit_dd) };
           for (auto *d : dds) lv_dropdown_set_symbol(d->obj, nullptr);
           // 還原時區:NVS 的 index → POSIX TZ 執行期套用,並把下拉同步到該項
           id(rtc_time).set_timezone(radar_bg::tz_posix(id(tz_sel)));
@@ -73,17 +74,40 @@ esphome:
             lv_obj_add_state((lv_obj_t *) id(poff_btn), LV_STATE_CHECKED);
             lv_obj_set_style_text_color(id(poff_btn_l), lv_color_hex(0x04180C), 0);
           }
-          if (id(units_imperial)) {
-            lv_obj_add_state((lv_obj_t *) id(units_btn), LV_STATE_CHECKED);
-            lv_label_set_text(id(units_btn_l), "UNITS: IMPERIAL");
-            lv_obj_set_style_text_color(id(units_btn_l), lv_color_hex(0x04180C), 0);
-          }
+          // SRC / UNIT 下拉:同步到 NVS 還原的值(設定頁未開過也要正確)
+          lv_dropdown_set_selected(id(src_dd)->obj, id(data_src));
+          lv_dropdown_set_selected(id(unit_dd)->obj, id(units_imperial) ? 1 : 0);
       - script.execute: atc_panel_sync
+      - lambda: |-
+          #if !RADAR_BL_PWM
+          // 背光無 PWM(CH422G 擴充腳,只能開/關)→ 用 LVGL top layer 的全螢幕
+          // 黑色遮罩做「夜間模式」:蓋在所有頁面之上,清掉 CLICKABLE 才不吃觸控。
+          // 注意這不是真的降背光(耗電不變),只降感知亮度。
+          {
+            lv_obj_t *ov = lv_obj_create(lv_layer_top());
+            lv_obj_remove_style_all(ov);
+            lv_obj_set_pos(ov, 0, 0);
+            lv_obj_set_size(ov, SCREEN_W, SCREEN_H);
+            lv_obj_set_style_bg_color(ov, lv_color_hex(0x000000), 0);
+            lv_obj_clear_flag(ov, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_clear_flag(ov, LV_OBJ_FLAG_SCROLLABLE);
+            int nl = id(night_level);
+            if (nl < 5) nl = 5;
+            if (nl > 100) nl = 100;
+            lv_obj_set_style_bg_opa(ov, (lv_opa_t) ((100 - nl) / 95.0f * 200.0f), 0);
+            id(night_ov) = ov;
+          }
+          #endif
       - lvgl.slider.update:
           id: bl_slider
           value: !lambda |-
-            // 開機同步滑桿到 NVS 還原的背光亮度
+            #if RADAR_BL_PWM
+            // 真 PWM 背光:同步滑桿到 NVS 還原的背光亮度
             return id(backlight).current_values.get_brightness() * 100.0f;
+            #else
+            // 夜間模式:同步滑桿到 NVS 還原的暗化等級
+            return (float) id(night_level);
+            #endif
 
 logger:
   level: INFO
@@ -355,6 +379,9 @@ globals:
   - { id: atc_fix_on, type: bool, restore_value: true, initial_value: 'true' }   # 導航點
   - { id: atc_route_on, type: bool, restore_value: true, initial_value: 'false' }  # 標籤起訖站行(逐架查 adsbdb)
   - { id: tz_sel, type: int, restore_value: true, initial_value: '0' }             # 時區下拉選擇(index，對齊 tz_posix)
+  # 夜間模式(背光無 PWM 的板子用):100=不暗化 5=最暗;night_ov 為 LVGL top layer 遮罩
+  - { id: night_level, type: int, restore_value: true, initial_value: '100' }
+  - { id: night_ov, type: 'lv_obj_t *', initial_value: 'nullptr' }
   - { id: units_imperial, type: bool, restore_value: true, initial_value: 'false' } # 顯示單位:false=公制(°C/km/h/km/m)，true=英制(°F/mph/mi/ft)
   # ATC 模式:方塊+向量線+軌跡尾跡+STCA 衝突告警用的狀態
   - { id: trail_lat, type: 'std::vector<float>' }   # 10 槽 x 3 筆歷史,索引 slot*3+k
@@ -371,7 +398,7 @@ globals:
   - { id: snooze_at, type: uint32_t, initial_value: '0' }   # >0=貪睡中,到期 epoch 秒
   - { id: ring_last_ms, type: uint32_t, initial_value: '0' }   # 上次向喇叭發聲的 millis
   - { id: wake_ms,   type: uint32_t, initial_value: '0' }
-  - { id: kb_target, type: int,      initial_value: '0' }   # 0=lat 1=lon 2=rng
+  - { id: kb_target, type: int,      initial_value: '0' }   # 0=lat 1=lon 2=rng 3=poll
   - { id: wx_last_ms, type: uint32_t, initial_value: '0' }  # 上次抓天氣的 millis,0=立即抓
   - { id: spk_ids, type: 'std::vector<std::string>' }       # SCAN 到的喇叭 entity id(與下拉選單同序)
   - { id: ring_spk, type: std::string }                      # 響鈴中鬧鐘解析出的喇叭(貪睡重響沿用)
@@ -421,7 +448,9 @@ script:
           snprintf(b, sizeof(b), id(units_imperial) ? "SPD %5.0f mph   %03.0f kt" : "SPD %5.0f km/h  %03.0f kt",
                    id(ac_vel)[i] * (id(units_imperial) ? 2.2369f : 3.6f), id(ac_vel)[i] * 1.9438f);
           lv_label_set_text(id(sel_l2), b);
-          snprintf(b, sizeof(b), "VS   %+02.1f m/s   TRK %03.0f",  id(ac_vr)[i], id(ac_trk)[i]);
+          snprintf(b, sizeof(b), id(units_imperial) ? "VS  %+5.0f fpm   TRK %03.0f"
+                                                    : "VS   %+02.1f m/s   TRK %03.0f",
+                   id(ac_vr)[i] * (id(units_imperial) ? 196.85f : 1.0f), id(ac_trk)[i]);
           lv_label_set_text(id(sel_l3), b);
           snprintf(b, sizeof(b), id(units_imperial) ? "DIST %4.0f mi    BRG %03.0f" : "DIST %4.0f km    BRG %03.0f",
                    sqrtf(e * e + no * no) * (id(units_imperial) ? 0.6214f : 1.0f), brg);
@@ -781,11 +810,11 @@ interval:
           xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
           int n = radar_bg::g_result.size();
           // ATC 軌跡尾跡:資料被覆寫前,依呼號比對舊位置,推入 trail 歷史(0=最新,2=最舊)
-          if (id(trail_lat).size() != 30) id(trail_lat).assign(30, NAN);
-          if (id(trail_lon).size() != 30) id(trail_lon).assign(30, NAN);
-          if (id(trail_cs).size() != 10) id(trail_cs).assign(10, "");
+          if (id(trail_lat).size() != AC_SLOTS * 3) id(trail_lat).assign(AC_SLOTS * 3, NAN);
+          if (id(trail_lon).size() != AC_SLOTS * 3) id(trail_lon).assign(AC_SLOTS * 3, NAN);
+          if (id(trail_cs).size() != AC_SLOTS) id(trail_cs).assign(AC_SLOTS, "");
           {
-            int lim = n < 10 ? n : 10;
+            int lim = n < AC_SLOTS ? n : AC_SLOTS;
             for (int j = 0; j < lim; j++) {
               const std::string &cs = radar_bg::g_result[j].cs;
               int base = j * 3;
@@ -836,8 +865,9 @@ interval:
               snprintf(b2, sizeof(b2), id(units_imperial) ? "SPD %5.0f mph   %3.0f kt" : "SPD %5.0f km/h  %3.0f kt",
                        id(ac_vel)[si] * (id(units_imperial) ? 2.2369f : 3.6f), id(ac_vel)[si] * 1.9438f);
               lv_label_set_text(id(sel_l2), b2);
-              snprintf(b2, sizeof(b2), "VS   %+02.1f m/s   TRK %03.0f",
-                       id(ac_vr)[si], id(ac_trk)[si]);
+              snprintf(b2, sizeof(b2), id(units_imperial) ? "VS  %+5.0f fpm   TRK %03.0f"
+                                                          : "VS   %+02.1f m/s   TRK %03.0f",
+                       id(ac_vr)[si] * (id(units_imperial) ? 196.85f : 1.0f), id(ac_trk)[si]);
               lv_label_set_text(id(sel_l3), b2);
               snprintf(b2, sizeof(b2), id(units_imperial) ? "DIST %4.0f mi    BRG %03.0f" : "DIST %4.0f km    BRG %03.0f",
                        sqrtf(e2 * e2 + n2 * n2) * (id(units_imperial) ? 0.6214f : 1.0f), brg);
@@ -867,19 +897,42 @@ interval:
           }
       # 航班點外插移動(每秒,依航向+地速推算目前位置)
       - lambda: |-
-          lv_obj_t *marks[10] = { id(ac0), id(ac1), id(ac2), id(ac3), id(ac4),
-                                  id(ac5), id(ac6), id(ac7), id(ac8), id(ac9) };
-          lv_obj_t *imgs[10] = { (lv_obj_t *) id(ai0), (lv_obj_t *) id(ai1),
-                                 (lv_obj_t *) id(ai2), (lv_obj_t *) id(ai3),
-                                 (lv_obj_t *) id(ai4), (lv_obj_t *) id(ai5),
-                                 (lv_obj_t *) id(ai6), (lv_obj_t *) id(ai7),
-                                 (lv_obj_t *) id(ai8), (lv_obj_t *) id(ai9) };
-          lv_obj_t *dbs[10] = { id(ad0), id(ad1), id(ad2), id(ad3), id(ad4),
-                                id(ad5), id(ad6), id(ad7), id(ad8), id(ad9) };
-          lv_obj_t *sqs[10] = { id(sq0), id(sq1), id(sq2), id(sq3), id(sq4),
-                                id(sq5), id(sq6), id(sq7), id(sq8), id(sq9) };
-          lv_obj_t *vecs[10] = { id(vec0)->obj, id(vec1)->obj, id(vec2)->obj, id(vec3)->obj, id(vec4)->obj, id(vec5)->obj, id(vec6)->obj, id(vec7)->obj, id(vec8)->obj, id(vec9)->obj };
-          lv_obj_t *trs[10][6] = {
+          lv_obj_t *marks[AC_SLOTS] = {
+            id(ac0), id(ac1), id(ac2), id(ac3), id(ac4), id(ac5), id(ac6), id(ac7),
+            id(ac8), id(ac9), id(ac10), id(ac11), id(ac12), id(ac13), id(ac14), id(ac15),
+            id(ac16), id(ac17), id(ac18), id(ac19), id(ac20), id(ac21), id(ac22), id(ac23),
+            id(ac24), id(ac25), id(ac26), id(ac27), id(ac28), id(ac29), id(ac30), id(ac31),
+            id(ac32), id(ac33), id(ac34), id(ac35), id(ac36), id(ac37), id(ac38), id(ac39)
+          };
+          lv_obj_t *imgs[AC_SLOTS] = {
+            (lv_obj_t *) id(ai0), (lv_obj_t *) id(ai1), (lv_obj_t *) id(ai2), (lv_obj_t *) id(ai3), (lv_obj_t *) id(ai4), (lv_obj_t *) id(ai5), (lv_obj_t *) id(ai6), (lv_obj_t *) id(ai7),
+            (lv_obj_t *) id(ai8), (lv_obj_t *) id(ai9), (lv_obj_t *) id(ai10), (lv_obj_t *) id(ai11), (lv_obj_t *) id(ai12), (lv_obj_t *) id(ai13), (lv_obj_t *) id(ai14), (lv_obj_t *) id(ai15),
+            (lv_obj_t *) id(ai16), (lv_obj_t *) id(ai17), (lv_obj_t *) id(ai18), (lv_obj_t *) id(ai19), (lv_obj_t *) id(ai20), (lv_obj_t *) id(ai21), (lv_obj_t *) id(ai22), (lv_obj_t *) id(ai23),
+            (lv_obj_t *) id(ai24), (lv_obj_t *) id(ai25), (lv_obj_t *) id(ai26), (lv_obj_t *) id(ai27), (lv_obj_t *) id(ai28), (lv_obj_t *) id(ai29), (lv_obj_t *) id(ai30), (lv_obj_t *) id(ai31),
+            (lv_obj_t *) id(ai32), (lv_obj_t *) id(ai33), (lv_obj_t *) id(ai34), (lv_obj_t *) id(ai35), (lv_obj_t *) id(ai36), (lv_obj_t *) id(ai37), (lv_obj_t *) id(ai38), (lv_obj_t *) id(ai39)
+          };
+          lv_obj_t *dbs[AC_SLOTS] = {
+            id(ad0), id(ad1), id(ad2), id(ad3), id(ad4), id(ad5), id(ad6), id(ad7),
+            id(ad8), id(ad9), id(ad10), id(ad11), id(ad12), id(ad13), id(ad14), id(ad15),
+            id(ad16), id(ad17), id(ad18), id(ad19), id(ad20), id(ad21), id(ad22), id(ad23),
+            id(ad24), id(ad25), id(ad26), id(ad27), id(ad28), id(ad29), id(ad30), id(ad31),
+            id(ad32), id(ad33), id(ad34), id(ad35), id(ad36), id(ad37), id(ad38), id(ad39)
+          };
+          lv_obj_t *sqs[AC_SLOTS] = {
+            id(sq0), id(sq1), id(sq2), id(sq3), id(sq4), id(sq5), id(sq6), id(sq7),
+            id(sq8), id(sq9), id(sq10), id(sq11), id(sq12), id(sq13), id(sq14), id(sq15),
+            id(sq16), id(sq17), id(sq18), id(sq19), id(sq20), id(sq21), id(sq22), id(sq23),
+            id(sq24), id(sq25), id(sq26), id(sq27), id(sq28), id(sq29), id(sq30), id(sq31),
+            id(sq32), id(sq33), id(sq34), id(sq35), id(sq36), id(sq37), id(sq38), id(sq39)
+          };
+          lv_obj_t *vecs[AC_SLOTS] = {
+            id(vec0)->obj, id(vec1)->obj, id(vec2)->obj, id(vec3)->obj, id(vec4)->obj, id(vec5)->obj, id(vec6)->obj, id(vec7)->obj,
+            id(vec8)->obj, id(vec9)->obj, id(vec10)->obj, id(vec11)->obj, id(vec12)->obj, id(vec13)->obj, id(vec14)->obj, id(vec15)->obj,
+            id(vec16)->obj, id(vec17)->obj, id(vec18)->obj, id(vec19)->obj, id(vec20)->obj, id(vec21)->obj, id(vec22)->obj, id(vec23)->obj,
+            id(vec24)->obj, id(vec25)->obj, id(vec26)->obj, id(vec27)->obj, id(vec28)->obj, id(vec29)->obj, id(vec30)->obj, id(vec31)->obj,
+            id(vec32)->obj, id(vec33)->obj, id(vec34)->obj, id(vec35)->obj, id(vec36)->obj, id(vec37)->obj, id(vec38)->obj, id(vec39)->obj
+          };
+          lv_obj_t *trs[AC_SLOTS][6] = {
             { id(tr0_0), id(tr0_1), id(tr0_2), id(tr0_3), id(tr0_4), id(tr0_5) },
             { id(tr1_0), id(tr1_1), id(tr1_2), id(tr1_3), id(tr1_4), id(tr1_5) },
             { id(tr2_0), id(tr2_1), id(tr2_2), id(tr2_3), id(tr2_4), id(tr2_5) },
@@ -890,18 +943,48 @@ interval:
             { id(tr7_0), id(tr7_1), id(tr7_2), id(tr7_3), id(tr7_4), id(tr7_5) },
             { id(tr8_0), id(tr8_1), id(tr8_2), id(tr8_3), id(tr8_4), id(tr8_5) },
             { id(tr9_0), id(tr9_1), id(tr9_2), id(tr9_3), id(tr9_4), id(tr9_5) },
+            { id(tr10_0), id(tr10_1), id(tr10_2), id(tr10_3), id(tr10_4), id(tr10_5) },
+            { id(tr11_0), id(tr11_1), id(tr11_2), id(tr11_3), id(tr11_4), id(tr11_5) },
+            { id(tr12_0), id(tr12_1), id(tr12_2), id(tr12_3), id(tr12_4), id(tr12_5) },
+            { id(tr13_0), id(tr13_1), id(tr13_2), id(tr13_3), id(tr13_4), id(tr13_5) },
+            { id(tr14_0), id(tr14_1), id(tr14_2), id(tr14_3), id(tr14_4), id(tr14_5) },
+            { id(tr15_0), id(tr15_1), id(tr15_2), id(tr15_3), id(tr15_4), id(tr15_5) },
+            { id(tr16_0), id(tr16_1), id(tr16_2), id(tr16_3), id(tr16_4), id(tr16_5) },
+            { id(tr17_0), id(tr17_1), id(tr17_2), id(tr17_3), id(tr17_4), id(tr17_5) },
+            { id(tr18_0), id(tr18_1), id(tr18_2), id(tr18_3), id(tr18_4), id(tr18_5) },
+            { id(tr19_0), id(tr19_1), id(tr19_2), id(tr19_3), id(tr19_4), id(tr19_5) },
+            { id(tr20_0), id(tr20_1), id(tr20_2), id(tr20_3), id(tr20_4), id(tr20_5) },
+            { id(tr21_0), id(tr21_1), id(tr21_2), id(tr21_3), id(tr21_4), id(tr21_5) },
+            { id(tr22_0), id(tr22_1), id(tr22_2), id(tr22_3), id(tr22_4), id(tr22_5) },
+            { id(tr23_0), id(tr23_1), id(tr23_2), id(tr23_3), id(tr23_4), id(tr23_5) },
+            { id(tr24_0), id(tr24_1), id(tr24_2), id(tr24_3), id(tr24_4), id(tr24_5) },
+            { id(tr25_0), id(tr25_1), id(tr25_2), id(tr25_3), id(tr25_4), id(tr25_5) },
+            { id(tr26_0), id(tr26_1), id(tr26_2), id(tr26_3), id(tr26_4), id(tr26_5) },
+            { id(tr27_0), id(tr27_1), id(tr27_2), id(tr27_3), id(tr27_4), id(tr27_5) },
+            { id(tr28_0), id(tr28_1), id(tr28_2), id(tr28_3), id(tr28_4), id(tr28_5) },
+            { id(tr29_0), id(tr29_1), id(tr29_2), id(tr29_3), id(tr29_4), id(tr29_5) },
+            { id(tr30_0), id(tr30_1), id(tr30_2), id(tr30_3), id(tr30_4), id(tr30_5) },
+            { id(tr31_0), id(tr31_1), id(tr31_2), id(tr31_3), id(tr31_4), id(tr31_5) },
+            { id(tr32_0), id(tr32_1), id(tr32_2), id(tr32_3), id(tr32_4), id(tr32_5) },
+            { id(tr33_0), id(tr33_1), id(tr33_2), id(tr33_3), id(tr33_4), id(tr33_5) },
+            { id(tr34_0), id(tr34_1), id(tr34_2), id(tr34_3), id(tr34_4), id(tr34_5) },
+            { id(tr35_0), id(tr35_1), id(tr35_2), id(tr35_3), id(tr35_4), id(tr35_5) },
+            { id(tr36_0), id(tr36_1), id(tr36_2), id(tr36_3), id(tr36_4), id(tr36_5) },
+            { id(tr37_0), id(tr37_1), id(tr37_2), id(tr37_3), id(tr37_4), id(tr37_5) },
+            { id(tr38_0), id(tr38_1), id(tr38_2), id(tr38_3), id(tr38_4), id(tr38_5) },
+            { id(tr39_0), id(tr39_1), id(tr39_2), id(tr39_3), id(tr39_4), id(tr39_5) },
           };
           bool atc = id(atc_on);
-          if (id(slot_map).size() != 10) id(slot_map).assign(10, -1);
+          if (id(slot_map).size() != AC_SLOTS) id(slot_map).assign(AC_SLOTS, -1);
           float lat0 = id(home_lat).state, lon0 = id(home_lon).state;
           float rng = id(radar_range).state;
           float coslat = cosf(lat0 * 3.14159265f / 180.0f);
           float dt = (id(fetch_ms) > 0) ? (millis() - id(fetch_ms)) / 1000.0f : 0.0f;
           if (dt > 180.0f) dt = 180.0f;   // 資料太舊就不再外插
           int n = id(ac_lat).size(), shown = 0;
-          float earr[10], noarr[10];
-          bool selarr[10];
-          for (int i = 0; i < n && shown < 10; i++) {
+          float earr[AC_SLOTS], noarr[AC_SLOTS];
+          bool selarr[AC_SLOTS];
+          for (int i = 0; i < n && shown < AC_SLOTS; i++) {
             float rad = id(ac_trk)[i] * 3.14159265f / 180.0f;
             float vkm = id(ac_vel)[i] * dt / 1000.0f;
             float e  = (id(ac_lon)[i] - lon0) * 111.320f * coslat + vkm * sinf(rad);
@@ -910,7 +993,7 @@ interval:
             int px = RS(240) + (int) (e / rng * (float) RADAR_R);
             int py = RS(240) - (int) (no / rng * (float) RADAR_R);
             // 標籤避讓:ATC 模式且向量線朝右(航向 0~180)時,標籤翻到符號左側
-            if (id(lbl_side).size() != 10) id(lbl_side).assign(10, 0);
+            if (id(lbl_side).size() != AC_SLOTS) id(lbl_side).assign(AC_SLOTS, 0);
             bool lside = atc && sinf(rad) > 0.0f;
             if ((uint8_t) lside != id(lbl_side)[shown]) {
               id(lbl_side)[shown] = lside ? 1 : 0;
@@ -954,7 +1037,7 @@ interval:
               if (d2 > rng) { e2 *= rng / d2; n2 *= rng / d2; }
               int px2 = RS(240) + (int) (e2 / rng * (float) RADAR_R);
               int py2 = RS(240) - (int) (n2 / rng * (float) RADAR_R);
-              static lv_point_t vp[10][2];
+              static lv_point_t vp[AC_SLOTS][2];
               vp[shown][0].x = px;  vp[shown][0].y = py;
               vp[shown][1].x = px2; vp[shown][1].y = py2;
               lv_line_set_points(vecs[shown], vp[shown], 2);
@@ -964,8 +1047,8 @@ interval:
               {
                 int lx = px, ly = py, k = 0, d = 0;
                 for (; k < 3; k++) {
-                  float tlat = (i < 10) ? id(trail_lat)[i * 3 + k] : NAN;
-                  float tlon = (i < 10) ? id(trail_lon)[i * 3 + k] : NAN;
+                  float tlat = (i < AC_SLOTS) ? id(trail_lat)[i * 3 + k] : NAN;
+                  float tlon = (i < AC_SLOTS) ? id(trail_lon)[i * 3 + k] : NAN;
                   if (isnan(tlat) || isnan(tlon)) break;
                   float te = (tlon - lon0) * 111.320f * coslat;
                   float tn = (tlat - lat0) * 110.574f;
@@ -1008,8 +1091,8 @@ interval:
             }
             if (strcmp(lv_label_get_text(dbs[shown]), db) != 0)
               lv_label_set_text(dbs[shown], db);
-            if (id(slot_angle).size() != 10) id(slot_angle).assign(10, -1.0f);
-            if (id(slot_glow).size() != 10) id(slot_glow).assign(10, 0.0f);
+            if (id(slot_angle).size() != AC_SLOTS) id(slot_angle).assign(AC_SLOTS, -1.0f);
+            if (id(slot_glow).size() != AC_SLOTS) id(slot_glow).assign(AC_SLOTS, 0.0f);
             float bearing = atan2f(e, no) * 57.29578f;   // 0=北,順時針
             if (bearing < 0) bearing += 360.0f;
             id(slot_angle)[shown] = bearing;
@@ -1018,8 +1101,8 @@ interval:
             shown++;
           }
           // STCA:兩兩比對水平距離 < 5.5km 且高度差 < 300m → 衝突告警(紅色,選取中則紅白交替)
-          if (id(conflict_slot).size() != 10) id(conflict_slot).assign(10, 0);
-          for (int a = 0; a < 10; a++) id(conflict_slot)[a] = 0;
+          if (id(conflict_slot).size() != AC_SLOTS) id(conflict_slot).assign(AC_SLOTS, 0);
+          for (int a = 0; a < AC_SLOTS; a++) id(conflict_slot)[a] = 0;
           if (atc) {
             for (int a = 0; a < shown; a++) {
               int ia = id(slot_map)[a];
@@ -1042,42 +1125,13 @@ interval:
               lv_obj_set_style_text_color(dbs[a], lv_color_hex(col), 0);
             }
           }
-          for (int i = shown; i < 10; i++) {
+          for (int i = shown; i < AC_SLOTS; i++) {
             lv_obj_add_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(vecs[i], LV_OBJ_FLAG_HIDDEN);
             for (int k = 0; k < 6; k++) lv_obj_add_flag(trs[i][k], LV_OBJ_FLAG_HIDDEN);
             id(slot_map)[i] = -1;
-            if (id(slot_angle).size() == 10) id(slot_angle)[i] = -1.0f;
+            if (id(slot_angle).size() == AC_SLOTS) id(slot_angle)[i] = -1.0f;
           }
-      # 設定頁:依 LAT/RANGE/POLL 即時估算每日 OpenSky credits 消耗
-      - lambda: |-
-          if (!id(settings_page)->is_showing()) return;
-          if (id(data_src) != 0) {   // 免費來源:無每日額度,只提示範圍與半徑上限
-            lv_label_set_text(id(est_l), id(data_src) == 1
-                ? "AIRPLANES.LIVE: FREE, NO DAILY QUOTA (POLL2 5-300s, RANGE <= 463km)"
-                : "ADSB.LOL: FREE, NO DAILY QUOTA (POLL2 5-300s, RANGE <= 463km)");
-            lv_obj_set_style_text_color(id(est_l), lv_color_hex(0x30C060), 0);
-            return;
-          }
-          float la = atof(lv_textarea_get_text((lv_obj_t *) id(ta_lat)));
-          float rg = atof(lv_textarea_get_text((lv_obj_t *) id(ta_rng)));
-          int ps = atoi(lv_textarea_get_text((lv_obj_t *) id(ta_poll)));
-          if (rg < 10 || rg > 500 || ps < 10 || ps > 300 || la < -85 || la > 85) {
-            lv_label_set_text(id(est_l), "EST: LAT / RANGE 10-500 / POLL 10-300");
-            lv_obj_set_style_text_color(id(est_l), lv_color_hex(0x6E8273), 0);
-            return;
-          }
-          // OpenSky 計費:查詢框面積(平方度)決定每次扣的 credits
-          float coslat = cosf(la * 3.14159265f / 180.0f);
-          float area = (2.0f * rg / 110.574f) * (2.0f * rg / (111.320f * coslat));
-          int cr = area <= 25.0f ? 1 : area <= 100.0f ? 2 : area <= 400.0f ? 3 : 4;
-          int calls = 86400 / ps;
-          int total = calls * cr;
-          char b[96];
-          snprintf(b, sizeof(b), "EST %d fetch/day x %d credit = %d / 4000 daily", calls, cr, total);
-          lv_label_set_text(id(est_l), b);
-          lv_obj_set_style_text_color(id(est_l),
-              lv_color_hex(total > 4000 ? 0xFF5030 : (total > 3200 ? 0xFFB020 : 0x30C060)), 0);
   # 掃描線動畫(對齊 LVGL 30ms 刷新節拍,避免拍頻頓挫;6 秒轉一圈,角度用時間基準→不受幀率漂移)
   - interval: 30ms
     then:
@@ -1102,13 +1156,15 @@ interval:
           }
           // 航班點:被掃描線掃過→高亮,之後依時間漸暗(不受幀率影響)
           if (id(slot_glow).size() != 10) return;
-          lv_obj_t *imgs[10] = { (lv_obj_t *) id(ai0), (lv_obj_t *) id(ai1),
-                                 (lv_obj_t *) id(ai2), (lv_obj_t *) id(ai3),
-                                 (lv_obj_t *) id(ai4), (lv_obj_t *) id(ai5),
-                                 (lv_obj_t *) id(ai6), (lv_obj_t *) id(ai7),
-                                 (lv_obj_t *) id(ai8), (lv_obj_t *) id(ai9) };
+          lv_obj_t *imgs[AC_SLOTS] = {
+            (lv_obj_t *) id(ai0), (lv_obj_t *) id(ai1), (lv_obj_t *) id(ai2), (lv_obj_t *) id(ai3), (lv_obj_t *) id(ai4), (lv_obj_t *) id(ai5), (lv_obj_t *) id(ai6), (lv_obj_t *) id(ai7),
+            (lv_obj_t *) id(ai8), (lv_obj_t *) id(ai9), (lv_obj_t *) id(ai10), (lv_obj_t *) id(ai11), (lv_obj_t *) id(ai12), (lv_obj_t *) id(ai13), (lv_obj_t *) id(ai14), (lv_obj_t *) id(ai15),
+            (lv_obj_t *) id(ai16), (lv_obj_t *) id(ai17), (lv_obj_t *) id(ai18), (lv_obj_t *) id(ai19), (lv_obj_t *) id(ai20), (lv_obj_t *) id(ai21), (lv_obj_t *) id(ai22), (lv_obj_t *) id(ai23),
+            (lv_obj_t *) id(ai24), (lv_obj_t *) id(ai25), (lv_obj_t *) id(ai26), (lv_obj_t *) id(ai27), (lv_obj_t *) id(ai28), (lv_obj_t *) id(ai29), (lv_obj_t *) id(ai30), (lv_obj_t *) id(ai31),
+            (lv_obj_t *) id(ai32), (lv_obj_t *) id(ai33), (lv_obj_t *) id(ai34), (lv_obj_t *) id(ai35), (lv_obj_t *) id(ai36), (lv_obj_t *) id(ai37), (lv_obj_t *) id(ai38), (lv_obj_t *) id(ai39)
+          };
           const float DECAY = 0.932f;              // 每幀衰減(30ms,約 0.5s 半衰,同 20fps 時的 0.89)
-          for (int i = 0; i < 10; i++) {
+          for (int i = 0; i < AC_SLOTS; i++) {
             float ang = id(slot_angle)[i];
             if (ang < 0) continue;
             bool crossed;
