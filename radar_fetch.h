@@ -657,7 +657,14 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
   if (fresh) {
     memcpy((void *) img->data, cache, BYTES);
   } else {
-    lv_canvas_fill_bg(cv, lv_color_hex(0x040C08), LV_OPA_COVER);
+    // 不要用 lv_canvas_fill_bg:它逐像素呼叫 set_px_color + set_px_alpha
+    // (570x570 = 324,900 次 x2),每次都重算 offset 再走 lv_memcpy_small。
+    // 1024x600 的 RGB 面板 GDMA 同時在吃 PSRAM 頻寬,兩者相撞會慢到每像素
+    // ~230us,開機直接被 task watchdog 打死。canvas 是 TRUE_COLOR(無 alpha)
+    // 且此處為不透明填滿,可直接對緩衝區做 16-bit 填充(lv_color_fill 在 IRAM)。
+    lv_color_fill((lv_color_t *) img->data, lv_color_hex(0x040C08),
+                  (uint32_t) RADAR_CANVAS * RADAR_CANVAS);
+    lv_obj_invalidate(cv);   // 補回 lv_canvas_fill_bg 原本會做的失效標記
     if (map_show) {
       float coslat = cosf(lat0 * 3.14159265f / 180.0f);
       lv_draw_line_dsc_t dsc;
