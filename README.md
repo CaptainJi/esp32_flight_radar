@@ -23,15 +23,16 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 
 ### Features
 
-- **Live flight radar** — pulls aircraft states from the [OpenSky Network](https://opensky-network.org/), [airplanes.live](https://airplanes.live/) or [adsb.lol](https://adsb.lol/) around your coordinates and plots them on a 480×480 radar scope with a rotating sweep, fading trail, and target glow as the beam passes each aircraft.
-- **Selectable data source + automatic fallback** — a **SRC** selector on the settings page picks OpenSky (OAuth2, 4,000 credits/day) or the free no-key **airplanes.live** / **adsb.lol** APIs, each with its own poll interval (**POLL2**, 5–300 s). If an OpenSky fetch fails (bad credentials, quota exhausted, outage) the device automatically falls back to the free sources for 10 minutes, then retries OpenSky; the status line and SYS panel show which source is active.
+- **Live flight radar** — pulls aircraft states from the [OpenSky Network](https://opensky-network.org/), [airplanes.live](https://airplanes.live/) or [adsb.lol](https://adsb.lol/) around your coordinates and plots them on a 480×480 radar scope (up to **40 aircraft**, nearest first) with a rotating sweep, fading trail, and target glow as the beam passes each aircraft.
+- **Selectable data source + automatic fallback** — an **ADS-B SRC** dropdown on the settings page picks OpenSky (OAuth2, 4,000 credits/day) or the free no-key **airplanes.live** / **adsb.lol** APIs. A single **POLL** field sets the interval and follows the selected source (each source keeps its own stored value, so switching back restores it). If an OpenSky fetch fails (bad credentials, quota exhausted, outage) the device automatically falls back to the free sources for 10 minutes, then retries OpenSky; the status line and SYS panel show which source is active.
 - **ATC-style labels** — each aircraft shows its callsign, flight level and speed, with a heading-oriented plane icon. Tap any aircraft to see its **origin → destination** (via [adsbdb.com](https://www.adsbdb.com/)), altitude, speed, heading, vertical rate, distance and bearing.
 - **ATC mode** — toggle button switches the plane icons to bare **target squares** with a **2‑minute velocity vector**, a **dotted fading history trail**, and a local **STCA-style conflict alert** (two aircraft within 5.5 km / 300 m get flagged red); stale data (no update for 60 s) is flagged yellow with a `*` suffix. Turn it off to instantly restore the normal plane-icon view.
 - **Weather echo overlay** — optional rain-radar layer from [RainViewer](https://www.rainviewer.com/), downloaded, decoded and composited **entirely on a background core** so the UI never stutters. Toggle with an on-screen button.
 - **Map outline overlay** — optional coastline / administrative border layer (Taiwan by default), toggle on screen.
 - **Home Assistant integration** — the device auto-discovers in HA; backlight, Wi-Fi signal and buttons become HA entities.
 - **Alarm clock** — up to 4 alarms, each with per-weekday scheduling. Alarms ring through a **Home Assistant media player** (any Wi-Fi speaker); **each alarm can ring on its own speaker** (e.g. weekday alarm in the bedroom, weekend alarm in the living room). On-screen **Snooze / Dismiss** overlay when ringing.
-- **Fully on-device setup** — first boot opens a Wi-Fi captive portal. Coordinates, scan range, poll interval, OpenSky credentials and the alarm speaker can all be entered **on the touch screen** (or via the web page / Home Assistant). A **timezone** dropdown (alarm page) and a **metric/imperial units** toggle (settings page — switches °C/°F, km·h/mph, km/mi, m/ft and the range unit) are set on screen too. Everything is stored in NVS and survives reboots.
+- **Fully on-device setup** — first boot opens a Wi-Fi captive portal. Coordinates, scan range, poll interval, OpenSky credentials and the alarm speaker can all be entered **on the touch screen** (or via the web page / Home Assistant). A **timezone** dropdown (alarm page, with each city's UTC offset) and a **UNIT** dropdown (settings page — METRIC/IMPERIAL switches °C/°F, km·h/mph, km/mi, m/ft, m·s/fpm and the RANGE field itself; flight levels and knots stay as they are) are set on screen too. Everything is stored in NVS and survives reboots.
+- **Night mode on boards without a dimmable backlight** — on the Waveshare Touch-LCD-5/5B the backlight sits on a CH422G expander pin with no PWM, so it can only be switched on or off. On those boards the brightness slider drives a full-screen dark overlay instead, which dims perceived brightness and persists across reboots. It does not reduce power draw.
 - **OTA updates** — after the first USB flash, all future updates are wireless.
 
 ### Hardware
@@ -51,12 +52,15 @@ new board file plus a matching layout — the shared logic never changes:
 
 ```
 radar.yaml            entry: ESP32-S3 + 800×480 RGB   (the original board)
+radar-s3-5.yaml       entry: Waveshare ESP32-S3-Touch-LCD-5   (800×480 RGB)
 radar-s3-5b.yaml      entry: Waveshare ESP32-S3-Touch-LCD-5B  (1024×600 RGB)
 radar-p4-7b.yaml      entry: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600 MIPI-DSI)
 common/core.yaml      shared logic + UI-independent components (fonts, scripts, …)
 boards/*.yaml         per-board hardware: MCU / PSRAM / display / touch / backlight
-ui/ui_800x480.yaml    LVGL layout at 800×480
-ui/ui_1024x600.yaml   LVGL layout at 1024×600  (auto-scaled from the 800×480 source)
+components/*          local overrides of two ESPHome components, pulled in by the
+                      Waveshare board files (see "Local component overrides")
+ui/ui_800x480.yaml    LVGL layout at 800×480  ← edit this one
+ui/ui_1024x600.yaml   LVGL layout at 1024×600  (generated; re-run tools/scale_layout.py)
 ```
 
 Each entry file just picks a resolution (via `substitutions`) and a `board` + `ui`
@@ -67,8 +71,9 @@ dimensions left to chase.
 | Entry | Board | MCU | Panel | Wi-Fi | Status |
 |-------|-------|-----|-------|-------|--------|
 | `radar.yaml` | esp32-s3-5inch-rgb-001 (generic) | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | **verified on hardware** |
-| `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | native | config-validated, **verify pins/timings on device** |
-| `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | config-validated, **verify pins on device** |
+| `radar-s3-5.yaml` | Waveshare ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | config + build verified, **not yet flashed** |
+| `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | native | **verified on hardware** |
+| `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | **does not currently build** — `bus_width` is no longer valid for `esp32_hosted` on 2026.3.x |
 
 Common requirements for the RGB boards: **≥8 MB octal PSRAM** (quad-PSRAM can't feed
 the RGB panel), a **GT911** I²C touch controller, and 16 MB flash (`flash_size` is set
@@ -79,15 +84,40 @@ JC8048W550, …) work with `radar.yaml` after matching the pins in
 **Adding a board:** drop a new file in `boards/`, set its pins/driver, then copy an
 entry file and point `board:`/`ui:` at it. For a new resolution, regenerate a layout
 with `python3 tools/scale_layout.py ui/ui_800x480.yaml ui/ui_<w>x<h>.yaml <factor>`
-and set `radar_canvas`/font sizes to match.
+and set `radar_canvas`/font sizes to match. **`ui/ui_800x480.yaml` is the source of
+truth** — the other layouts are generated, so edit the 800×480 file and re-run the
+script instead of touching the generated one.
 
-> **The two new boards are validated with `esphome config` but have not yet been
-> flashed by the author.** The pin maps come from the published Waveshare wiring and
-> ESPHome's built-in panel models; the 1024×600 layout is the 800×480 UI scaled ×1.25
-> as a starting point. Cross-check the pins/timings marked `verify` in the board files
-> against your unit, and fine-tune the layout on screen. On the ESP32-P4 the parallel-RGB
-> framebuffer screenshot is compiled out (MIPI-DSI has no equivalent grab); every other
-> feature is shared.
+#### Local component overrides
+
+The two Waveshare board files pull in `components/` via `external_components`. Each is a
+copy of an upstream ESPHome component with exactly one change, marked by a comment in the
+file:
+
+| Override | Why |
+|----------|-----|
+| `components/psram` | For octal + 120 MHz on IDF ≥ 5.4, ESPHome unconditionally enables `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR`. IDF's implementation only accepts flash vendor IDs `0xC8`/`0x20` and aborts with `0x106` otherwise, so these boards boot-loop. The option cannot be pushed back to `n` through `sdkconfig_options` — psram's `to_code` runs last and always wins — hence the component copy. |
+| `components/lvgl` | ESPHome allocates the LVGL draw buffer with `malloc()`, which lands in PSRAM when `CONFIG_SPIRAM_USE_MALLOC=y`. Rendering then competes with the RGB panel's scanout DMA for the same bus, which shows up as UI stalls of several hundred ms and as flicker. The override uses `heap_caps_malloc(..., MALLOC_CAP_INTERNAL)` with a 1/16-screen buffer instead. 1/8 starves mbedTLS (handshakes fail and data fetches stop); 1/32 loses more to per-flush overhead than it gains. |
+
+Both can go once upstream ESPHome handles these cases: delete the directory and the
+matching `external_components` block to fall back to the built-in components.
+
+> **Status of the Waveshare boards.** The **5B (1024×600)** has been flashed and tuned
+> on real hardware — panel timings, PSRAM speed, draw-buffer placement and the backlight
+> behaviour below all come from measurements on that unit. The **5 (800×480)** shares the
+> same PCB and pin map (Waveshare switch the two with one macro in
+> `waveshare_lcd_port.h`); its porches and pixel clock are copied verbatim from their
+> example code, but it is config- and build-verified only — no 800×480 panel here.
+> The **P4-7B** does not build on ESPHome 2026.3.x: `bus_width` is no longer a valid
+> option for `esp32_hosted`, so that board file needs updating for the current schema.
+> On the P4 the parallel-RGB framebuffer screenshot is also compiled out (MIPI-DSI has
+> no equivalent grab); every other feature is shared.
+>
+> **Do not raise `pclk_frequency` above what the board file sets.** Waveshare run this
+> panel family at 16 MHz. Pushing the 1024×600 board to 40 MHz produced a permanent
+> horizontal offset, and 52 MHz tore the image outright. If the picture flickers, the
+> cause is almost certainly PSRAM bandwidth rather than refresh rate — see the LVGL
+> draw-buffer note below.
 
 ### Software requirements
 
@@ -101,6 +131,7 @@ git clone https://github.com/delphicchen/esp32_flight_radar
 cd esp32_flight_radar
 esphome run radar.yaml          # ESP32-S3 800×480 (original board)
 # or, for the newer panels:
+# esphome run radar-s3-5.yaml   # Waveshare ESP32-S3-Touch-LCD-5   (800×480)
 # esphome run radar-s3-5b.yaml  # Waveshare ESP32-S3-Touch-LCD-5B  (1024×600)
 # esphome run radar-p4-7b.yaml  # Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600)
 ```
@@ -184,8 +215,9 @@ All of these are Home Assistant / web entities, stored in NVS:
 | OpenSky Client ID / Secret | OAuth2 API client credentials |
 | Home Latitude / Longitude | Radar center (your location) |
 | Radar Range | Scan radius in km (10–500) |
-| Poll Interval | Seconds between OpenSky fetches (default 30 → 2880/day, within the 4000/day quota) |
+| Poll Interval | Seconds between OpenSky fetches (10–300, default 30 → 2880/day, within the 4000/day quota) |
 | Poll Interval Alt | Seconds between fetches on the free sources (airplanes.live / adsb.lol, 5–300, default 15) |
+| | On screen there is only one **POLL** box — it edits whichever of the two matches the selected **ADS-B SRC**, so both values stay stored independently. |
 | HA URL | Home Assistant address for speaker scan (empty = `http://homeassistant.local:8123`) |
 | HA Token | HA long-lived access token used by the SCAN button |
 | Alarm Speaker | Default HA `media_player` entity to ring through (type it or use SCAN) |
@@ -254,15 +286,16 @@ Please respect each provider's free-tier terms; this project is a hobby build, n
 
 ### 功能
 
-- **即時航班雷達** — 從 [OpenSky Network](https://opensky-network.org/)、[airplanes.live](https://airplanes.live/) 或 [adsb.lol](https://adsb.lol/) 取得你座標周圍的航班,繪製在 480×480 雷達盤上,附旋轉掃描線、漸暗餘暉,以及掃描線掃過飛機時的高亮效果。
-- **可選資料來源 + 自動備援** — 設定頁的 **SRC** 列可選 OpenSky(OAuth2,每日 4000 credits)或免金鑰的 **airplanes.live** / **adsb.lol** 免費 API,免費來源有獨立輪詢間隔(**POLL2**,5–300 秒)。OpenSky 抓取失敗(憑證錯誤、額度用盡、服務中斷)會自動改用免費來源 10 分鐘後再回試;狀態列與 SYS 面板會顯示目前實際來源。
+- **即時航班雷達** — 從 [OpenSky Network](https://opensky-network.org/)、[airplanes.live](https://airplanes.live/) 或 [adsb.lol](https://adsb.lol/) 取得你座標周圍的航班,繪製在 480×480 雷達盤上(最多 **40 架**,由近而遠),附旋轉掃描線、漸暗餘暉,以及掃描線掃過飛機時的高亮效果。
+- **可選資料來源 + 自動備援** — 設定頁的 **ADS-B SRC** 下拉可選 OpenSky(OAuth2,每日 4000 credits)或免金鑰的 **airplanes.live** / **adsb.lol** 免費 API。只有一個 **POLL** 欄位,會跟著所選來源自動切換(兩個來源各自記住自己的值,切回去就還原)。OpenSky 抓取失敗(憑證錯誤、額度用盡、服務中斷)會自動改用免費來源 10 分鐘後再回試;狀態列與 SYS 面板會顯示目前實際來源。
 - **航管風格標籤** — 每架飛機顯示呼號、飛航高度層與速度,搭配依航向旋轉的飛機圖示。點選任一飛機可查看**起點 → 目的地**(透過 [adsbdb.com](https://www.adsbdb.com/))、高度、速度、航向、垂直速率、距離與方位。
 - **ATC 模式** — 按鈕切換,飛機圖示換成純**目標方塊**,附**未來 2 分鐘速度向量線**、**漸淡的點線歷史軌跡**,以及本地端 **STCA 風格衝突告警**(兩機水平距離 < 5.5km 且高度差 < 300m 觸發紅色);資料超過 60 秒未更新則標為黃色並加 `*`。再按一次立即還原成預設的飛機圖示畫面。
 - **氣象回波圖層** — 可選的降雨雷達層,資料來自 [RainViewer](https://www.rainviewer.com/);下載、解碼、合成**全部在背景核心完成**,主畫面完全不卡。以螢幕按鈕開關。
 - **地圖輪廓圖層** — 可選的海岸線 / 行政區界(預設台灣),螢幕按鈕開關。
 - **Home Assistant 整合** — 裝置會自動被 HA 探索;背光、Wi-Fi 訊號與按鈕都成為 HA 實體。
 - **鬧鐘** — 最多 4 組,每組可設定特定星期幾。鬧鐘透過 **Home Assistant 的媒體播放器**(任何 Wi-Fi 喇叭)發聲,且**每組鬧鐘可指定不同喇叭**(例如平日鬧鐘在臥室響、週末鬧鐘在客廳響)。響鈴時螢幕出現**貪睡 / 關閉**面板。
-- **完全在裝置上設定** — 首次開機開啟 Wi-Fi 設定熱點。座標、掃描半徑、輪詢間隔、OpenSky 憑證、鬧鐘喇叭都可以**直接在觸控螢幕上輸入**(也可透過網頁 / Home Assistant)。**時區**下拉(鬧鐘頁)與**公制/英制單位**切換(設定頁——切換 °C/°F、km·h/mph、km/mi、m/ft 及範圍單位)也在螢幕上設定。全部存於 NVS,重開機保留。
+- **完全在裝置上設定** — 首次開機開啟 Wi-Fi 設定熱點。座標、掃描半徑、輪詢間隔、OpenSky 憑證、鬧鐘喇叭都可以**直接在觸控螢幕上輸入**(也可透過網頁 / Home Assistant)。**時區**下拉(鬧鐘頁,每個城市附 UTC 偏移)與 **UNIT** 下拉(設定頁,METRIC/IMPERIAL 切換 °C/°F、km·h/mph、km/mi、m/ft、m·s/fpm 以及 RANGE 欄位本身;飛航高度層與節維持原樣)也在螢幕上設定。全部存於 NVS,重開機保留。
+- **背光不可調光的板子改用夜間模式** — 微雪 Touch-LCD-5/5B 的背光接在 CH422G 擴充腳、無 PWM,只能開/關。那些板子上亮度滑桿改為控制全螢幕暗化遮罩,降低感知亮度並在重開機後保留。注意這不會降低耗電。
 - **OTA 無線更新** — 第一次用 USB 燒錄後,之後都能無線更新。
 
 ### 硬體
@@ -281,12 +314,14 @@ Please respect each provider's free-tier terms; this project is a hobby build, n
 
 ```
 radar.yaml            入口:ESP32-S3 + 800×480 RGB(原始板)
+radar-s3-5.yaml       入口:微雪 ESP32-S3-Touch-LCD-5(800×480 RGB)
 radar-s3-5b.yaml      入口:微雪 ESP32-S3-Touch-LCD-5B(1024×600 RGB)
 radar-p4-7b.yaml      入口:微雪 ESP32-P4-WIFI6-Touch-LCD-7B(1024×600 MIPI-DSI)
 common/core.yaml      共用邏輯 + 與版面無關的元件(字型、腳本…)
 boards/*.yaml         各板硬體:MCU / PSRAM / 螢幕 / 觸控 / 背光
-ui/ui_800x480.yaml    800×480 的 LVGL 版面
-ui/ui_1024x600.yaml   1024×600 版面(由 800×480 自動放大生成)
+components/*          兩個 ESPHome 元件的本地覆寫,由微雪板檔載入(見「本地元件覆寫」)
+ui/ui_800x480.yaml    800×480 的 LVGL 版面 ← 改這一份
+ui/ui_1024x600.yaml   1024×600 版面(生成檔;改完來源要重跑 tools/scale_layout.py)
 ```
 
 入口檔只用 `substitutions` 選解析度,再挑 `board` + `ui` 兩個 package。解析度會流進字型、
@@ -294,9 +329,10 @@ display 驅動與 C++ 巨集(透過 `build_flags` → `radar_fetch.h`),不再有
 
 | 入口 | 板子 | 主晶片 | 螢幕 | Wi-Fi | 狀態 |
 |------|------|--------|------|-------|------|
-| `radar.yaml` | esp32-s3-5inch-rgb-001(白牌) | ESP32-S3 | 800×480 平行 RGB | 內建 | **已在實機驗證** |
-| `radar-s3-5b.yaml` | 微雪 ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 平行 RGB | 內建 | 已過 config 驗證,**腳位/時序請上機確認** |
-| `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI | ESP32-C6(esp-hosted/SDIO) | 已過 config 驗證,**腳位請上機確認** |
+| `radar.yaml` | esp32-s3-5inch-rgb-001(通用) | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | **實機驗證過** |
+| `radar-s3-5.yaml` | 微雪 ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | config + 編譯驗證,**尚未實機燒錄** |
+| `radar-s3-5b.yaml` | 微雪 ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | 原生 | **實機驗證過** |
+| `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI(EK79007) | ESP32-C6(esp-hosted/SDIO) | **目前編不過** — 2026.3.x 的 `esp32_hosted` 已不接受 `bus_width` |
 
 RGB 板共同需求:**≥8 MB octal PSRAM**(quad 餵不動 RGB 屏)、**GT911** I²C 觸控、16 MB flash
 (`flash_size` 各板自訂)。其他白牌 800×480 RGB+GT911 板(Sunton ESP32-8048S050、Guition
@@ -304,12 +340,32 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 
 **新增板子:**在 `boards/` 放一個新檔設定腳位/驅動,再複製一個入口檔把 `board:`/`ui:` 指過去。
 換新解析度時用 `python3 tools/scale_layout.py ui/ui_800x480.yaml ui/ui_<w>x<h>.yaml <倍率>`
-生成版面,並把 `radar_canvas`/字型大小對應調整。
+生成版面,並把 `radar_canvas`/字型大小對應調整。**`ui/ui_800x480.yaml` 是唯一來源** ——
+其他解析度的版面都是生成檔,要改請改 800×480 那份再重跑腳本,不要動生成檔。
 
-> **兩塊新板已用 `esphome config` 驗證,但作者尚未實機燒錄。**腳位取自微雪公開接線與 ESPHome
-> 內建面板 model;1024×600 版面是把 800×480 版面 ×1.25 放大的起點。請對照 board 檔中標記
-> `verify` 的腳位/時序,並在螢幕上微調版面。ESP32-P4(MIPI-DSI)上會關閉平行 RGB 的截圖功能
-> (DSI 無對應的 framebuffer 抓取),其餘功能完全共用。
+#### 本地元件覆寫
+
+兩塊微雪板檔會透過 `external_components` 載入 `components/`。每個都是上游 ESPHome 元件的
+複本、只改一處,檔案裡都有註解標明改動點:
+
+| 覆寫 | 原因 |
+|------|------|
+| `components/psram` | octal + 120 MHz 且 IDF ≥ 5.4 時,ESPHome 會無條件開啟 `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR`。IDF 的實作只接受 flash 廠商 ID `0xC8`/`0x20`,其他一律回 `0x106` 並 abort,於是這些板子開機就無限重啟。這個選項無法用 `sdkconfig_options` 壓回 `n`(psram 的 `to_code` 最後執行、必定覆蓋),只能整個覆寫元件。 |
+| `components/lvgl` | ESPHome 用 `malloc()` 配置 LVGL 繪圖緩衝,而 `CONFIG_SPIRAM_USE_MALLOC=y` 時它會落在 PSRAM。渲染於是和 RGB 面板的掃描 DMA 搶同一條匯流排,表現出來就是數百 ms 的 UI 卡頓與閃爍。覆寫改用 `heap_caps_malloc(..., MALLOC_CAP_INTERNAL)` 配 1/16 螢幕的緩衝。1/8 會餓死 mbedTLS(握手失敗、抓不到資料);1/32 則因 flush 次數變多而得不償失。 |
+
+上游修好後這兩個都可以刪掉:移除該目錄與對應的 `external_components` 區塊即可回到內建元件。
+
+> **微雪各板的狀態。5B(1024×600)** 已在實機上燒錄並調校 —— 面板時序、PSRAM 速度、繪圖
+> 緩衝位置與下面的背光行為,全部來自那台機器的實測。**5(800×480)** 與 5B 是同一片 PCB、
+> 同一組腳位(微雪用 `waveshare_lcd_port.h` 裡一個巨集切換兩者),porch 與 pixel clock 直接
+> 照抄官方範例,但只做過 config 與編譯驗證 —— 手上沒有 800×480 面板。
+> **P4-7B 在 ESPHome 2026.3.x 上編不過**:`esp32_hosted` 已不接受 `bus_width`,那個板檔
+> 需要按新 schema 更新。P4 上平行 RGB 的 framebuffer 截圖同樣會被編譯掉(DSI 無對應的抓取
+> 方式),其餘功能完全共用。
+>
+> **不要把 `pclk_frequency` 調到高於板檔的設定值。** 微雪這個面板家族官方跑 16 MHz。
+> 1024×600 板拉到 40 MHz 會出現固定的水平偏移,52 MHz 則整幅撕裂。畫面若閃爍,幾乎一定是
+> PSRAM 頻寬而非刷新率不足 —— 見下方 LVGL 繪圖緩衝的說明。
 
 ### 軟體需求
 
@@ -323,6 +379,7 @@ git clone https://github.com/delphicchen/esp32_flight_radar
 cd esp32_flight_radar
 esphome run radar.yaml          # ESP32-S3 800×480(原始板)
 # 新面板改用:
+# esphome run radar-s3-5.yaml   # 微雪 ESP32-S3-Touch-LCD-5(800×480)
 # esphome run radar-s3-5b.yaml  # 微雪 ESP32-S3-Touch-LCD-5B(1024×600)
 # esphome run radar-p4-7b.yaml  # 微雪 ESP32-P4-WIFI6-Touch-LCD-7B(1024×600)
 ```
@@ -406,8 +463,9 @@ automation:
 | OpenSky Client ID / Secret | OAuth2 API 憑證 |
 | Home Latitude / Longitude | 雷達中心(你的位置) |
 | Radar Range | 掃描半徑(公里,10–500) |
-| Poll Interval | OpenSky 抓取間隔秒數(預設 30 → 每日 2880 次,在 4000 次/日額度內) |
+| Poll Interval | OpenSky 抓取間隔秒數(10–300,預設 30 → 每日 2880 次,在 4000 次/日額度內) |
 | Poll Interval Alt | 免費來源(airplanes.live / adsb.lol)抓取間隔秒數(5–300,預設 15) |
+| | 螢幕上只有一個 **POLL** 欄位 —— 它編輯的是目前 **ADS-B SRC** 對應的那一個,兩個值各自獨立保存。 |
 | HA URL | 喇叭掃描用的 HA 位址(留空 = `http://homeassistant.local:8123`) |
 | HA Token | SCAN 鈕使用的 HA 長期存取權杖 |
 | Alarm Speaker | 預設發聲的 HA `media_player` 實體(手填或用 SCAN 選) |

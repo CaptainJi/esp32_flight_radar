@@ -5139,10 +5139,18 @@ lvgl:
               pad_all: 5
             on_value:
               - lambda: |-
+                  #if RADAR_BL_PWM
                   auto call = id(backlight).turn_on();
                   call.set_brightness(x / 100.0f);
                   call.set_transition_length(0);
                   call.perform();
+                  #else
+                  // 背光只有開/關(CH422G 無 PWM)→ 滑桿改控全螢幕暗化遮罩
+                  id(night_level) = (int) x;
+                  if (id(night_ov) != nullptr)
+                    lv_obj_set_style_bg_opa(id(night_ov),
+                        (lv_opa_t) ((100.0f - x) / 95.0f * 200.0f), 0);
+                  #endif
 
         # ===== ATC 圖層設定面板(ATC 模式且未選機時取代右下天氣;不透明,直接蓋住底下文字)=====
         - obj:
