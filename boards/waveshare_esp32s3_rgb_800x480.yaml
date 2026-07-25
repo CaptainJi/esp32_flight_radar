@@ -173,6 +173,10 @@ touchscreen:
 # `mipi_rgb` allows a higher pclk so the panel can run at ~60 Hz.
 #   H_total = 1024+30+145+170 = 1369 ; V_total = 600+2+23+12 = 637
 #
+# NOTE: this board needs the `mipi_rgb` driver, added in ESPHome 2025.9.0.
+# Combined with the project-wide LVGL-v8 requirement (<= 2026.3.x, see README),
+# build this board with ESPHome in the 2025.9 – 2026.3 range (2026.3.x recommended).
+#
 # >>> 官方時序(waveshareteam/ESP32-S3-Touch-LCD-5 的
 #     examples/Arduino/examples/08_DrawColorBar/waveshare_lcd_port.h)<<<
 #   800x480:HPW 4 / HBP 8 / HFP 8,VPW 4 / VBP 8 / VFP 8
