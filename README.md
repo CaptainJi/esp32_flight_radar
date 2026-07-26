@@ -8,6 +8,8 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 
 ---
 
+**[English](#english) · [中文](#中文)**
+
 ## 📸 Demo / 畫面
 
 ![ESP32 Flight Radar demo](docs/demo.gif)
@@ -45,28 +47,7 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 | Power | USB-C |
 | Enclosure | 3D-printable case ships with the board's SDK |
 
-#### Supported boards & project structure
-
-The firmware is split into **reusable packages** so a new display board is just a
-new board file plus a matching layout — the shared logic never changes:
-
-```
-radar.yaml            entry: ESP32-S3 + 800×480 RGB   (the original board)
-radar-s3-5.yaml       entry: Waveshare ESP32-S3-Touch-LCD-5   (800×480 RGB)
-radar-s3-5b.yaml      entry: Waveshare ESP32-S3-Touch-LCD-5B  (1024×600 RGB)
-radar-p4-7b.yaml      entry: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600 MIPI-DSI)
-common/core.yaml      shared logic + UI-independent components (fonts, scripts, …)
-boards/*.yaml         per-board hardware: MCU / PSRAM / display / touch / backlight
-components/*          local overrides of two ESPHome components, pulled in by the
-                      Waveshare board files (see "Local component overrides")
-ui/ui_800x480.yaml    LVGL layout at 800×480  ← edit this one
-ui/ui_1024x600.yaml   LVGL layout at 1024×600  (generated; re-run tools/scale_layout.py)
-```
-
-Each entry file just picks a resolution (via `substitutions`) and a `board` + `ui`
-package. Screen size flows into the fonts, the display driver and the C++ helpers
-(through `build_flags` → `radar_fetch.h` macros), so there are no hard-coded
-dimensions left to chase.
+### Supported boards
 
 | Entry | Board | MCU | Panel | Wi-Fi | Status |
 |-------|-------|-----|-------|-------|--------|
@@ -81,51 +62,8 @@ per board). Other generic 800×480 RGB+GT911 boards (Sunton ESP32-8048S050, Guit
 JC8048W550, …) work with `radar.yaml` after matching the pins in
 `boards/esp32s3_rgb_800x480.yaml`.
 
-**Adding a board:** drop a new file in `boards/`, set its pins/driver, then copy an
-entry file and point `board:`/`ui:` at it. For a new resolution, regenerate a layout
-with `python3 tools/scale_layout.py ui/ui_800x480.yaml ui/ui_<w>x<h>.yaml <factor>`
-and set `radar_canvas`/font sizes to match. **`ui/ui_800x480.yaml` is the source of
-truth** — the other layouts are generated, so edit the 800×480 file and re-run the
-script instead of touching the generated one.
-
-#### Local component overrides
-
-The two Waveshare board files pull in `components/` via `external_components`. Each is a
-copy of an upstream ESPHome component with exactly one change, marked by a comment in the
-file:
-
-| Override | Why |
-|----------|-----|
-| `components/psram` | For octal + 120 MHz on IDF ≥ 5.4, ESPHome unconditionally enables `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR`. IDF's implementation only accepts flash vendor IDs `0xC8`/`0x20` and aborts with `0x106` otherwise, so these boards boot-loop. The option cannot be pushed back to `n` through `sdkconfig_options` — psram's `to_code` runs last and always wins — hence the component copy. |
-| `components/lvgl` | ESPHome allocates the LVGL draw buffer with `malloc()`, which lands in PSRAM when `CONFIG_SPIRAM_USE_MALLOC=y`. Rendering then competes with the RGB panel's scanout DMA for the same bus, which shows up as UI stalls of several hundred ms and as flicker. The override uses `heap_caps_malloc(..., MALLOC_CAP_INTERNAL)` with a 1/16-screen buffer instead. 1/8 starves mbedTLS (handshakes fail and data fetches stop); 1/32 loses more to per-flush overhead than it gains. |
-
-Both can go once upstream ESPHome handles these cases: delete the directory and the
-matching `external_components` block to fall back to the built-in components.
-
-> **Status of the Waveshare boards.** The **5B (1024×600)** has been flashed and tuned
-> on real hardware — panel timings, PSRAM speed, draw-buffer placement and the backlight
-> behaviour below all come from measurements on that unit. The **5 (800×480)** shares the
-> same PCB and pin map (Waveshare switch the two with one macro in
-> `waveshare_lcd_port.h`); its porches and pixel clock are copied verbatim from their
-> example code, but it is config- and build-verified only — no 800×480 panel here.
-> The **P4-7B** has now been flashed and its panel, colours and touch verified. Three
-> things had to be right at once, and they interact:
-> `byte_order` must match between the display and the `lvgl` block (both `little_endian`
-> here — the display default; leaving LVGL on its own `big_endian` default swaps every
-> RGB565 byte pair and tints the whole screen dark red), the panel scans 180° from the UI
-> so the display needs `rotation: 180°` (this model is `no_transform`, so LVGL does it in
-> software and allocates a second rotation buffer), and the GT911 needs **no** transform —
-> its origin already matches the panel. Note the SDIO bus to the C6 is *not* the microSD
-> SDMMC bus: the official `04_sdmmc` example uses CLK 43 / CMD 44 / D0-D3 39,40,41,42
-> for the card, which are different pins. On the P4 the parallel-RGB framebuffer
-> screenshot is compiled out (MIPI-DSI has no equivalent grab); every other feature is
-> shared. Wi-Fi over the C6 has not been confirmed working yet.
->
-> **Do not raise `pclk_frequency` above what the board file sets.** Waveshare run this
-> panel family at 16 MHz. Pushing the 1024×600 board to 40 MHz produced a permanent
-> horizontal offset, and 52 MHz tore the image outright. If the picture flickers, the
-> cause is almost certainly PSRAM bandwidth rather than refresh rate — see the LVGL
-> draw-buffer note below.
+More detail — project layout, per-board timings/pin caveats, the local component
+overrides and how to add a board — is in **[docs/BOARDS.md](docs/BOARDS.md)**.
 
 ### Software requirements
 
@@ -154,66 +92,6 @@ First flash must be over **USB** (`/dev/ttyUSB0` or `/dev/ttyACM0`; add yourself
 4. Tap the **coordinates line** to set your latitude / longitude, scan range and OpenSky poll interval on the numeric keypad; the **SRC** row picks the data source (OPENSKY / A.LIVE / ADSB.LOL) and **POLL2** sets the poll interval used with the free sources; a checkbox chooses whether fetching **continues while the backlight is off** (default: paused). With OpenSky selected the page shows a live estimate of the resulting **daily API credit usage** (green / amber / red against the free 4,000-credit quota; cost per fetch grows with range); the free sources have no daily quota but cap the radius at 250 NM (≈463 km).
 5. Aircraft should appear within a minute. Toggle **MAP** / **ECHO** as you like.
 
-### Alarm clock
-
-- Tap the **clock** to open the alarm page (4 slots). For each: enable, tap the time to open a large scroll-wheel time picker, choose the weekdays, and (optionally) pick that alarm's own speaker from the dropdown at the end of its row.
-- In the config fields set **Alarm Speaker** (a Home Assistant `media_player` entity, e.g. `media_player.living_room`) and optionally **Alarm Sound URL** (an mp3).
-- In Home Assistant, open the device page and enable **"Allow the device to perform Home Assistant actions."** Otherwise the ESP32 cannot command the speaker.
-- When an alarm fires, a **SNOOZE 9m / DISMISS** panel appears on screen. The sound **re-plays every 15 s until you press DISMISS**, so a short mp3 still keeps ringing.
-
-#### Using a Google Nest / Chromecast speaker
-
-1. Add the **Google Cast** integration in Home Assistant (it auto-discovers Nest/Cast devices on your LAN) → your speaker becomes a `media_player` entity.
-2. In **Developer Tools → States** find its id (e.g. `media_player.nest_mini`) and put it in **Alarm Speaker**.
-3. Cast devices only play a **full, reachable URL**. Put an mp3 in Home Assistant's `config/www/` and use `http://<HA-IP>:8123/local/alarm.mp3` (use the IP, not `homeassistant.local`).
-4. Test first in **Developer Tools → Actions**: `media_player.play_media` with your entity and URL. If the speaker rings, the alarm will too.
-
-#### Speaker auto-discovery (SCAN button)
-
-Instead of typing the entity id by hand, the alarm page can list every `media_player` in your Home Assistant. One-time setup:
-
-1. In Home Assistant open your **profile (bottom-left avatar) → Security → Long-lived access tokens → Create token**. Copy it — it is shown only once.
-2. Open the device's web page at `http://flight-radar.local` (or the device page in HA) and paste the token into **HA Token**. **HA URL** can stay empty — it defaults to `http://homeassistant.local:8123`; if the scan later reports `HA UNREACHABLE`, set it to your HA address by IP instead (e.g. `http://192.168.1.10:8123` — mDNS name resolution is unreliable on some networks). Both fields are saved to flash and survive reboots.
-3. Open the alarm page — it **scans automatically** on entry once the token is set (or press **SCAN** in the top bar). All speaker dropdowns fill with friendly names: the **DEF** dropdown in the top bar is the default speaker (used by any alarm without its own), and each alarm row ends with that alarm's own dropdown. Picking a speaker saves immediately. Manual entry still works too (entities **Alarm Speaker** and **Alarm 1–4 Speaker**; leave an alarm's entry empty to use the default).
-
-Troubleshooting: `SET HA TOKEN FIRST` = step 2 not done yet; `TOKEN INVALID` = the token is wrong or was revoked; `HA UNREACHABLE` = wrong HA URL / use the IP; `NO SPEAKERS FOUND` = HA has no `media_player` entities (add the Google Cast / Sonos / etc. integration first).
-
-> **Security note:** a long-lived token grants full access to your Home Assistant and is stored in the device's flash. Treat it like a password and keep the device on a trusted network — the firmware only uses it for this read-only speaker query.
-
-### ATC mode
-
-Press the **ATC** button (in the top-right button row, between **ECHO** and **PWR**) to switch the radar from plane icons to an air-traffic-control style view; press again to instantly restore the default view.
-
-- Each aircraft becomes a small **green target square**. Tap it exactly like the plane icon to select/deselect (same `select_slot` behavior).
-- A thin line projects each aircraft's **position 2 minutes ahead** based on its current heading and ground speed.
-- A **dotted fading trail** follows behind, through its last few fetched positions (dots, so it can't be confused with the solid vector line).
-- Labels switch to two lines: callsign on top, `FL<flight level><climb arrow><speed>kts` below (`↑` climbing, `↓` descending, `=` level); the label auto-flips to the other side of the target when the velocity vector would run through it.
-- **Conflict alert (red):** any two aircraft within **5.5 km** horizontally *and* **300 m** vertically both turn red; if one of them is the selected aircraft it blinks white/red instead of solid white.
-- **Stale data (yellow):** if the data source hasn't updated an aircraft in over 60 s, its label turns yellow and gets a trailing `*`.
-- Selected aircraft (no conflict) stay white.
-- **Static video map:** ATC mode also bakes the `map_data.h` overlays into the base layer — airspace boundaries (CTR-class zones brighter blue, TMA/CTA dimmer), runways with **dashed extended centerlines**, airport squares with ICAO codes, and navaid/fix triangles with names. All of it disappears when ATC mode is switched off.
-- **Layer panel:** the **SYS** button has two amber tabs — **SYSTEM** (hardware info + remaining OpenSky API quota, or the active free source when on airplanes.live / adsb.lol) and **ATC CONF**, where four toggles (**AIRSPACE / RUNWAY / AIRPORT / FIXES**) choose which map layers to draw (saved to NVS). The idle bottom-right panel keeps showing the local weather as usual.
-- **Route line (ROUTE):** a fifth toggle in **ATC CONF**. When on, each label grows a third line with the flight's **origin–destination** (e.g. `KHH-KIX`), looked up per aircraft from [adsbdb.com](https://www.adsbdb.com/) in the background and cached, so each callsign is fetched only once. Lines appear as lookups complete (a few seconds); flights unknown to adsbdb simply show no third line. Saved to NVS like the other layer toggles.
-
-### Screenshots to Home Assistant
-
-Swipe **three fingers downward** anywhere on the screen to take a screenshot. The device snapshots the framebuffer, serves it at `http://flight-radar.local:8081/screenshot.bmp` (800×480 BMP) and fires the HA event `esphome.flight_radar_screenshot`. To save it automatically, add the **Downloader** integration in HA (set its directory, e.g. `/config/downloads`) and an automation:
-
-```yaml
-automation:
-  - alias: Save flight radar screenshot
-    trigger:
-      - platform: event
-        event_type: esphome.flight_radar_screenshot
-    action:
-      - service: downloader.download_file
-        data:
-          url: "http://flight-radar.local:8081/screenshot.bmp"
-          filename: "radar_{{ now().strftime('%Y%m%d_%H%M%S') }}.bmp"
-```
-
-You can also just open the URL in a browser. If the colors come out wrong (red/blue swapped), set `SHOT_SWAP_BYTES` to `1` in `radar_fetch.h` and re-flash.
-
 ### Configuration reference
 
 All of these are Home Assistant / web entities, stored in NVS:
@@ -232,45 +110,12 @@ All of these are Home Assistant / web entities, stored in NVS:
 | Alarm 1–4 Speaker | Per-alarm speaker override; empty = use Alarm Speaker |
 | Alarm Sound URL | mp3 to play when an alarm fires |
 
-### Using it outside Taiwan
+### Going further
 
-The repo ships with a Taiwan outline in `map_data.h`, but the radar projection itself is fully generic — just regenerate the map for your own location before compiling:
-
-```bash
-# Tokyo, up to 150 km range
-python tools/make_map.py --lat 35.6762 --lon 139.6503 --radius 150
-
-# London, 300 km, with state/province borders
-python tools/make_map.py --lat 51.5074 --lon -0.1278 --radius 300 --states
-```
-
-The script (pure Python, no packages needed) downloads [Natural Earth](https://www.naturalearthdata.com/) 1:10m coastline + country border data (public domain, cached in `tools/cache/`), clips it around your coordinates, simplifies it to roughly one radar pixel of detail, and overwrites `map_data.h`. Set `--radius` to the largest radar range you plan to use. Useful options: `--states` adds admin-1 borders (can be dense in some countries), `--geojson file.geojson` uses your own boundary file instead of downloading, `--tol` / `--max-points` control detail.
-
-The script also generates **ATC overlay data** (`AIRPORTS[]`, `RUNWAYS[]`, `FIXES[]`, `AIRSPACES[]`) into the same `map_data.h`. A complete run that produces everything at once:
-
-```bash
-# Taipei, 200 km: outline + airports & runways + navaids + 5-letter fixes + CTR/TMA airspaces
-python tools/make_map.py --lat 25.03 --lon 121.56 --radius 200 \
-    --countries TW --min-airport small --rwy-ext 15 \
-    --fixes-csv my_fixes.csv --openaip-key YOURKEY
-```
-
-| Flag | What it does |
-|------|--------------|
-| `--countries TW` | restrict airports/navaids to these ISO country codes (omit = everything in range) |
-| `--min-airport small` | also include small airfields (default `medium`; scheduled-service ones are always kept) |
-| `--rwy-ext 15` | runway centerline extension in km (default 10) |
-| `--fixes-csv my_fixes.csv` | add 5-letter AIP waypoints, one `NAME,lat,lon` per line |
-| `--openaip-key YOURKEY` | fetch CTR/TMA/CTA airspaces from [openAIP](https://www.openaip.net/) (free account, data CC BY-NC); alternatively `--airspace-geojson file.geojson` (features need `name` + `type` properties), `--airspace-types` picks the classes |
-| `--no-outline` | keep the `MAP_OUTLINE` already in the file (e.g. the stock g0v Taiwan outline), refresh overlays only |
-| `--no-airports` / `--no-fixes` | skip those overlays entirely |
-
-Airports, runways and navaids come from [OurAirports](https://ourairports.com/) open data (public domain, no key needed). Without an airspace source, `AIRSPACES[]` is simply empty. Note that openAIP coverage is community-maintained and varies a lot by region — Europe is dense, but **Taiwan has zero airspace data there**. For Taiwan the repo bundles `tools/taiwan_airspace.geojson` (FIR + 6 TMAs + 21 airport control zones), converted from the CAA eAIP ENR 2.1 with `tools/eaip_enr21_to_geojson.py` — that converter works on any IDS-AIRNAV-style eAIP ENR 2.1 page (handles coordinate lists, circles and arcs), so other un-covered countries can use the same route. The stock `map_data.h` was produced with:
-
-```bash
-python tools/make_map.py --lat 23.8 --lon 121.0 --radius 320 --countries TW --no-outline \
-    --airspace-geojson tools/taiwan_airspace.geojson
-```
+- **[docs/USAGE.md](docs/USAGE.md)** — alarms (incl. Google Nest speakers), ATC
+  mode, screenshots to Home Assistant, using the radar outside Taiwan
+- **[docs/BOARDS.md](docs/BOARDS.md)** — board wiring, panel timings, component
+  overrides, and the settings already ruled out on hardware
 
 ### Data sources & credits
 
@@ -316,24 +161,7 @@ Please respect each provider's free-tier terms; this project is a hobby build, n
 | 供電 | USB-C |
 | 外殼 | 方案板 SDK 附 3D 列印外殼檔 |
 
-#### 支援的板子與專案結構
-
-韌體已拆成**可重用的 packages**,新增一塊螢幕只要加一個 board 檔加一份對應版面,共用邏輯完全不動:
-
-```
-radar.yaml            入口:ESP32-S3 + 800×480 RGB(原始板)
-radar-s3-5.yaml       入口:微雪 ESP32-S3-Touch-LCD-5(800×480 RGB)
-radar-s3-5b.yaml      入口:微雪 ESP32-S3-Touch-LCD-5B(1024×600 RGB)
-radar-p4-7b.yaml      入口:微雪 ESP32-P4-WIFI6-Touch-LCD-7B(1024×600 MIPI-DSI)
-common/core.yaml      共用邏輯 + 與版面無關的元件(字型、腳本…)
-boards/*.yaml         各板硬體:MCU / PSRAM / 螢幕 / 觸控 / 背光
-components/*          兩個 ESPHome 元件的本地覆寫,由微雪板檔載入(見「本地元件覆寫」)
-ui/ui_800x480.yaml    800×480 的 LVGL 版面 ← 改這一份
-ui/ui_1024x600.yaml   1024×600 版面(生成檔;改完來源要重跑 tools/scale_layout.py)
-```
-
-入口檔只用 `substitutions` 選解析度,再挑 `board` + `ui` 兩個 package。解析度會流進字型、
-display 驅動與 C++ 巨集(透過 `build_flags` → `radar_fetch.h`),不再有寫死的尺寸。
+### 支援的板子
 
 | 入口 | 板子 | 主晶片 | 螢幕 | Wi-Fi | 狀態 |
 |------|------|--------|------|-------|------|
@@ -346,40 +174,8 @@ RGB 板共同需求:**≥8 MB octal PSRAM**(quad 餵不動 RGB 屏)、**GT911** 
 (`flash_size` 各板自訂)。其他白牌 800×480 RGB+GT911 板(Sunton ESP32-8048S050、Guition
 JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.yaml`。
 
-**新增板子:**在 `boards/` 放一個新檔設定腳位/驅動,再複製一個入口檔把 `board:`/`ui:` 指過去。
-換新解析度時用 `python3 tools/scale_layout.py ui/ui_800x480.yaml ui/ui_<w>x<h>.yaml <倍率>`
-生成版面,並把 `radar_canvas`/字型大小對應調整。**`ui/ui_800x480.yaml` 是唯一來源** ——
-其他解析度的版面都是生成檔,要改請改 800×480 那份再重跑腳本,不要動生成檔。
-
-#### 本地元件覆寫
-
-兩塊微雪板檔會透過 `external_components` 載入 `components/`。每個都是上游 ESPHome 元件的
-複本、只改一處,檔案裡都有註解標明改動點:
-
-| 覆寫 | 原因 |
-|------|------|
-| `components/psram` | octal + 120 MHz 且 IDF ≥ 5.4 時,ESPHome 會無條件開啟 `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR`。IDF 的實作只接受 flash 廠商 ID `0xC8`/`0x20`,其他一律回 `0x106` 並 abort,於是這些板子開機就無限重啟。這個選項無法用 `sdkconfig_options` 壓回 `n`(psram 的 `to_code` 最後執行、必定覆蓋),只能整個覆寫元件。 |
-| `components/lvgl` | ESPHome 用 `malloc()` 配置 LVGL 繪圖緩衝,而 `CONFIG_SPIRAM_USE_MALLOC=y` 時它會落在 PSRAM。渲染於是和 RGB 面板的掃描 DMA 搶同一條匯流排,表現出來就是數百 ms 的 UI 卡頓與閃爍。覆寫改用 `heap_caps_malloc(..., MALLOC_CAP_INTERNAL)` 配 1/16 螢幕的緩衝。1/8 會餓死 mbedTLS(握手失敗、抓不到資料);1/32 則因 flush 次數變多而得不償失。 |
-
-上游修好後這兩個都可以刪掉:移除該目錄與對應的 `external_components` 區塊即可回到內建元件。
-
-> **微雪各板的狀態。5B(1024×600)** 已在實機上燒錄並調校 —— 面板時序、PSRAM 速度、繪圖
-> 緩衝位置與下面的背光行為,全部來自那台機器的實測。**5(800×480)** 與 5B 是同一片 PCB、
-> 同一組腳位(微雪用 `waveshare_lcd_port.h` 裡一個巨集切換兩者),porch 與 pixel clock 直接
-> 照抄官方範例,但只做過 config 與編譯驗證 —— 手上沒有 800×480 面板。
-> **P4-7B 已實機燒錄**,面板、顏色、觸控都驗證過。有三件事必須同時正確,而且互相牽動:
-> `byte_order` 要與 `lvgl` 區塊一致(這裡兩邊都是 `little_endian`,即 display 的預設值;
-> 若讓 LVGL 留在它自己的 `big_endian` 預設,每個 RGB565 的位元組對會被交換,整片畫面偏
-> 暗紅)、面板掃描方向與 UI 差 180 度所以 display 要 `rotation: 180°`(這個 model 標了
-> `no_transform`,只能由 LVGL 軟體旋轉並另配一份旋轉緩衝)、而 GT911 **不要**任何
-> transform —— 它的原點本來就與面板一致。注意連到 C6 的 SDIO **不是** microSD 的 SDMMC:
-> 官方 `04_sdmmc` 範例給 TF 卡用的是 CLK 43 / CMD 44 / D0-D3 39,40,41,42,是另一組腳位。
-> P4 上平行 RGB 的 framebuffer 截圖會被編譯掉(DSI 無對應的抓取方式),其餘功能完全共用。
-> 透過 C6 的 Wi-Fi 目前尚未確認可用。
->
-> **不要把 `pclk_frequency` 調到高於板檔的設定值。** 微雪這個面板家族官方跑 16 MHz。
-> 1024×600 板拉到 40 MHz 會出現固定的水平偏移,52 MHz 則整幅撕裂。畫面若閃爍,幾乎一定是
-> PSRAM 頻寬而非刷新率不足 —— 見下方 LVGL 繪圖緩衝的說明。
+更多細節 —— 專案結構、逐板時序/腳位注意事項、本地元件覆寫,以及如何新增板子 ——
+在 **[docs/BOARDS.md](docs/BOARDS.md)**。
 
 ### 軟體需求
 
@@ -408,66 +204,6 @@ esphome run radar.yaml          # ESP32-S3 800×480(原始板)
 4. 點**座標列**用數字鍵盤設定你的經緯度、掃描半徑與 OpenSky 輪詢秒數;**SRC** 列選擇資料來源(OPENSKY / A.LIVE / ADSB.LOL),**POLL2** 設定免費來源的輪詢秒數;並可勾選**背光關閉時是否持續抓取**(預設暫停)。選 OpenSky 時頁面會即時估算**每日 API credits 消耗**(以免費額度 4000/日 對照,綠/黃/紅顯示;半徑越大單次扣越多);免費來源無每日額度,但查詢半徑上限 250 海里(約 463 km)。
 5. 約一分鐘內飛機就會出現。依喜好切換 **MAP** / **ECHO**。
 
-### 鬧鐘
-
-- 點**時鐘**開啟鬧鐘頁(4 組)。每組:啟用、點時間彈出大型捲輪選擇器設定時 / 分、選擇星期幾,列尾的下拉選單可(選擇性)指定該組專屬喇叭。
-- 在設定欄位填入 **Alarm Speaker**(Home Assistant 的 `media_player` 實體,例如 `media_player.living_room`),以及可選的 **Alarm Sound URL**(mp3)。
-- 在 Home Assistant 的裝置頁開啟「**允許此裝置執行 Home Assistant 動作**」,否則 ESP32 無法命令喇叭。
-- 鬧鐘響時,螢幕會出現 **SNOOZE 9m / DISMISS** 面板。聲音會**每 15 秒重播一次,直到你按下 DISMISS**,所以短音檔也能持續響。
-
-#### 使用 Google Nest / Chromecast 喇叭
-
-1. 在 Home Assistant 新增 **Google Cast** 整合(會自動發現區網內的 Nest / Cast 裝置)→ 喇叭變成一個 `media_player` 實體。
-2. 到 **開發者工具 → 狀態** 找出它的 id(例如 `media_player.nest_mini`),填進 **Alarm Speaker**。
-3. Cast 裝置只吃**完整、連得到的 URL**。把 mp3 放到 HA 的 `config/www/`,網址用 `http://<HA的IP>:8123/local/alarm.mp3`(用 IP,不要用 `homeassistant.local`)。
-4. 先在 **開發者工具 → 動作** 用 `media_player.play_media` 帶入你的實體與網址測試;喇叭有響,鬧鐘就會響。
-
-#### 自動搜尋喇叭(SCAN 鈕)
-
-不必手打 entity id,鬧鐘頁可以直接列出 HA 裡所有的 `media_player`。一次性設定:
-
-1. 在 Home Assistant 開啟**個人資料(左下角頭像)→ 安全性 → 長期存取權杖 → 建立權杖**,複製起來——它只會顯示這一次。
-2. 開啟裝置網頁 `http://flight-radar.local`(或 HA 的裝置頁),把權杖貼進 **HA Token**。**HA URL** 可以留空——預設 `http://homeassistant.local:8123`;若之後掃描顯示 `HA UNREACHABLE`,請改填 HA 的 IP(如 `http://192.168.1.10:8123`,mDNS 名稱解析在部分網路不可靠)。兩個欄位都會存進 flash,重開機不會消失。
-3. 開啟鬧鐘頁——權杖填好後**進頁會自動掃描**(也可按頂列的 **SCAN**)。所有喇叭下拉選單會列出友善名稱:頂列 **DEF** 選單是預設喇叭(沒有專屬喇叭的鬧鐘用它),每組鬧鐘列尾則是該組的專屬選單。挑了就立即存檔。仍然可以手動填寫(實體 **Alarm Speaker** 與 **Alarm 1–4 Speaker**;某組留空 = 用預設)。
-
-疑難排解:`SET HA TOKEN FIRST` = 還沒做第 2 步;`TOKEN INVALID` = 權杖錯誤或已撤銷;`HA UNREACHABLE` = HA URL 不對,改用 IP;`NO SPEAKERS FOUND` = HA 裡沒有任何 `media_player` 實體(先新增 Google Cast / Sonos 等整合)。
-
-> **安全性提醒:**長期權杖等同 HA 的完整存取權,且儲存在裝置 flash 中。請把它當密碼看待、讓裝置留在信任的內網;韌體只會用它做這個唯讀的喇叭查詢。
-
-### ATC 模式
-
-按右上角按鈕列的 **ATC** 鈕(在 **ECHO** 與 **PWR** 之間)切換成航管風格畫面;再按一次立即還原成預設的飛機圖示畫面。
-
-- 每架飛機變成一個小小的**綠色目標方塊**,點擊方式跟飛機圖示一樣(照樣呼叫 `select_slot` 選取/取消選取)。
-- 一條細線依目前航向與地速,投射該機**2 分鐘後的推算位置**。
-- **點線漸淡軌跡**跟在機後,連向最近幾次抓取到的舊位置(點狀,不會與實線向量混淆)。
-- 標籤改成兩行:第一行呼號,第二行 `FL高度層+爬升箭頭+速度kts`(`↑` 爬升、`↓` 下降、`=` 平飛);向量線會穿過標籤時,標籤自動翻到目標另一側。
-- **衝突告警(紅色)**:任兩機水平距離 < **5.5 km** 且高度差 < **300 m** 時雙雙變紅;若其中一台是目前選取的飛機,改成白/紅交替閃爍而非純白。
-- **資料延遲(黃色)**:資料來源超過 60 秒沒更新該機資料,標籤變黃並在呼號後加 `*`。
-- 選取中且無衝突的飛機維持白色。
-- **靜態航圖(video map)**:ATC 模式同時把 `map_data.h` 的圖層烤進底圖——管制空域邊界(CTR 類亮藍、TMA/CTA 暗藍)、跑道與**虛線延伸中線**、機場方塊+ICAO 代碼、導航點三角+名稱。關閉 ATC 模式即全部消失。
-- **圖層面板**:**SYS** 鈕內有兩個 amber 色分頁——**SYSTEM**(硬體資訊+OpenSky API 當日剩餘額度;用免費來源時改顯示目前來源)與 **ATC CONF**,後者的四個開關(**AIRSPACE / RUNWAY / AIRPORT / FIXES**)設定要畫哪些航圖圖層(存 NVS)。右下閒置畫面維持顯示在地天氣,跟原本一樣。
-- **起訖站行(ROUTE)**:**ATC CONF** 的第五個開關。開啟後每個標籤多出第三行**起訖機場**(例 `KHH-KIX`),逐架在背景向 [adsbdb.com](https://www.adsbdb.com/) 查詢並快取,同一呼號只查一次;查詢完成後幾秒內陸續浮現,adsbdb 查無資料的航班就不顯示第三行。與其他圖層開關一樣存 NVS。
-
-### 截圖存到 Home Assistant
-
-在螢幕任意處**三指下滑**即截圖。裝置會快照 framebuffer、在 `http://flight-radar.local:8081/screenshot.bmp` 提供 800×480 BMP,並發出 HA 事件 `esphome.flight_radar_screenshot`。要自動存檔的話,在 HA 加入 **Downloader** 整合(設定下載目錄,例如 `/config/downloads`)並建立自動化:
-
-```yaml
-automation:
-  - alias: 存雷達截圖
-    trigger:
-      - platform: event
-        event_type: esphome.flight_radar_screenshot
-    action:
-      - service: downloader.download_file
-        data:
-          url: "http://flight-radar.local:8081/screenshot.bmp"
-          filename: "radar_{{ now().strftime('%Y%m%d_%H%M%S') }}.bmp"
-```
-
-也可以直接用瀏覽器開那個網址。若截圖顏色不對(紅藍對調),把 `radar_fetch.h` 的 `SHOT_SWAP_BYTES` 改成 `1` 重新燒錄。
-
 ### 設定項一覽
 
 以下皆為 Home Assistant / 網頁實體,存於 NVS:
@@ -486,45 +222,12 @@ automation:
 | Alarm 1–4 Speaker | 各組鬧鐘的專屬喇叭;留空 = 用 Alarm Speaker |
 | Alarm Sound URL | 鬧鐘響時播放的 mp3 |
 
-### 在台灣以外地區使用
+### 延伸閱讀
 
-repo 內附的 `map_data.h` 是台灣輪廓,但雷達投影本身完全通用——編譯前為你的位置重新產生地圖即可:
-
-```bash
-# 東京,最大半徑 150 km
-python tools/make_map.py --lat 35.6762 --lon 139.6503 --radius 150
-
-# 倫敦,300 km,加省/州界
-python tools/make_map.py --lat 51.5074 --lon -0.1278 --radius 300 --states
-```
-
-腳本(純 Python,免裝套件)會下載 [Natural Earth](https://www.naturalearthdata.com/) 1:10m 海岸線+國界資料(public domain,快取於 `tools/cache/`),裁切你座標周圍的範圍、簡化到約一個雷達像素的細節,然後覆寫 `map_data.h`。`--radius` 請設為你會用到的最大雷達半徑。常用選項:`--states` 加省/州界(部分國家會很密)、`--geojson file.geojson` 改用自備邊界檔不下載、`--tol` / `--max-points` 調細節。
-
-腳本同時會產生 **ATC 圖層資料**(`AIRPORTS[]`、`RUNWAYS[]`、`FIXES[]`、`AIRSPACES[]`)到同一個 `map_data.h`。一次產生全部資訊的完整範例:
-
-```bash
-# 台北 200 km:輪廓 + 機場/跑道 + 導航台 + 5 碼航點 + CTR/TMA 空域
-python tools/make_map.py --lat 25.03 --lon 121.56 --radius 200 \
-    --countries TW --min-airport small --rwy-ext 15 \
-    --fixes-csv my_fixes.csv --openaip-key YOURKEY
-```
-
-| 選項 | 作用 |
-|------|------|
-| `--countries TW` | 機場/導航台只保留這些 ISO 國碼(不給 = 範圍內全部) |
-| `--min-airport small` | 連小型機場也納入(預設 `medium`;有定期航班的一律保留) |
-| `--rwy-ext 15` | 跑道中線延伸公里數(預設 10) |
-| `--fixes-csv my_fixes.csv` | 匯入 AIP 的 5 碼航點,每行 `NAME,lat,lon` |
-| `--openaip-key YOURKEY` | 從 [openAIP](https://www.openaip.net/) 抓 CTR/TMA/CTA 空域(免費註冊;資料授權 CC BY-NC);也可改用 `--airspace-geojson file.geojson`(feature 需有 `name`+`type` 屬性),`--airspace-types` 選類別 |
-| `--no-outline` | 保留檔內既有的 `MAP_OUTLINE`(例如內附的 g0v 台灣輪廓),只更新圖層陣列 |
-| `--no-airports` / `--no-fixes` | 完全跳過該圖層 |
-
-機場、跑道、導航台資料來自 [OurAirports](https://ourairports.com/) 開放資料(public domain,免金鑰)。沒給空域來源時 `AIRSPACES[]` 就是空的。注意 openAIP 是社群維護、各地覆蓋差很多——歐洲很完整,但**台灣完全沒有空域資料**。台灣空域 repo 已內附 `tools/taiwan_airspace.geojson`(FIR + 6 個 TMA + 21 個機場管制空域),由 `tools/eaip_enr21_to_geojson.py` 從民航局 eAIP ENR 2.1 轉出——這個轉換器支援座標點列、圓、圓弧三種幾何,任何 IDS AIRNAV 系統的 eAIP 都適用,其他 openAIP 沒覆蓋的國家可走同樣路線。內附的 `map_data.h` 由這個指令產生:
-
-```bash
-python tools/make_map.py --lat 23.8 --lon 121.0 --radius 320 --countries TW --no-outline \
-    --airspace-geojson tools/taiwan_airspace.geojson
-```
+- **[docs/USAGE.md](docs/USAGE.md)** —— 鬧鐘(含 Google Nest 喇叭)、ATC 模式、
+  截圖存到 Home Assistant、在台灣以外地區使用
+- **[docs/BOARDS.md](docs/BOARDS.md)** —— 板子接線、面板時序、元件覆寫,以及
+  已在實機上排除的設定
 
 ### 資料來源與致謝
 
