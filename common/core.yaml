@@ -337,6 +337,8 @@ globals:
   - { id: ac_vel, type: 'std::vector<float>' }   # 地速(m/s)
   - { id: ac_alt, type: 'std::vector<float>' }   # 高度(m)
   - { id: ac_cs,  type: 'std::vector<std::string>' }
+  - { id: ac_sq,  type: 'std::vector<std::string>' }   # squawk(三家來源都有)
+  - { id: ac_ty,  type: 'std::vector<std::string>' }   # ICAO 機型代碼(OpenSky 無,會是空字串)
   - { id: ac_vr,  type: 'std::vector<float>' }   # 垂直速率(m/s)
   - { id: ac_lc,  type: 'std::vector<uint32_t>' } # last_contact(epoch秒),ATC 訊號延遲判斷
   - { id: slot_map, type: 'std::vector<int>' }   # 標記槽 -> 航班索引
@@ -455,6 +457,9 @@ script:
           snprintf(b, sizeof(b), id(units_imperial) ? "DIST %4.0f mi    BRG %03.0f" : "DIST %4.0f km    BRG %03.0f",
                    sqrtf(e * e + no * no) * (id(units_imperial) ? 0.6214f : 1.0f), brg);
           lv_label_set_text(id(sel_l4), b);
+          radar_sq_type_line(id(sel_l5),
+              i < (int) id(ac_sq).size() ? id(ac_sq)[i].c_str() : "",
+              i < (int) id(ac_ty).size() ? id(ac_ty)[i].c_str() : "");
       - script.execute: fetch_route
       - script.execute: atc_panel_sync   # 選機→藏圖層面板;取消選取→ATC 模式下重新顯示
 
@@ -465,6 +470,7 @@ script:
           radar_show_sysinfo(id(sel_cs_l), id(sel_route_l), id(sel_l1), id(sel_l2),
                              id(sel_l3), id(sel_l4),
                              (int) wifi::global_wifi_component->wifi_rssi());
+          lv_label_set_text(id(sel_l5), "");   // 這面板只用 4 行,清掉航班的 SQ/TYPE
 
   - id: show_weather           # 無選取航班時,右下角面板顯示在地天氣(Open-Meteo)
     mode: single
@@ -478,6 +484,7 @@ script:
             lv_label_set_text(id(sel_l2), "");
             lv_label_set_text(id(sel_l3), "");
             lv_label_set_text(id(sel_l4), "");
+            lv_label_set_text(id(sel_l5), "");
             return;
           }
           static const char *PTS[16] = { "N","NNE","NE","ENE","E","ESE","SE","SSE",
@@ -496,6 +503,7 @@ script:
           int pi = ((int) ((wd + 11.25f) / 22.5f)) % 16;
           snprintf(b, sizeof(b), "DIR  %6.0f  %s", wd, PTS[pi]);
           lv_label_set_text(id(sel_l4), b);
+          lv_label_set_text(id(sel_l5), "");   // 這面板只用 4 行,清掉航班的 SQ/TYPE
 
   - id: fetch_route            # adsbdb.com 查起訖機場(背景執行)
     mode: single
@@ -506,10 +514,16 @@ script:
     mode: single
     then:
       - lambda: |-
-          if (screenshot_capture(id(main_display)))
-            lv_label_set_text(id(status_label), "SCREENSHOT -> :8081/screenshot.bmp");
-          else
+          if (screenshot_capture(id(main_display))) {
+            char sb[64];
+            if (g_shot_path[0])   // 有 TF 卡就顯示檔名,否則指向 HTTP
+              snprintf(sb, sizeof(sb), "SCREENSHOT -> SD:%s", g_shot_path);
+            else
+              snprintf(sb, sizeof(sb), "SCREENSHOT -> :8081/screenshot.bmp");
+            lv_label_set_text(id(status_label), sb);
+          } else {
             lv_label_set_text(id(status_label), "SCREENSHOT FAILED");
+          }
       - homeassistant.event:
           event: esphome.flight_radar_screenshot
 
@@ -836,12 +850,13 @@ interval:
           }
           id(ac_lat).clear(); id(ac_lon).clear(); id(ac_trk).clear();
           id(ac_vel).clear(); id(ac_alt).clear(); id(ac_cs).clear(); id(ac_vr).clear();
-          id(ac_lc).clear();
+          id(ac_lc).clear(); id(ac_sq).clear(); id(ac_ty).clear();
           for (auto &ac : radar_bg::g_result) {
             id(ac_lat).push_back(ac.lat); id(ac_lon).push_back(ac.lon);
             id(ac_trk).push_back(ac.trk); id(ac_vel).push_back(ac.vel);
             id(ac_alt).push_back(ac.alt); id(ac_cs).push_back(ac.cs);
             id(ac_vr).push_back(ac.vr); id(ac_lc).push_back(ac.lc);
+            id(ac_sq).push_back(ac.sq); id(ac_ty).push_back(ac.ty);
           }
           radar_bg::g_states_ready = false;
           xSemaphoreGive(radar_bg::mtx());
@@ -872,11 +887,14 @@ interval:
               snprintf(b2, sizeof(b2), id(units_imperial) ? "DIST %4.0f mi    BRG %03.0f" : "DIST %4.0f km    BRG %03.0f",
                        sqrtf(e2 * e2 + n2 * n2) * (id(units_imperial) ? 0.6214f : 1.0f), brg);
               lv_label_set_text(id(sel_l4), b2);
+              radar_sq_type_line(id(sel_l5), id(ac_sq)[si].c_str(), id(ac_ty)[si].c_str());
             } else {
               lv_label_set_text(id(sel_l1), "(out of range)");
               lv_label_set_text(id(sel_l2), "");
               lv_label_set_text(id(sel_l3), "");
               lv_label_set_text(id(sel_l4), "");
+              lv_label_set_text(id(sel_l5), "");
+            lv_label_set_text(id(sel_l5), "");
             }
           }
           char b[64];

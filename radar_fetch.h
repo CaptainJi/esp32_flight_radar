@@ -6,9 +6,13 @@
 //   RADAR_CANVAS  square radar canvas side (px); must equal the LVGL
 //                 base_canvas size in the matching ui/ package.
 //   SCREEN_W/H    panel size, used by the screenshot framebuffer copy.
-//   RADAR_DISPLAY_RGB  1 = parallel-RGB panel (rpi_dpi_rgb, framebuffer
-//                 screenshot available); 0 = other bus (e.g. MIPI-DSI on
-//                 ESP32-P4) where the RGB framebuffer grab does not apply.
+//   RADAR_DISPLAY_RGB  which display driver the screenshot grab should use:
+//                 1 = parallel-RGB via `rpi_dpi_rgb`  (generic 800x480 board)
+//                 2 = parallel-RGB via `mipi_rgb`     (Waveshare Touch-LCD-5/5B)
+//                 0 = neither (e.g. MIPI-DSI on ESP32-P4) -> screenshot disabled
+//                 1 and 2 are both parallel-RGB panels, so the IDF call
+//                 esp_lcd_rgb_panel_get_frame_buffer() works for both; only the
+//                 ESPHome wrapper class holding the panel handle differs.
 #ifndef RADAR_CANVAS
 #define RADAR_CANVAS 456
 #endif
@@ -26,6 +30,14 @@
 // 且 CH422G 無 PWM 通道 → 只能開/關。那些板子設 0,亮度滑桿改控 LVGL 暗化遮罩。
 #ifndef RADAR_BL_PWM
 #define RADAR_BL_PWM 1
+#endif
+// 三指截圖是否另存一份到 microSD。Waveshare Touch-LCD-5/5B 的 TF 走 SPI:
+// MOSI/CLK/MISO 是原生 GPIO,但 CS 在 CH422G EXIO4(擴充腳,無法給 sdspi 驅動用)。
+// 因為那條 SPI 上只有 SD 一個裝置,板檔用一個 gpio switch 於開機時把 EXIO4 拉低
+// (restore_mode: ALWAYS_OFF)並保持,驅動這邊就以 SDSPI_SLOT_NO_CS 掛載。
+// 沒有卡或掛載失敗時只是不寫檔,HTTP(:8081)那條路照舊。
+#ifndef RADAR_SD_SPI
+#define RADAR_SD_SPI 0
 #endif
 // 雷達可同時顯示的航班數(= ui/*.yaml 裡 ac/ai/sq/ad/vec/tr 這幾組 widget 的組數)。
 // 資料端不設上限:radar_fetch 依距離由近而遠排序,超過這個數的遠機不繪出。
@@ -60,14 +72,23 @@
 #include "esp_ota_ops.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
+#if RADAR_SD_SPI
+#include "driver/spi_common.h"
+#include "driver/sdspi_host.h"
+#include "sdmmc_cmd.h"
+#include "esp_vfs_fat.h"
+#include <ctime>
+#endif
 extern "C" {
 #include "pngle.h"
 }
 #include "esp_log.h"
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/image/image.h"
-#if RADAR_DISPLAY_RGB
+#if RADAR_DISPLAY_RGB == 1
 #include "esphome/components/rpi_dpi_rgb/rpi_dpi_rgb.h"
+#elif RADAR_DISPLAY_RGB == 2
+#include "esphome/components/mipi_rgb/mipi_rgb.h"
 #endif
 #include "map_data.h"
 
@@ -77,6 +98,8 @@ struct AcInfo {
   float lat, lon, trk, vel, alt, vr, dist;
   uint32_t lc;   // last_contact (epoch 秒),ATC 模式判斷訊號延遲用
   std::string cs;
+  std::string sq;   // squawk / mode-A code(三家來源都有;OpenSky 是 states[14])
+  std::string ty;   // ICAO 機型代碼(如 B738);只有 airplanes.live / adsb.lol 提供
 };
 
 struct Job {
@@ -226,6 +249,7 @@ inline bool do_states_opensky(const Job &j) {
       ac.trk = a[10] | 0.0f;
       ac.vr  = a[11] | 0.0f;
       ac.lc  = a[4] | 0u;
+      ac.sq  = a[14] | "";     // squawk;OpenSky 不提供機型,ty 留空
       const char *c = a[1] | "";
       ac.cs = c;
       while (!ac.cs.empty() && ac.cs.back() == ' ') ac.cs.pop_back();
@@ -282,6 +306,8 @@ inline bool do_states_v2(const Job &j, int src) {
       ac.vr  = (a["baro_rate"] | 0.0f) * 0.00508f;  // ft/min → m/s
       float seen = a["seen"] | 0.0f;
       ac.lc = now_s > (uint32_t) seen ? now_s - (uint32_t) seen : 0;
+      ac.sq = a["squawk"] | "";
+      ac.ty = a["t"] | "";     // ICAO 機型代碼
       const char *c = a["flight"] | "";
       ac.cs = c;
       while (!ac.cs.empty() && ac.cs.back() == ' ') ac.cs.pop_back();
@@ -859,39 +885,137 @@ inline uint8_t *g_shot_buf = nullptr;        // 800*480*2 快照(PSRAM,首次截
 inline volatile bool g_shot_valid = false;
 
 #if RADAR_DISPLAY_RGB
+// 兩個 RGB 驅動的 panel handle 都叫 handle_ 且都是 protected,只有類別不同。
+#if RADAR_DISPLAY_RGB == 1
+using RadarRgbDisplay = esphome::rpi_dpi_rgb::RpiDpiRgb;
+#else
+using RadarRgbDisplay = esphome::mipi_rgb::MipiRgb;
+#endif
 // esp_lcd panel handle 在 ESPHome 元件裡是 protected,用衍生類取用(單 FB,拿到即當前畫面)
-struct RpiSpy : public esphome::rpi_dpi_rgb::RpiDpiRgb {
-  static esp_lcd_panel_handle_t handle(esphome::rpi_dpi_rgb::RpiDpiRgb *d) {
+struct RpiSpy : public RadarRgbDisplay {
+  static esp_lcd_panel_handle_t handle(RadarRgbDisplay *d) {
     return static_cast<RpiSpy *>(d)->handle_;
   }
 };
 
-inline esp_err_t shot_http_get(httpd_req_t *req) {
-  if (!g_shot_valid || !g_shot_buf) { httpd_resp_send_404(req); return ESP_OK; }
-  const int W = SCREEN_W, H = SCREEN_H;
-  // 24-bit BMP 標頭(row 3*800 是 4 的倍數,免 padding)
-  uint8_t hdr[54] = {0};
-  uint32_t img = (uint32_t) W * H * 3, sz = 54 + img, off = 54, ihsz = 40;
-  int32_t w = W, h = H;
+// 24-bit BMP 標頭(row 3*W 對 800/1024 都是 4 的倍數,免 padding)。HTTP 與 SD 共用。
+inline void shot_bmp_header(uint8_t hdr[54]) {
+  memset(hdr, 0, 54);
+  uint32_t img = (uint32_t) SCREEN_W * SCREEN_H * 3, sz = 54 + img, off = 54, ihsz = 40;
+  int32_t w = SCREEN_W, h = SCREEN_H;
   uint16_t planes = 1, bpp = 24;
   hdr[0] = 'B'; hdr[1] = 'M';
   memcpy(hdr + 2, &sz, 4);  memcpy(hdr + 10, &off, 4);  memcpy(hdr + 14, &ihsz, 4);
   memcpy(hdr + 18, &w, 4);  memcpy(hdr + 22, &h, 4);
   memcpy(hdr + 26, &planes, 2);  memcpy(hdr + 28, &bpp, 2);  memcpy(hdr + 34, &img, 4);
+}
+
+// 把 g_shot_buf 的第 y 列(RGB565)轉成 BMP 的一列(24-bit BGR)。
+inline void shot_bmp_row(int y, uint8_t *row) {
+  const uint16_t *src = (const uint16_t *) g_shot_buf + (size_t) y * SCREEN_W;
+  for (int x = 0; x < SCREEN_W; x++) {
+    uint16_t v = src[x];
+#if SHOT_SWAP_BYTES
+    v = (uint16_t) ((v >> 8) | (v << 8));
+#endif
+    row[x * 3 + 0] = (uint8_t) ((v & 0x1F) << 3);          // B
+    row[x * 3 + 1] = (uint8_t) (((v >> 5) & 0x3F) << 2);   // G
+    row[x * 3 + 2] = (uint8_t) (((v >> 11) & 0x1F) << 3);  // R
+  }
+}
+
+// ---- microSD(SPI):三指截圖另存一份到 TF 卡 ----
+// 檔名 shot_YYYYMMDD_HHMMSS.bmp;SNTP 還沒對到時間就退回流水號。
+// 掛載只嘗試一次(g_sd_tried),失敗就永遠走 HTTP 那條路,不每次重試拖慢截圖。
+inline char g_shot_path[40] = "";      // 成功寫入的檔名(不含目錄);空=沒寫到卡
+#if RADAR_SD_SPI
+inline bool g_sd_ready = false;
+inline bool g_sd_tried = false;
+
+inline bool sd_mount() {
+  if (g_sd_tried) return g_sd_ready;
+  g_sd_tried = true;
+  spi_bus_config_t bus = {};
+  bus.mosi_io_num = RADAR_SD_MOSI;
+  bus.miso_io_num = RADAR_SD_MISO;
+  bus.sclk_io_num = RADAR_SD_CLK;
+  bus.quadwp_io_num = -1;
+  bus.quadhd_io_num = -1;
+  bus.max_transfer_sz = 4096;
+  esp_err_t e = spi_bus_initialize((spi_host_device_t) RADAR_SD_HOST, &bus, SPI_DMA_CH_AUTO);
+  if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) {   // INVALID_STATE = 這條 bus 已被初始化過
+    ESP_LOGW("radar_sd", "spi_bus_initialize: %s", esp_err_to_name(e));
+    return false;
+  }
+  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+  host.slot = RADAR_SD_HOST;
+  sdspi_device_config_t dev = SDSPI_DEVICE_CONFIG_DEFAULT();
+  dev.host_id = (spi_host_device_t) RADAR_SD_HOST;
+  dev.gpio_cs = SDSPI_SLOT_NO_CS;    // CS 在 CH422G EXIO4,由板檔的 switch 常拉低
+  esp_vfs_fat_sdmmc_mount_config_t mnt = {};
+  mnt.format_if_mount_failed = false;   // 不要動使用者的卡
+  mnt.max_files = 2;
+  mnt.allocation_unit_size = 16 * 1024;
+  sdmmc_card_t *card = nullptr;
+  e = esp_vfs_fat_sdspi_mount("/sdcard", &host, &dev, &mnt, &card);
+  if (e != ESP_OK) {
+    ESP_LOGW("radar_sd", "mount failed: %s (no card?)", esp_err_to_name(e));
+    return false;
+  }
+  ESP_LOGI("radar_sd", "mounted %lluMB", ((uint64_t) card->csd.capacity * card->csd.sector_size) >> 20);
+  g_sd_ready = true;
+  return true;
+}
+
+inline bool sd_save_shot() {
+  g_shot_path[0] = 0;
+  if (!sd_mount()) return false;
+  char path[64];
+  time_t t = ::time(nullptr);   // ::  = 避開 esphome::time 命名空間
+  struct tm tv;
+  localtime_r(&t, &tv);
+  if (tv.tm_year + 1900 >= 2024) {
+    snprintf(path, sizeof(path), "/sdcard/shot_%04d%02d%02d_%02d%02d%02d.bmp",
+             tv.tm_year + 1900, tv.tm_mon + 1, tv.tm_mday, tv.tm_hour, tv.tm_min, tv.tm_sec);
+  } else {
+    static int seq = 0;    // 時間還沒同步
+    snprintf(path, sizeof(path), "/sdcard/shot_%03d.bmp", ++seq);
+  }
+  FILE *f = fopen(path, "wb");
+  if (!f) { ESP_LOGW("radar_sd", "fopen %s failed", path); return false; }
+  uint8_t hdr[54];
+  shot_bmp_header(hdr);
+  bool ok = fwrite(hdr, 1, 54, f) == 54;
+  uint8_t *row = (uint8_t *) malloc((size_t) SCREEN_W * 3);
+  if (row == nullptr) {
+    ok = false;
+  } else {
+    for (int y = SCREEN_H - 1; ok && y >= 0; y--) {
+      shot_bmp_row(y, row);
+      ok = fwrite(row, 1, (size_t) SCREEN_W * 3, f) == (size_t) SCREEN_W * 3;
+    }
+    free(row);
+  }
+  fclose(f);
+  if (!ok) { remove(path); ESP_LOGW("radar_sd", "write failed (card full?)"); return false; }
+  snprintf(g_shot_path, sizeof(g_shot_path), "%s", strrchr(path, '/') + 1);
+  ESP_LOGI("radar_sd", "saved %s", path);
+  return true;
+}
+#else
+inline bool sd_save_shot() { return false; }
+#endif  // RADAR_SD_SPI
+
+inline esp_err_t shot_http_get(httpd_req_t *req) {
+  if (!g_shot_valid || !g_shot_buf) { httpd_resp_send_404(req); return ESP_OK; }
+  const int H = SCREEN_H;
+  uint8_t hdr[54];
+  shot_bmp_header(hdr);
   httpd_resp_set_type(req, "image/bmp");
   httpd_resp_send_chunk(req, (const char *) hdr, 54);
   static uint8_t row[SCREEN_W * 3];
   for (int y = H - 1; y >= 0; y--) {         // BMP 由下往上
-    const uint16_t *src = (const uint16_t *) g_shot_buf + (size_t) y * W;
-    for (int x = 0; x < W; x++) {
-      uint16_t v = src[x];
-#if SHOT_SWAP_BYTES
-      v = (uint16_t) ((v >> 8) | (v << 8));
-#endif
-      row[x * 3 + 0] = (uint8_t) ((v & 0x1F) << 3);          // B
-      row[x * 3 + 1] = (uint8_t) (((v >> 5) & 0x3F) << 2);   // G
-      row[x * 3 + 2] = (uint8_t) (((v >> 11) & 0x1F) << 3);  // R
-    }
+    shot_bmp_row(y, row);
     if (httpd_resp_send_chunk(req, (const char *) row, sizeof(row)) != ESP_OK)
       return ESP_FAIL;
   }
@@ -899,7 +1023,7 @@ inline esp_err_t shot_http_get(httpd_req_t *req) {
   return ESP_OK;
 }
 
-inline bool screenshot_capture(esphome::rpi_dpi_rgb::RpiDpiRgb *disp) {
+inline bool screenshot_capture(RadarRgbDisplay *disp) {
   const size_t BYTES = (size_t) SCREEN_W * SCREEN_H * 2;
   if (!g_shot_buf) g_shot_buf = (uint8_t *) heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
   if (!g_shot_buf) return false;
@@ -909,6 +1033,7 @@ inline bool screenshot_capture(esphome::rpi_dpi_rgb::RpiDpiRgb *disp) {
   g_shot_valid = false;                      // 服務端讀到一半時避免撕裂判定
   memcpy(g_shot_buf, fb, BYTES);
   g_shot_valid = true;
+  sd_save_shot();                            // 有卡就另存一份;失敗不影響 HTTP 這條路
   static httpd_handle_t srv = nullptr;       // 首次截圖才啟動 HTTP 服務
   if (!srv) {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
@@ -932,6 +1057,20 @@ inline bool screenshot_capture(esphome::rpi_dpi_rgb::RpiDpiRgb *disp) {
 // so the caller reports "screenshot unavailable" instead of crashing.
 inline bool screenshot_capture(void *disp) { (void) disp; return false; }
 #endif  // RADAR_DISPLAY_RGB
+
+// ---- 航班詳情第 5 行:SQ(squawk)+ TYPE(ICAO 機型)----
+// 兩者皆可能為空(OpenSky 不提供機型),空值顯示 ----。
+// 7500 劫機 / 7600 通訊失效 / 7700 一般緊急 → 整行轉紅,呼應 ATC 告警配色。
+inline void radar_sq_type_line(lv_obj_t *lbl, const char *sq, const char *ty) {
+  if (sq == nullptr || *sq == 0) sq = "----";
+  if (ty == nullptr || *ty == 0) ty = "----";
+  char b[48];
+  snprintf(b, sizeof(b), "SQ %-4s     TYPE %s", sq, ty);
+  lv_label_set_text(lbl, b);
+  bool emerg = (strcmp(sq, "7500") == 0 || strcmp(sq, "7600") == 0 ||
+                strcmp(sq, "7700") == 0);
+  lv_obj_set_style_text_color(lbl, lv_color_hex(emerg ? 0xFF5030 : 0xD2E6D7), 0);
+}
 
 // ---- 系統資訊(i 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角六個 label ----
 inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,

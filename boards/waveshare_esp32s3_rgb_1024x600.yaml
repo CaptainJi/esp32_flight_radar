@@ -25,12 +25,21 @@ esphome:
       - "-DSCREEN_W=${disp_w}"
       - "-DSCREEN_H=${disp_h}"
       - "-DRADAR_CANVAS=${radar_canvas}"
-      # This board uses the `mipi_rgb` display driver (see below), whose C++
-      # class differs from rpi_dpi_rgb, so the framebuffer screenshot helper
-      # is compiled out here (three-finger screenshot gesture is a no-op).
-      - "-DRADAR_DISPLAY_RGB=0"
+      # This board uses the `mipi_rgb` display driver (see below). Both it and
+      # rpi_dpi_rgb are parallel-RGB panels, so the framebuffer screenshot works
+      # on either -- value 2 just tells radar_fetch.h which wrapper class holds
+      # the esp_lcd panel handle.
+      - "-DRADAR_DISPLAY_RGB=2"   # 2 = parallel-RGB via mipi_rgb(截圖可用)
       # 背光走 CH422G EXIO2(無 PWM)→ 亮度滑桿改控 LVGL 全螢幕暗化遮罩
       - "-DRADAR_BL_PWM=0"
+      # microSD(TF)插槽:三指截圖除了 HTTP 之外另存一份到卡上。
+      # MOSI/CLK/MISO 是原生 GPIO(11/12/13,與 RGB 資料腳不衝突);CS 在 CH422G
+      # EXIO4,由下方的 sd_cs switch 開機拉低並保持,見 radar_fetch.h 的 RADAR_SD_SPI。
+      - "-DRADAR_SD_SPI=1"
+      - "-DRADAR_SD_HOST=SPI2_HOST"
+      - "-DRADAR_SD_MOSI=11"
+      - "-DRADAR_SD_CLK=12"
+      - "-DRADAR_SD_MISO=13"
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -40,6 +49,11 @@ esp32:
     type: esp-idf
     advanced:
       enable_idf_experimental_features: true   # 120MHz octal PSRAM
+      # microSD 要用 FATFS,而 ESPHome 對 IDF 建置做了兩層瘦身,兩層都要解:
+      #  1) fatfs 元件預設不編進去(DEFAULT_EXCLUDED_IDF_COMPONENTS)→ 缺 esp_vfs_fat.h
+      #  2) disable_fatfs 預設 true 會把 CONFIG_FATFS_VOLUME_COUNT 設成 0 → 掛不起來
+      disable_fatfs: false
+      include_builtin_idf_components: [fatfs]
     sdkconfig_options:
       CONFIG_SPIRAM_USE_MALLOC: "y"
       # 17 = ESPHome 依實際元件算出的需求(11 TCP + 3 UDP + 3 TCP_LISTEN)。
@@ -104,6 +118,19 @@ i2c:
 
 ch422g:
   - id: io_ex                   # CH422G — registers have fixed I2C addresses
+
+# ---- microSD 的 CS(CH422G EXIO4)----
+# 那條 SPI 上只有 SD 一個裝置,所以 CS 開機拉低就不必再動:restore_mode: ALWAYS_OFF
+# 會在 setup 時寫入 OFF(低電位),sdspi 那邊便以 SDSPI_SLOT_NO_CS 掛載。
+# 這樣可以完全避開「每次 SPI 交易都要透過 I2C 切 CS」的開銷與 GT911 觸控的匯流排競爭。
+switch:
+  - platform: gpio
+    id: sd_cs
+    internal: true
+    restore_mode: ALWAYS_OFF
+    pin:
+      ch422g: io_ex
+      number: 4
 
 # ---- Backlight ----
 # Waveshare routes the backlight through a CH422G pin (on/off, no PWM), so

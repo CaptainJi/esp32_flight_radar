@@ -13,3 +13,5 @@ radar_gemini.yaml
 /demo.mp4
 tools/cache/
 components/*/__pycache__/
+.claude/settings.local.json
+.claude/*.tmp.*
