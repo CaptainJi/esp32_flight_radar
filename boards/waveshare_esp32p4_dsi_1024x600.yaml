@@ -90,6 +90,13 @@ touchscreen:
     id: my_touch
     display: main_display
     update_interval: 20ms
+    # 不要加 transform:GT911 的原點本來就在實體左上,raw 座標與面板一致。
+    # 實測(display rotation: 180° 已生效、畫面正立時,依序點四角的 raw):
+    #   左上 (27,13)    右上 (1013,12)
+    #   左下 (23,593)   右下 (1010,597)
+    # 範圍與方向都正確,所以既不需要 calibration 也不需要鏡像。
+    # (曾誤加 mirror_x/mirror_y,結果 1023-27=996 把座標整個翻掉;當時是把
+    #  「顛倒畫面上看到的左上」誤當成實體左上而推錯,已撤回。)
     on_touch:
       - lambda: |-
           if (!id(backlight).current_values.is_on()) {
@@ -135,3 +142,20 @@ display:
     model: WAVESHARE-ESP32-P4-WIFI6-TOUCH-LCD-7B
     update_interval: never
     auto_clear_enabled: false
+    # 位元組序:mipi_dsi 預設 little_endian,保持不動;改由下方 lvgl 區塊把
+    # LVGL 也設成 little_endian,兩邊都不做交換,面板直接收原生 RGB565。
+    # (曾試過把這裡改 big_endian 去配合 LVGL 的預設值,結果整片偏暗紅——
+    #  綠 0x07E0 交換後成 0xE007 = R28/G0/B7,正是那個色偏,故撤回。)
+    # 面板的掃描方向與 UI 座標相差 180 度:未旋轉時 UI 的上緣會出現在螢幕下緣。
+    # 這個 model 在 ESPHome 標了 no_transform=True(EK79007 走 DPI,沒有 MADCTL
+    # 之類的硬體鏡像可用),所以只能靠 LVGL 的軟體旋轉。
+    # 代價:LVGL 會另外配一份與繪圖緩衝同大的旋轉緩衝,每次 flush 多一次搬移。
+    # 下方 touchscreen 的 mirror_x/mirror_y 必須與這個旋轉成對存在:
+    # GT911 的 raw 原點在實體右下,轉正畫面後要靠鏡像才能對上 UI 座標。
+    rotation: 180°
+
+# ---- LVGL:位元組序與 display 對齊 ----
+# LVGL 元件預設 big_endian(會設 LV_COLOR_16_SWAP=1),而 mipi_dsi 預設
+# little_endian。兩邊不一致會讓每個 RGB565 像素高低位元組顛倒(綠變暗紅)。
+lvgl:
+  byte_order: little_endian
