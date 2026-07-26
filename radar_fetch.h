@@ -1060,18 +1060,28 @@ inline bool screenshot_capture(RadarRgbDisplay *disp) {
 inline bool screenshot_capture(void *disp) { (void) disp; return false; }
 #endif  // RADAR_DISPLAY_RGB
 
-// ---- 航班詳情第 5 行:SQ(squawk)+ TYPE(ICAO 機型)----
-// 兩者皆可能為空(OpenSky 不提供機型),空值顯示 ----。
-// 7500 劫機 / 7600 通訊失效 / 7700 一般緊急 → 整行轉紅,呼應 ATC 告警配色。
-inline void radar_sq_type_line(lv_obj_t *lbl, const char *sq, const char *ty) {
+// ---- 航班詳情:SQUAWK 一列 + 機型徽章 ----
+// SQUAWK 三家來源都有;7500 劫機 / 7600 通訊失效 / 7700 一般緊急 → 轉紅,
+// 呼應 ATC 告警配色。無值顯示 ----(例如剛出現、還沒收到 mode-A 碼)。
+inline void radar_sq_line(lv_obj_t *lbl, const char *sq) {
   if (sq == nullptr || *sq == 0) sq = "----";
-  if (ty == nullptr || *ty == 0) ty = "----";
-  char b[48];
-  snprintf(b, sizeof(b), "SQ %-4s     TYPE %s", sq, ty);
+  char b[32];
+  snprintf(b, sizeof(b), "SQUAWK %s", sq);
   lv_label_set_text(lbl, b);
   bool emerg = (strcmp(sq, "7500") == 0 || strcmp(sq, "7600") == 0 ||
                 strcmp(sq, "7700") == 0);
   lv_obj_set_style_text_color(lbl, lv_color_hex(emerg ? 0xFF5030 : 0xD2E6D7), 0);
+}
+
+// ICAO 機型代碼的反白徽章。只有 airplanes.live / adsb.lol 提供機型,OpenSky 沒有,
+// 所以無值時整個隱藏——否則會在呼號旁留一塊空的綠底。
+inline void radar_type_badge(lv_obj_t *lbl, const char *ty) {
+  if (ty == nullptr || *ty == 0) {
+    lv_obj_add_flag(lbl, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_label_set_text(lbl, ty);
+  lv_obj_clear_flag(lbl, LV_OBJ_FLAG_HIDDEN);
 }
 
 // ---- 系統資訊(i 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角六個 label ----

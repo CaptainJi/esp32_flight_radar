@@ -5003,6 +5003,23 @@ lvgl:
             text: "INITIALIZING..."
             text_font: font_mid
             text_color: 0x00E66E
+        # ICAO 機型代碼:反白徽章,與呼號同一列、靠面板右緣(面板 x490~792)。
+        # 只有 airplanes.live / adsb.lol 提供機型,OpenSky 沒有 → 無值時整個隱藏,
+        # 不留一塊空的綠底(見 radar_type_badge())。
+        - label:
+            id: sel_type_l
+            x: 883
+            y: 268
+            width: 100
+            text: ""
+            text_align: CENTER
+            text_font: font_small
+            text_color: 0x04180C
+            bg_color: 0x00C060
+            bg_opa: COVER
+            radius: 5
+            pad_all: 4
+            hidden: true
         - label:
             id: sel_route_l
             x: 625
@@ -5010,12 +5027,14 @@ lvgl:
             text: " "
             text_font: font_mono
             text_color: 0xFFD24A
-        - label: { id: sel_l1, x: 625, y: 355, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-        - label: { id: sel_l2, x: 625, y: 390, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-        - label: { id: sel_l3, x: 625, y: 425, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-        - label: { id: sel_l4, x: 625, y: 460, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        # SQUAWK 單獨一列,緊接在 ROUTE 下方(機型已移到上方的徽章)
+        - label: { id: sel_l5, x: 625, y: 343, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l1, x: 625, y: 378, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l2, x: 625, y: 413, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l3, x: 625, y: 448, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l4, x: 625, y: 483, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
         # 第 5 行:squawk + ICAO 機型(緊急 squawk 7500/7600/7700 會轉紅)
-        - label: { id: sel_l5, x: 625, y: 495, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+
         # 底部狀態列
         - label:
             id: status_label
