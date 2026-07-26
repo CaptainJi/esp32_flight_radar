@@ -53,8 +53,15 @@ esp32_hosted:
   d1_pin: GPIO15
   d2_pin: GPIO16
   d3_pin: GPIO17
-  bus_width: 4
   slot: 1
+  # bus_width 在 ESPHome 2026.3 的 esp32_hosted schema 已移除:D1/D2/D3 對應的
+  # sdkconfig 鍵名本身就含 _4BIT_BUS_(見 esp32_hosted/__init__.py),4-bit 是
+  # 隱含的,所以那個選項變成冗餘。給了會直接 config 失敗。
+  # sdio_frequency 可選(預設 40MHz);若 Wi-Fi 不穩可調降。
+  #
+  # 注意:這裡是「P4 ↔ C6 之間的 SDIO」,不要跟 TF 卡插槽的 SDMMC 搞混——
+  # 官方 04_sdmmc 範例的 TF 腳位是 CLK 43 / CMD 44 / D0-D3 39,40,41,42,
+  # 與下方 C6 用的這組完全不同。
 
 # ---- Backlight (real PWM GPIO on the P4 board) ----
 output:

@@ -882,6 +882,9 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
 // ---- 三指下滑截圖:抓 RGB 面板 framebuffer → BMP,經 HTTP(:8081)供 HA downloader 下載 ----
 #define SHOT_SWAP_BYTES 1   // 若截圖紅藍對調/顏色錯亂,改 1 重編譯
 inline uint8_t *g_shot_buf = nullptr;        // 800*480*2 快照(PSRAM,首次截圖才配置)
+inline char g_shot_path[40] = "";            // 寫進 SD 的檔名(不含目錄);空=沒寫到卡
+                                             // 宣告在 RADAR_DISPLAY_RGB 守衛外:截圖停用的
+                                             // 板子(P4 DSI)其狀態列 lambda 仍會讀這個變數
 inline volatile bool g_shot_valid = false;
 
 #if RADAR_DISPLAY_RGB
@@ -927,7 +930,6 @@ inline void shot_bmp_row(int y, uint8_t *row) {
 // ---- microSD(SPI):三指截圖另存一份到 TF 卡 ----
 // 檔名 shot_YYYYMMDD_HHMMSS.bmp;SNTP 還沒對到時間就退回流水號。
 // 掛載只嘗試一次(g_sd_tried),失敗就永遠走 HTTP 那條路,不每次重試拖慢截圖。
-inline char g_shot_path[40] = "";      // 成功寫入的檔名(不含目錄);空=沒寫到卡
 #if RADAR_SD_SPI
 inline bool g_sd_ready = false;
 inline bool g_sd_tried = false;

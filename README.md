@@ -73,7 +73,7 @@ dimensions left to chase.
 | `radar.yaml` | esp32-s3-5inch-rgb-001 (generic) | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | **verified on hardware** |
 | `radar-s3-5.yaml` | Waveshare ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | config + build verified, **not yet flashed** |
 | `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | native | **verified on hardware** |
-| `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | **does not currently build** — `bus_width` is no longer valid for `esp32_hosted` on 2026.3.x |
+| `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | config + build verified, **not yet flashed** — verify the C6 SDIO pins on your unit |
 
 Common requirements for the RGB boards: **≥8 MB octal PSRAM** (quad-PSRAM can't feed
 the RGB panel), a **GT911** I²C touch controller, and 16 MB flash (`flash_size` is set
@@ -108,10 +108,14 @@ matching `external_components` block to fall back to the built-in components.
 > same PCB and pin map (Waveshare switch the two with one macro in
 > `waveshare_lcd_port.h`); its porches and pixel clock are copied verbatim from their
 > example code, but it is config- and build-verified only — no 800×480 panel here.
-> The **P4-7B** does not build on ESPHome 2026.3.x: `bus_width` is no longer a valid
-> option for `esp32_hosted`, so that board file needs updating for the current schema.
-> On the P4 the parallel-RGB framebuffer screenshot is also compiled out (MIPI-DSI has
-> no equivalent grab); every other feature is shared.
+> The **P4-7B** now builds (the stale `bus_width` option is gone) but has not been
+> flashed either. Its ESP32-C6 SDIO pins cannot be verified from Waveshare's published
+> files — the pin defaults live in esp_hosted's menuconfig — so if Wi-Fi does not come
+> up on your unit, that is the first place to look. Note the SDIO bus to the C6 is *not*
+> the microSD SDMMC bus: the official `04_sdmmc` example uses CLK 43 / CMD 44 /
+> D0-D3 39,40,41,42 for the card, which are different pins. On the P4 the parallel-RGB
+> framebuffer screenshot is compiled out (MIPI-DSI has no equivalent grab); every other
+> feature is shared.
 >
 > **Do not raise `pclk_frequency` above what the board file sets.** Waveshare run this
 > panel family at 16 MHz. Pushing the 1024×600 board to 40 MHz produced a permanent
@@ -332,7 +336,7 @@ display 驅動與 C++ 巨集(透過 `build_flags` → `radar_fetch.h`),不再有
 | `radar.yaml` | esp32-s3-5inch-rgb-001(通用) | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | **實機驗證過** |
 | `radar-s3-5.yaml` | 微雪 ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | config + 編譯驗證,**尚未實機燒錄** |
 | `radar-s3-5b.yaml` | 微雪 ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | 原生 | **實機驗證過** |
-| `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI(EK79007) | ESP32-C6(esp-hosted/SDIO) | **目前編不過** — 2026.3.x 的 `esp32_hosted` 已不接受 `bus_width` |
+| `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI(EK79007) | ESP32-C6(esp-hosted/SDIO) | config + 編譯驗證,**尚未實機燒錄** — 請在自己板子上確認 C6 的 SDIO 腳位 |
 
 RGB 板共同需求:**≥8 MB octal PSRAM**(quad 餵不動 RGB 屏)、**GT911** I²C 觸控、16 MB flash
 (`flash_size` 各板自訂)。其他白牌 800×480 RGB+GT911 板(Sunton ESP32-8048S050、Guition
@@ -359,9 +363,11 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 > 緩衝位置與下面的背光行為,全部來自那台機器的實測。**5(800×480)** 與 5B 是同一片 PCB、
 > 同一組腳位(微雪用 `waveshare_lcd_port.h` 裡一個巨集切換兩者),porch 與 pixel clock 直接
 > 照抄官方範例,但只做過 config 與編譯驗證 —— 手上沒有 800×480 面板。
-> **P4-7B 在 ESPHome 2026.3.x 上編不過**:`esp32_hosted` 已不接受 `bus_width`,那個板檔
-> 需要按新 schema 更新。P4 上平行 RGB 的 framebuffer 截圖同樣會被編譯掉(DSI 無對應的抓取
-> 方式),其餘功能完全共用。
+> **P4-7B 現在編得過了**(移除了過時的 `bus_width`),但同樣尚未實機燒錄。它的 ESP32-C6
+> SDIO 腳位無法從微雪公開檔案驗證(腳位預設在 esp_hosted 的 menuconfig 裡),所以你的板子
+> 若連不上 Wi-Fi,請先查那組腳位。注意連到 C6 的 SDIO **不是** microSD 的 SDMMC:官方
+> `04_sdmmc` 範例給 TF 卡用的是 CLK 43 / CMD 44 / D0-D3 39,40,41,42,是另一組腳位。
+> P4 上平行 RGB 的 framebuffer 截圖會被編譯掉(DSI 無對應的抓取方式),其餘功能完全共用。
 >
 > **不要把 `pclk_frequency` 調到高於板檔的設定值。** 微雪這個面板家族官方跑 16 MHz。
 > 1024×600 板拉到 40 MHz 會出現固定的水平偏移,52 MHz 則整幅撕裂。畫面若閃爍,幾乎一定是
