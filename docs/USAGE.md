@@ -17,6 +17,24 @@ Assistant,以及在台灣以外地區使用。
 - In Home Assistant, open the device page and enable **"Allow the device to perform Home Assistant actions."** Otherwise the ESP32 cannot command the speaker.
 - When an alarm fires, a **SNOOZE 9m / DISMISS** panel appears on screen. The sound **re-plays every 15 s until you press DISMISS**, so a short mp3 still keeps ringing.
 
+### LOCAL SPEAKER (boards with onboard audio)
+
+On boards that have an audio codec and a speaker header, the speaker dropdowns list **LOCAL SPEAKER** as the first entry. Pick it and the alarm beeps from the board itself — no Home Assistant, no token, no network involved. It is the only entry you get without an HA token.
+
+The beep is a synthesised RTTTL tone (three short 1 kHz chirps per group, ~9 s, repeated every 15 s until DISMISS). To change the melody, edit the `rtttl.play` string in that board's file under `boards/`.
+
+Which boards have it:
+
+| Board | Onboard speaker |
+|---|---|
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | **Yes** — ES8311 codec + amplifier, MX1.25 speaker header |
+| Waveshare ESP32-S3-Touch-LCD-5 / -7 | No audio hardware at all |
+| Generic `esp32-s3-5inch-rgb-001` | Only the "audio" variant of the board has the codec fitted (base variant leaves those pins on the FPC header) |
+
+Plug a small 4–8 Ω speaker into the header; USB power is enough for a beep.
+
+> Playing an **mp3 from the microSD card** is *not* supported: ESPHome can play audio from an HTTP URL or from files baked into the firmware, but it has no SD-card media source. Ask if you want an alarm mp3 embedded in flash instead.
+
 ### Using a Google Nest / Chromecast speaker
 
 1. Add the **Google Cast** integration in Home Assistant (it auto-discovers Nest/Cast devices on your LAN) → your speaker becomes a `media_player` entity.
@@ -117,6 +135,24 @@ python tools/make_map.py --lat 23.8 --lon 121.0 --radius 320 --countries TW --no
 - 在設定欄位填入 **Alarm Speaker**(Home Assistant 的 `media_player` 實體,例如 `media_player.living_room`),以及可選的 **Alarm Sound URL**(mp3)。
 - 在 Home Assistant 的裝置頁開啟「**允許此裝置執行 Home Assistant 動作**」,否則 ESP32 無法命令喇叭。
 - 鬧鐘響時,螢幕會出現 **SNOOZE 9m / DISMISS** 面板。聲音會**每 15 秒重播一次,直到你按下 DISMISS**,所以短音檔也能持續響。
+
+### LOCAL SPEAKER(板載喇叭的板子)
+
+板子上有音訊 codec 與喇叭座時,喇叭下拉選單的第一項會是 **LOCAL SPEAKER**。選它,鬧鐘就由板子自己發聲——不經 Home Assistant、不用權杖、不用網路。沒填 HA Token 時,清單裡也只有這一項。
+
+聲音是 RTTTL 合成音(每組三聲約 1 kHz 短鳴,約 9 秒,每 15 秒重播直到 DISMISS)。想換旋律直接改該板子 `boards/` 檔案裡的 `rtttl.play` 字串。
+
+哪些板子有:
+
+| 板子 | 板載喇叭 |
+|---|---|
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | **有** —— ES8311 codec + 功放,MX1.25 喇叭座 |
+| Waveshare ESP32-S3-Touch-LCD-5 / -7 | 完全沒有音訊硬體 |
+| 通用 `esp32-s3-5inch-rgb-001` | 只有「集成音頻播放款」焊了 codec(基礎款那幾支腳留在 FPC 排針上) |
+
+喇叭座接一顆 4–8 Ω 小喇叭即可,USB 供電足夠發出提示音。
+
+> **不支援**從 microSD 播 mp3:ESPHome 能播 HTTP URL 或燒進韌體的音檔,但沒有 SD 卡的媒體來源。若想把鬧鈴 mp3 包進 flash,跟我說。
 
 ### 使用 Google Nest / Chromecast 喇叭
 

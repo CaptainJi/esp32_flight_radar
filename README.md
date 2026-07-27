@@ -32,7 +32,7 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 - **Weather echo overlay** — optional rain-radar layer from [RainViewer](https://www.rainviewer.com/), downloaded, decoded and composited **entirely on a background core** so the UI never stutters. Toggle with an on-screen button.
 - **Map outline overlay** — optional coastline / administrative border layer (Taiwan by default), toggle on screen.
 - **Home Assistant integration** — the device auto-discovers in HA; backlight, Wi-Fi signal and buttons become HA entities.
-- **Alarm clock** — up to 4 alarms, each with per-weekday scheduling. Alarms ring through a **Home Assistant media player** (any Wi-Fi speaker); **each alarm can ring on its own speaker** (e.g. weekday alarm in the bedroom, weekend alarm in the living room). On-screen **Snooze / Dismiss** overlay when ringing.
+- **Alarm clock** — up to 4 alarms, each with per-weekday scheduling. Alarms ring through a **Home Assistant media player** (any Wi-Fi speaker); **each alarm can ring on its own speaker** (e.g. weekday alarm in the bedroom, weekend alarm in the living room). On boards with onboard audio (Waveshare **ESP32-P4-WIFI6-Touch-LCD-7B**) the dropdown also offers **LOCAL SPEAKER**, which beeps from the board itself with no Home Assistant involved. On-screen **Snooze / Dismiss** overlay when ringing.
 - **Fully on-device setup** — first boot opens a Wi-Fi captive portal. Coordinates, scan range, poll interval, OpenSky credentials and the alarm speaker can all be entered **on the touch screen** (or via the web page / Home Assistant). A **timezone** dropdown (alarm page, with each city's UTC offset) and a **UNIT** dropdown (settings page — METRIC/IMPERIAL switches °C/°F, km·h/mph, km/mi, m/ft, m·s/fpm and the RANGE field itself; flight levels and knots stay as they are) are set on screen too. Everything is stored in NVS and survives reboots.
 - **Night mode on boards without a dimmable backlight** — on the Waveshare Touch-LCD-5/5B the backlight sits on a CH422G expander pin with no PWM, so it can only be switched on or off. On those boards the brightness slider drives a full-screen dark overlay instead, which dims perceived brightness and persists across reboots. It does not reduce power draw.
 - **OTA updates** — after the first USB flash, all future updates are wireless.
@@ -146,7 +146,7 @@ Please respect each provider's free-tier terms; this project is a hobby build, n
 - **氣象回波圖層** — 可選的降雨雷達層,資料來自 [RainViewer](https://www.rainviewer.com/);下載、解碼、合成**全部在背景核心完成**,主畫面完全不卡。以螢幕按鈕開關。
 - **地圖輪廓圖層** — 可選的海岸線 / 行政區界(預設台灣),螢幕按鈕開關。
 - **Home Assistant 整合** — 裝置會自動被 HA 探索;背光、Wi-Fi 訊號與按鈕都成為 HA 實體。
-- **鬧鐘** — 最多 4 組,每組可設定特定星期幾。鬧鐘透過 **Home Assistant 的媒體播放器**(任何 Wi-Fi 喇叭)發聲,且**每組鬧鐘可指定不同喇叭**(例如平日鬧鐘在臥室響、週末鬧鐘在客廳響)。響鈴時螢幕出現**貪睡 / 關閉**面板。
+- **鬧鐘** — 最多 4 組,每組可設定特定星期幾。鬧鐘透過 **Home Assistant 的媒體播放器**(任何 Wi-Fi 喇叭)發聲,且**每組鬧鐘可指定不同喇叭**(例如平日鬧鐘在臥室響、週末鬧鐘在客廳響)。板子本身有音訊硬體時(微雪 **ESP32-P4-WIFI6-Touch-LCD-7B**),下拉選單還會多一項 **LOCAL SPEAKER**,由板載喇叭直接發出提示音,完全不經 Home Assistant。響鈴時螢幕出現**貪睡 / 關閉**面板。
 - **完全在裝置上設定** — 首次開機開啟 Wi-Fi 設定熱點。座標、掃描半徑、輪詢間隔、OpenSky 憑證、鬧鐘喇叭都可以**直接在觸控螢幕上輸入**(也可透過網頁 / Home Assistant)。**時區**下拉(鬧鐘頁,每個城市附 UTC 偏移)與 **UNIT** 下拉(設定頁,METRIC/IMPERIAL 切換 °C/°F、km·h/mph、km/mi、m/ft、m·s/fpm 以及 RANGE 欄位本身;飛航高度層與節維持原樣)也在螢幕上設定。全部存於 NVS,重開機保留。
 - **背光不可調光的板子改用夜間模式** — 微雪 Touch-LCD-5/5B 的背光接在 CH422G 擴充腳、無 PWM,只能開/關。那些板子上亮度滑桿改為控制全螢幕暗化遮罩,降低感知亮度並在重開機後保留。注意這不會降低耗電。
 - **OTA 無線更新** — 第一次用 USB 燒錄後,之後都能無線更新。

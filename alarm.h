@@ -1,13 +1,30 @@
-// 鬧鐘:ESP32 只做排程與 UI,實際發聲由 Home Assistant 的喇叭
-// (media_player.play_media)播放。每組鬧鐘打包進一個 uint32_t:
+// 鬧鐘:ESP32 做排程與 UI,發聲有兩條路——Home Assistant 的喇叭
+// (media_player.play_media),或板載 I2S 喇叭(見下方 RADAR_LOCAL_SPK)。
+// 每組鬧鐘打包進一個 uint32_t:
 //   bit0      : enabled
 //   bit1..7   : 星期遮罩(bit1=Sun … bit7=Sat,週日起算)
 //   bit8..12  : 時 (0-23)
 //   bit13..18 : 分 (0-59)
 #pragma once
 #include <cstdint>
+#include <string>
+
+// 板載喇叭:有音訊硬體的板子在 boards/*.yaml 加 -DRADAR_LOCAL_SPK=1 打開,
+// 鬧鐘頁的喇叭下拉才會多出 LOCAL SPEAKER 這一項。沒有的板子維持 0。
+// 兩種板子都要提供 local_ring_start / local_ring_stop 兩個 script(沒喇叭的
+// 是空實作),common/core.yaml 才能無條件呼叫。
+#ifndef RADAR_LOCAL_SPK
+#define RADAR_LOCAL_SPK 0
+#endif
 
 namespace alarmpk {
+
+// 選到板載喇叭時寫進 Alarm Speaker 文字實體的哨兵值。
+// HA 的 entity_id 一定是 "media_player.xxx" 這種含點的字串,不會與它相撞。
+inline constexpr const char *LOCAL_SPK_ID   = "local";
+inline constexpr const char *LOCAL_SPK_NAME = "LOCAL SPEAKER";
+
+inline bool is_local_spk(const std::string &s) { return s == LOCAL_SPK_ID; }
 
 inline bool     en(uint32_t a)  { return a & 1u; }
 inline uint8_t  dow(uint32_t a) { return (a >> 1) & 0x7Fu; }

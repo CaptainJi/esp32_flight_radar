@@ -4955,8 +4955,8 @@ lvgl:
               - script.execute: alarm_refresh
               - script.execute: spk_dd_refresh
               - lambda: |-
-                  // 首次進鬧鐘頁且已填 token → 自動掃描喇叭清單
-                  if (id(spk_ids).empty() && !id(ha_token).state.empty())
+                  // 首次進鬧鐘頁 → 建清單:有 token 就掃 HA,沒有也要把板載喇叭列出來
+                  if (id(spk_ids).empty())
                     id(spk_scan).execute();
         - label:
             id: coords_label
@@ -5035,11 +5035,15 @@ lvgl:
         - label: { id: sel_l4, x: 625, y: 483, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
         # 第 5 行:squawk + ICAO 機型(緊急 squawk 7500/7600/7700 會轉紅)
 
-        # 底部狀態列
+        # 底部狀態列:font_mono 23 的字寬 14.5px,面板可用寬度 366px ≈ 25 字。
+        # 平時的 "AC:n  hh:mm:ss [SRC]" 塞得進去;長訊息(截圖路徑等)交給
+        # long_mode SCROLL 左右捲動,不被面板右緣切掉。
         - label:
             id: status_label
             x: 625
             y: 558
+            width: 366
+            long_mode: SCROLL
             text: "SET OPENSKY CREDENTIALS"
             text_font: font_mono
             text_color: 0x6E8273
@@ -5131,10 +5135,18 @@ lvgl:
                   }
               - script.execute: atc_panel_sync
         # 亮度滑桿(僅 SYS 選單顯示,amber 配色):拖動即時調背光,存於 light 的 NVS 狀態
+        #
+        # 右下面板的垂直預算(font_mono=23 行高 30、font_small=28 行高 33):
+        #   sel_l4  483..512(字身 489..506)  ← 最後一行天氣/系統資訊
+        #   atc_panel 250..513(height 264)   ← 不透明,必須完整蓋住 sel_l4
+        #   BRT 列  516..548(字身 522..542;滑桿軌 526..538、旋鈕 521..543)
+        #   status_label 558..587
+        # 原本 BRT 在 508、面板只到 499,sel_l4 的下緣會從面板下露出並與 BRT 重疊
+        # (800x480 上更明顯,見 ui_800x480.yaml 的同一段註解)。
         - label:
             id: brt_l
             x: 625
-            y: 508
+            y: 516
             text: "BRT"
             text_font: font_small
             text_color: 0xB07818
@@ -5143,7 +5155,7 @@ lvgl:
             id: bl_slider
             hidden: true
             x: 690
-            y: 513
+            y: 526
             width: 285
             height: 13
             min_value: 5
@@ -5179,7 +5191,7 @@ lvgl:
             x: 613
             y: 250
             width: 378
-            height: 250
+            height: 264          # 250..513:要蓋滿 sel_l4(483..512),見 bl_slider 上方的垂直預算
             bg_color: 0x040C08
             bg_opa: COVER
             border_width: 0

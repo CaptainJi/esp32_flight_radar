@@ -597,10 +597,7 @@ script:
           id(alarm_ringing) = false;
           id(snooze_at) = 0;
           lv_obj_add_flag((lv_obj_t *) id(alarm_overlay), LV_OBJ_FLAG_HIDDEN);
-      - homeassistant.action:
-          action: media_player.media_stop
-          data:
-            entity_id: !lambda 'return id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk);'
+      - script.execute: hush_alarm
 
   - id: snooze_alarm           # 貪睡:停聲、收面板、9 分鐘後再響
     mode: single
@@ -610,20 +607,39 @@ script:
           auto t = id(rtc_time).now();
           if (t.is_valid()) id(snooze_at) = (uint32_t) t.timestamp + 540;   // 9 分鐘
           lv_obj_add_flag((lv_obj_t *) id(alarm_overlay), LV_OBJ_FLAG_HIDDEN);
-      - homeassistant.action:
-          action: media_player.media_stop
-          data:
-            entity_id: !lambda 'return id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk);'
+      - script.execute: hush_alarm
 
-  - id: fire_alarm             # 觸發 HA 喇叭播放(需在 HA 裝置頁允許執行動作)
+  # 發聲/停聲都看目標是不是板載喇叭:是 → 走 board 套件的 local_ring_*(rtttl),
+  # 否則 → 走 HA 的 media_player(需在 HA 裝置頁允許執行動作)。
+  - id: fire_alarm             # 觸發響鈴
     mode: single
     then:
-      - homeassistant.action:
-          action: media_player.play_media
-          data:
-            entity_id: !lambda 'return id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk);'
-            media_content_id: !lambda 'return id(alarm_media).state;'
-            media_content_type: music
+      - if:
+          condition:
+            lambda: 'return alarmpk::is_local_spk(id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk));'
+          then:
+            - script.execute: local_ring_start
+          else:
+            - homeassistant.action:
+                action: media_player.play_media
+                data:
+                  entity_id: !lambda 'return id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk);'
+                  media_content_id: !lambda 'return id(alarm_media).state;'
+                  media_content_type: music
+
+  - id: hush_alarm             # 停止響鈴(DISMISS/SNOOZE 共用)
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return alarmpk::is_local_spk(id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk));'
+          then:
+            - script.execute: local_ring_stop
+          else:
+            - homeassistant.action:
+                action: media_player.media_stop
+                data:
+                  entity_id: !lambda 'return id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk);'
 
   - id: alarm_refresh          # 依 globals 重繪鬧鐘頁所有欄位
     mode: single
@@ -676,14 +692,23 @@ script:
     then:
       - lambda: |-
           LvDropdownType *dd[5] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd) };
+          // 板載喇叭永遠排第一,不依賴 HA:沒填 token 也選得到(見 alarm.h)
+          id(spk_ids).clear();
+          std::vector<std::string> names;
+          #if RADAR_LOCAL_SPK
+          id(spk_ids).push_back(alarmpk::LOCAL_SPK_ID);
+          names.push_back(alarmpk::LOCAL_SPK_NAME);
+          #endif
           if (id(ha_token).state.empty()) {
-            for (auto *d : dd) d->set_options({"SET HA TOKEN FIRST"});
+            names.push_back("SET HA TOKEN FIRST");   // 只是提示,選它不會寫入實體
+            for (auto *d : dd) d->set_options(names);
+            id(spk_dd_refresh).execute();
             return;
           }
           std::string url = id(ha_url).state;
           if (url.empty()) url = "http://homeassistant.local:8123";
-          id(spk_ids).clear();
-          for (auto *d : dd) d->set_options({"SCANNING ..."});
+          names.push_back("SCANNING ...");
+          for (auto *d : dd) d->set_options(names);
           radar_bg::request_speakers(url, id(ha_token).state);
 
   - id: tp_open                # 開啟時間選擇覆蓋層,捲輪定位到 al_edit 那組的時分
@@ -798,12 +823,17 @@ interval:
             // 注意:dropdown 的 id() 是 LvDropdownType*(compound),不可硬轉 lv_obj_t*
             LvDropdownType *dd[5] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd) };
             id(spk_ids).clear();
+            std::vector<std::string> names;
+            #if RADAR_LOCAL_SPK
+            id(spk_ids).push_back(alarmpk::LOCAL_SPK_ID);   // 板載喇叭固定在第一項
+            names.push_back(alarmpk::LOCAL_SPK_NAME);
+            #endif
+            const size_t base_n = names.size();             // HA 之外已有幾項
             if (st2 == 401 || st2 == 403) {
-              for (auto *d : dd) d->set_options({"TOKEN INVALID"});
+              names.push_back("TOKEN INVALID");
             } else if (st2 != 200) {
-              for (auto *d : dd) d->set_options({"HA UNREACHABLE"});
+              names.push_back("HA UNREACHABLE");
             } else {
-              std::vector<std::string> names;
               size_t pos = 0;
               while (pos < raw.size()) {
                 size_t nl = raw.find('\n', pos);
@@ -816,13 +846,10 @@ interval:
                 id(spk_ids).push_back(line.substr(0, bar));
                 names.push_back(line.substr(bar + 1));
               }
-              if (id(spk_ids).empty()) {
-                for (auto *d : dd) d->set_options({"NO SPEAKERS FOUND"});
-              } else {
-                for (auto *d : dd) d->set_options(names);
-                id(spk_dd_refresh).execute();   // 各選單同步顯示目前指派的喇叭
-              }
+              if (names.size() == base_n) names.push_back("NO SPEAKERS FOUND");
             }
+            for (auto *d : dd) d->set_options(names);
+            id(spk_dd_refresh).execute();   // 各選單同步顯示目前指派的喇叭
           }
           if (!radar_bg::g_states_ready) return;
           xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
@@ -905,11 +932,13 @@ interval:
           }
           char b[64];
           // 免費來源(手選或 OpenSky fallback)時在狀態列標示資料出處
-          const char *stag = radar_bg::g_last_src == 1 ? "  [A.LIVE]"
-                           : radar_bg::g_last_src == 2 ? "  [ADSB.LOL]" : "";
+          const char *stag = radar_bg::g_last_src == 1 ? " [A.LIVE]"
+                           : radar_bg::g_last_src == 2 ? " [ADSB.LOL]" : "";
           auto t = id(rtc_time).now();
+          // 狀態列在 800x480 只有 ~26 個等寬字的寬度:原本的 "AC:n   UPD hh:mm:ss  [A.LIVE]"
+          // (29 字)會被螢幕右緣切掉,所以拿掉 UPD 與多餘空白(時間本身就看得懂)。
           if (t.is_valid())
-            snprintf(b, sizeof(b), "AC:%d   UPD %02d:%02d:%02d%s", n, t.hour, t.minute, t.second, stag);
+            snprintf(b, sizeof(b), "AC:%d  %02d:%02d:%02d%s", n, t.hour, t.minute, t.second, stag);
           else
             snprintf(b, sizeof(b), "AC:%d%s", n, stag);
           lv_label_set_text(id(status_label), b);

@@ -13,10 +13,10 @@
 #       helper is compiled out with RADAR_DISPLAY_RGB=0 (screenshots
 #       become a no-op; everything else is identical).
 #
-#  >>> VERIFY on your unit: the ESP32-C6 SDIO pins, backlight GPIO and I2C
-#      pins below come from the published Waveshare P4 family wiring and
-#      ESPHome's built-in panel model. Cross-check the reset/SDIO pins
-#      against your board revision if Wi-Fi or the panel do not come up. <<<
+#  >>> VERIFY on your unit: the ESP32-C6 SDIO pins below come from the
+#      published Waveshare P4 family wiring. Cross-check them against your
+#      board revision if Wi-Fi does not come up. (Backlight GPIO32 and I2C
+#      GPIO7/8 are now taken from the official Waveshare BSP header.) <<<
 #
 #  Resolution / radar geometry come from radar-p4-7b.yaml.
 # =====================================================================
@@ -29,6 +29,8 @@ esphome:
       - "-DSCREEN_H=${disp_h}"
       - "-DRADAR_CANVAS=${radar_canvas}"
       - "-DRADAR_DISPLAY_RGB=0"    # MIPI-DSI: disable the RGB framebuffer screenshot
+      # 板載 ES8311 codec + 功放 → 鬧鐘頁的喇叭下拉多一項 LOCAL SPEAKER(見 alarm.h)
+      - "-DRADAR_LOCAL_SPK=1"
 
 esp32:
   board: esp32-p4-evboard
@@ -64,10 +66,18 @@ esp32_hosted:
   # 與下方 C6 用的這組完全不同。
 
 # ---- Backlight (real PWM GPIO on the P4 board) ----
+# 腳位依官方 BSP(components.espressif.com 的 waveshare/esp32_p4_wifi6_touch_lcd_7b,
+# include/bsp/esp32_p4_wifi6_touch_lcd_7b.h):
+#     #define BSP_LCD_BACKLIGHT (GPIO_NUM_32)
+#     #define BSP_LCD_RST       (GPIO_NUM_33)
+# 且 BSP 的 bsp_display_brightness_init() 用 LEDC + flags.output_invert = 1、
+# 5kHz 10-bit → 背光是低電位點亮,所以這裡 inverted: true 是對的。
+# (先前寫 GPIO26 是憑 P4 家族的通用接線推測,那支腳在 7B 上沒接背光,
+#  結果 PWR 開關與亮度滑桿都無效。)
 output:
   - platform: ledc
     pin:
-      number: GPIO26
+      number: GPIO32
       inverted: true            # Waveshare P4 backlight is active-low
     id: bl_pwm
     frequency: 1000Hz
@@ -79,11 +89,72 @@ light:
     name: Backlight
     restore_mode: RESTORE_DEFAULT_ON
 
-# ---- Touch (GT911, I2C) ----
+# ---- Touch + audio codec share one I2C bus (GT911 0x5D/0x14, ES8311 0x18) ----
 i2c:
   sda: GPIO7
   scl: GPIO8
   frequency: 400kHz
+
+# =====================================================================
+#  板載喇叭(鬧鐘目標可選 LOCAL SPEAKER)
+#  腳位同樣來自官方 BSP header(waveshare/esp32_p4_wifi6_touch_lcd_7b):
+#      BSP_I2S_MCLK 13 / BSP_I2S_SCLK 12 / BSP_I2S_LCLK 10 / BSP_I2S_DOUT 9
+#      BSP_POWER_AMP_IO 53   (功放致能,高電位開)
+#  ES8311 掛在跟觸控同一條 I2C(GPIO7/8)。rtttl 產生的是 16-bit / 單聲道 /
+#  16 kHz PCM(見 ESPHome rtttl.cpp 的 SAMPLE_RATE),所以下面三者都設 16 kHz。
+#  ESP32-P4 沒有 legacy I2S driver → use_legacy: false 是必要的。
+# =====================================================================
+i2s_audio:
+  - id: i2s_out
+    use_legacy: false
+    i2s_mclk_pin: GPIO13
+    i2s_bclk_pin: GPIO12
+    i2s_lrclk_pin: GPIO10
+
+audio_dac:
+  - platform: es8311
+    id: es8311_dac
+    sample_rate: 16000
+    bits_per_sample: 16bit
+
+speaker:
+  - platform: i2s_audio
+    id: local_spk
+    i2s_audio_id: i2s_out
+    dac_type: external
+    i2s_dout_pin: GPIO9
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: mono
+
+# 功放致能:只有響鈴時才上電,平常不通電免底噪
+switch:
+  - platform: gpio
+    id: spk_pa
+    pin: GPIO53
+    restore_mode: ALWAYS_OFF
+    internal: true
+
+rtttl:
+  id: alarm_tone
+  speaker: local_spk
+  gain: 0.6
+  on_finished_playback:
+    - switch.turn_off: spk_pa   # 一輪放完就切功放,避免兩輪之間的底噪
+
+script:
+  # 鬧鈴音:c6(1046 Hz)三短聲一組,重複約 9 秒;common/core.yaml 每 15 秒
+  # 重播一次直到使用者按 DISMISS。想換旋律直接改這串 RTTTL 即可。
+  - id: local_ring_start
+    mode: single
+    then:
+      - switch.turn_on: spk_pa
+      - rtttl.play: "radar:d=8,o=6,b=180:c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c"
+  - id: local_ring_stop
+    mode: single
+    then:
+      - rtttl.stop:
+      - switch.turn_off: spk_pa
 
 touchscreen:
   - platform: gt911

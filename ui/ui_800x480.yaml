@@ -4951,8 +4951,8 @@ lvgl:
               - script.execute: alarm_refresh
               - script.execute: spk_dd_refresh
               - lambda: |-
-                  // 首次進鬧鐘頁且已填 token → 自動掃描喇叭清單
-                  if (id(spk_ids).empty() && !id(ha_token).state.empty())
+                  // 首次進鬧鐘頁 → 建清單:有 token 就掃 HA,沒有也要把板載喇叭列出來
+                  if (id(spk_ids).empty())
                     id(spk_scan).execute();
         - label:
             id: coords_label
@@ -5032,10 +5032,15 @@ lvgl:
         # 第 5 行:squawk + ICAO 機型(緊急 squawk 7500/7600/7700 會轉紅)
 
         # 底部狀態列
+        # 底部狀態列:font_mono 18 的字寬 11.3px,面板可用寬度 292px ≈ 26 字。
+        # 平時的 "AC:n  hh:mm:ss [SRC]" 塞得進去;截圖路徑之類的長訊息交給
+        # long_mode SCROLL 左右捲動,不再直接被螢幕右緣切掉(原本 [A.LIVE] 會斷尾)。
         - label:
             id: status_label
             x: 500
             y: 446
+            width: 292
+            long_mode: SCROLL
             text: "SET OPENSKY CREDENTIALS"
             text_font: font_mono
             text_color: 0x6E8273
@@ -5127,10 +5132,18 @@ lvgl:
                   }
               - script.execute: atc_panel_sync
         # 亮度滑桿(僅 SYS 選單顯示,amber 配色):拖動即時調背光,存於 light 的 NVS 狀態
+        #
+        # 右下面板的垂直預算(font_mono=18 行高 24、font_small=22 行高 26):
+        #   sel_l4  386..409(字身 391..404)  ← 最後一行天氣/系統資訊
+        #   atc_panel 200..409(height 210)   ← 不透明,必須完整蓋住 sel_l4
+        #   BRT 列  412..438(字身 417..432;滑桿軌 420..429、旋鈕 416..433)
+        #   status_label 446..469(字身 451..467)
+        # 原本 BRT 在 406、面板只到 400,結果 sel_l4 的下半截從面板下緣露出來、
+        # 又跟 BRT/滑桿疊在一起(截圖可見)。改動任一項都要重算這四段。
         - label:
             id: brt_l
             x: 500
-            y: 406
+            y: 412
             text: "BRT"
             text_font: font_small
             text_color: 0xB07818
@@ -5139,7 +5152,7 @@ lvgl:
             id: bl_slider
             hidden: true
             x: 552
-            y: 410
+            y: 420
             width: 228
             height: 10
             min_value: 5
@@ -5175,7 +5188,7 @@ lvgl:
             x: 490
             y: 200
             width: 302
-            height: 200
+            height: 210          # 200..409:要蓋滿 sel_l4(386..409),見 bl_slider 上方的垂直預算
             bg_color: 0x040C08
             bg_opa: COVER
             border_width: 0

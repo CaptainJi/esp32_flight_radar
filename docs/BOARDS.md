@@ -86,6 +86,15 @@ matching `external_components` block to fall back to the built-in components.
 > screenshot is compiled out (MIPI-DSI has no equivalent grab); every other feature is
 > shared. Wi-Fi over the C6 has not been confirmed working yet.
 >
+> **Take pin numbers from the official BSP, not from the P4 family in general.** The
+> component-registry BSP `waveshare/esp32_p4_wifi6_touch_lcd_7b`
+> (`include/bsp/esp32_p4_wifi6_touch_lcd_7b.h`) is authoritative for this board:
+> backlight **GPIO32** (LEDC PWM, active-low), panel reset GPIO33, I²C 7/8, I2S
+> MCLK 13 / BCLK 12 / LRCK 10 / DOUT 9 with the amplifier enable on **GPIO53**, SD over
+> SDMMC 43/44/39-42. An earlier guess of GPIO26 for the backlight left both the PWR
+> button and the brightness slider doing nothing. The ES8311 codec on that I2S bus is
+> what gives this board the **LOCAL SPEAKER** alarm target (`-DRADAR_LOCAL_SPK=1`).
+>
 > **Do not raise `pclk_frequency` above what the board file sets.** Waveshare run this
 > panel family at 16 MHz. Pushing the 1024×600 board to 40 MHz produced a permanent
 > horizontal offset, and 52 MHz tore the image outright. If the picture flickers, the
@@ -153,6 +162,14 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 > 官方 `04_sdmmc` 範例給 TF 卡用的是 CLK 43 / CMD 44 / D0-D3 39,40,41,42,是另一組腳位。
 > P4 上平行 RGB 的 framebuffer 截圖會被編譯掉(DSI 無對應的抓取方式),其餘功能完全共用。
 > 透過 C6 的 Wi-Fi 目前尚未確認可用。
+>
+> **腳位要查這片板子的官方 BSP,不要用 P4 家族的通例去推。** 元件登錄庫的
+> `waveshare/esp32_p4_wifi6_touch_lcd_7b`(`include/bsp/esp32_p4_wifi6_touch_lcd_7b.h`)
+> 才是這片板子的權威:背光 **GPIO32**(LEDC PWM、低電位點亮)、面板 reset GPIO33、
+> I²C 7/8、I2S MCLK 13 / BCLK 12 / LRCK 10 / DOUT 9,功放致能在 **GPIO53**,
+> SD 走 SDMMC 43/44/39-42。先前把背光猜成 GPIO26,結果 PWR 鈕與亮度滑桿都沒反應。
+> 那條 I2S 上的 ES8311 codec 就是這片板子能有 **LOCAL SPEAKER** 鬧鐘目標的原因
+> (`-DRADAR_LOCAL_SPK=1`)。
 >
 > **不要把 `pclk_frequency` 調到高於板檔的設定值。** 微雪這個面板家族官方跑 16 MHz。
 > 1024×600 板拉到 40 MHz 會出現固定的水平偏移,52 MHz 則整幅撕裂。畫面若閃爍,幾乎一定是

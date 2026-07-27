@@ -275,3 +275,15 @@ display:
 # "falling back" 表示內部 RAM 不足,退回 PSRAM(行為同舊版,不會開不了機)。
 lvgl:
   buffer_size: 12%
+
+# ---- 鬧鐘本地發聲:這片板子沒有音訊硬體 ----
+# common/core.yaml 的 fire_alarm/hush_alarm 會無條件呼叫這兩個 script,所以每片
+# board 都要有;沒喇叭的板子留空實作,鬧鐘目標清單也不會出現 LOCAL SPEAKER
+# (由 -DRADAR_LOCAL_SPK 控制,見 alarm.h)。
+script:
+  - id: local_ring_start
+    then:
+      - lambda: '// 無板載喇叭'
+  - id: local_ring_stop
+    then:
+      - lambda: '// 無板載喇叭'
