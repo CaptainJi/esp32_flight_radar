@@ -703,9 +703,13 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     lv_obj_invalidate(cv);   // 補回 lv_canvas_fill_bg 原本會做的失效標記
     if (map_show) {
       float coslat = cosf(lat0 * 3.14159265f / 180.0f);
+      // 輪廓分層:海岸線最亮、國界中、州/省界最暗,近距離時線一多才分得出主次。
+      // 分隔符(NAN,kind)的第二個值帶種類;舊 map_data.h 是 NAN,NAN,讀到 NAN
+      // 一律當 0=海岸線,外觀與改版前完全相同。
+      static const uint32_t MAP_KIND_COLOR[3] = {0xD8C878, 0x9A8B54, 0x685E38};
       lv_draw_line_dsc_t dsc;
       lv_draw_line_dsc_init(&dsc);
-      dsc.color = lv_color_hex(0xD8C878);   // 淡黃色輪廓線
+      dsc.color = lv_color_hex(MAP_KIND_COLOR[0]);   // 淡黃色輪廓線
       dsc.width = 1;
       dsc.opa = LV_OPA_COVER;
       float r2 = rng * rng;
@@ -714,7 +718,13 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
       float pd2 = 1e18f;
       for (int i = 0; i + 1 < MAP_OUTLINE_LEN; i += 2) {
         float la = MAP_OUTLINE[i], lo = MAP_OUTLINE[i + 1];
-        if (isnan(la)) { have_prev = false; continue; }
+        if (isnan(la)) {
+          have_prev = false;
+          uint8_t kind = isnan(lo) ? 0 : (uint8_t) lo;
+          if (kind > 2) kind = 2;
+          dsc.color = lv_color_hex(MAP_KIND_COLOR[kind]);
+          continue;
+        }
         float e = (lo - lon0) * 111.320f * coslat;
         float n = (la - lat0) * 110.574f;
         float d2 = e * e + n * n;

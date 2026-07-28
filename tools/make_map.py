@@ -50,6 +50,8 @@ SOURCES = {
 KM_PER_DEG_LAT = 110.574
 KM_PER_DEG_LON = 111.320  # at equator; scaled by cos(lat)
 
+OUTLINE_KIND = {"coastline": 0, "borders": 1, "states": 2}   # -> outline brightness class
+
 AIRPORT_RANK = {"small_airport": 0, "medium_airport": 1, "large_airport": 2}
 CLS_MAP = {"CTR": 0, "TMA": 1, "CTA": 2}          # anything else -> 3
 OPENAIP_TYPE = {4: "CTR", 7: "TMA", 26: "CTA"}    # openAIP v2 numeric type codes
@@ -147,13 +149,16 @@ def dp_simplify(pts, tol):
 
 
 def build(polylines, lat0, lon0, tol, coslat):
-    """Clip -> project lon by cos(lat) -> simplify -> back to (lat, lon)."""
+    """Project lon by cos(lat) -> simplify -> back to (lat, lon).
+
+    In and out are lists of (kind, points); kind rides along untouched.
+    """
     out = []
-    for pl in polylines:
+    for kind, pl in polylines:
         scaled = [(lon * coslat, lat) for lon, lat in pl]
         simp = dp_simplify(scaled, tol)
         if len(simp) >= 2:
-            out.append([(y, x / coslat) for x, y in simp])  # (lat, lon)
+            out.append((kind, [(y, x / coslat) for x, y in simp]))  # (lat, lon)
     return out
 
 
@@ -409,30 +414,31 @@ def main():
         src = "outline preserved from previous file"
     else:
         if args.geojson:
-            files = args.geojson
+            files = [(p, 0) for p in args.geojson]   # own boundary file = main outline
         else:
             names = ["coastline", "borders"] + (["states"] if args.states else [])
             print("Fetching Natural Earth data (public domain):")
-            files = [fetch(n, cache) for n in names]
+            files = [(fetch(n, cache), OUTLINE_KIND[n]) for n in names]
         clipped = []
-        for path in files:
+        for path, kind in files:
             with open(path, encoding="utf-8") as f:
                 gj = json.load(f)
             feats = gj["features"] if gj.get("type") == "FeatureCollection" else [gj]
             for ft in feats:
                 geom = ft.get("geometry") or ft
                 for pl in iter_polylines(geom):
-                    clipped.extend(clip_polyline(pl, args.lat, args.lon, dlat, dlon))
+                    clipped.extend((kind, r) for r in
+                                   clip_polyline(pl, args.lat, args.lon, dlat, dlon))
         if not clipped:
             sys.exit("no map lines inside the bounding box - check --lat/--lon/--radius")
         while True:
             lines = build(clipped, args.lat, args.lon, tol, coslat)
-            npts = sum(len(l) for l in lines)
+            npts = sum(len(p) for _, p in lines)
             if npts <= args.max_points or not lines:
                 break
             tol *= 1.5
         print(f"{len(lines)} polylines, {npts} points (tol {tol:.4f} deg)")
-        src = ", ".join(os.path.basename(p) for p in files)
+        src = ", ".join(os.path.basename(p) for p, _ in files)
 
     # ---- ATC overlays ----
     airports, runways, fixes, airspaces = [], [], [], []
@@ -478,15 +484,17 @@ def main():
         f.write("// overlays: OurAirports (public domain)"
                 + (", openAIP (CC BY-NC)" if args.openaip_key else "")
                 + (", local GeoJSON" if args.airspace_geojson else "") + "\n")
-        f.write("// MAP_OUTLINE format: lat,lon pairs; NAN,NAN = polyline separator\n")
+        f.write("// MAP_OUTLINE format: lat,lon pairs; NAN,kind starts a polyline\n")
+        f.write("//   kind 0 = coastline / own GeoJSON, 1 = country border, 2 = state border\n")
+        f.write("//   (older files use NAN,NAN as a separator; that reads back as kind 0)\n")
         f.write("#pragma once\n#include <math.h>\n#include <stdint.h>\n")
         if preserved:
             f.write(preserved + "\n")
         else:
             f.write("inline const float MAP_OUTLINE[] = {\n")
-            for pl in lines:
+            for kind, pl in lines:
+                f.write(f"  NAN,{kind}.0f,\n")
                 f.write("  " + "".join(f"{la:.4f}f,{lo:.4f}f," for la, lo in pl) + "\n")
-                f.write("  NAN,NAN,\n")
             f.write("};\n")
         f.write("static const int MAP_OUTLINE_LEN = sizeof(MAP_OUTLINE)/sizeof(float);\n\n")
 

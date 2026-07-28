@@ -100,7 +100,7 @@ python tools/make_map.py --lat 35.6762 --lon 139.6503 --radius 150
 python tools/make_map.py --lat 51.5074 --lon -0.1278 --radius 300 --states
 ```
 
-The script (pure Python, no packages needed) downloads [Natural Earth](https://www.naturalearthdata.com/) 1:10m coastline + country border data (public domain, cached in `tools/cache/`), clips it around your coordinates, simplifies it to roughly one radar pixel of detail, and overwrites `map_data.h`. Set `--radius` to the largest radar range you plan to use. Useful options: `--states` adds admin-1 borders (can be dense in some countries), `--geojson file.geojson` uses your own boundary file instead of downloading, `--tol` / `--max-points` control detail.
+The script (pure Python, no packages needed) downloads [Natural Earth](https://www.naturalearthdata.com/) 1:10m coastline + country border data (public domain, cached in `tools/cache/`), clips it around your coordinates, simplifies it to roughly one radar pixel of detail, and overwrites `map_data.h`. Set `--radius` to the largest radar range you plan to use. Useful options: `--states` adds admin-1 borders (can be dense in some countries), `--geojson file.geojson` uses your own boundary file instead of downloading, `--tol` / `--max-points` control detail. The three layers are drawn at different brightness — coastline brightest, country borders mid, state borders dimmest — so a busy map still reads at a glance; a `--geojson` file of your own is always drawn as the brightest layer.
 
 The script also generates **ATC overlay data** (`AIRPORTS[]`, `RUNWAYS[]`, `FIXES[]`, `AIRSPACES[]`) into the same `map_data.h`. A complete run that produces everything at once:
 
@@ -219,7 +219,7 @@ python tools/make_map.py --lat 35.6762 --lon 139.6503 --radius 150
 python tools/make_map.py --lat 51.5074 --lon -0.1278 --radius 300 --states
 ```
 
-腳本(純 Python,免裝套件)會下載 [Natural Earth](https://www.naturalearthdata.com/) 1:10m 海岸線+國界資料(public domain,快取於 `tools/cache/`),裁切你座標周圍的範圍、簡化到約一個雷達像素的細節,然後覆寫 `map_data.h`。`--radius` 請設為你會用到的最大雷達半徑。常用選項:`--states` 加省/州界(部分國家會很密)、`--geojson file.geojson` 改用自備邊界檔不下載、`--tol` / `--max-points` 調細節。
+腳本(純 Python,免裝套件)會下載 [Natural Earth](https://www.naturalearthdata.com/) 1:10m 海岸線+國界資料(public domain,快取於 `tools/cache/`),裁切你座標周圍的範圍、簡化到約一個雷達像素的細節,然後覆寫 `map_data.h`。`--radius` 請設為你會用到的最大雷達半徑。常用選項:`--states` 加省/州界(部分國家會很密)、`--geojson file.geojson` 改用自備邊界檔不下載、`--tol` / `--max-points` 調細節。三種圖層會以不同亮度繪製——海岸線最亮、國界次之、州/省界最暗——線一多也還分得出主次;自備的 `--geojson` 邊界檔一律畫成最亮的那層。
 
 腳本同時會產生 **ATC 圖層資料**(`AIRPORTS[]`、`RUNWAYS[]`、`FIXES[]`、`AIRSPACES[]`)到同一個 `map_data.h`。一次產生全部資訊的完整範例:
 
