@@ -69,7 +69,10 @@ DMA for the same bus, which shows up as UI stalls of several hundred ms and as f
 ESPHome 2026.4+ does this itself — it asks for internal memory first and falls back to
 PSRAM — so on this branch the override is gone. What is lost with it is the ability to
 halve the buffer again: upstream quantises `buffer_size` to 1/1, 1/2, 1/4 or 1/8, and on
-the 5B a 1/8 (154 KB) internal buffer previously starved mbedTLS. Watch the boot log.
+the 5B a 1/8 (154 KB) internal buffer does starve mbedTLS (`alloc(4770 bytes) failed`,
+handshakes return `-0x7F00`). The fix is on the other side: the board files set
+`CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC` so TLS allocates from PSRAM instead, which keeps the
+fastest draw-buffer setting.
 
 The psram override can go once upstream ESPHome handles that case: delete the directory
 and the matching `external_components` block to fall back to the built-in component.
@@ -157,7 +160,9 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 (否則渲染會和 RGB 面板的掃描 DMA 搶同一條匯流排,表現為數百 ms 的 UI 卡頓與閃爍)。
 ESPHome 2026.4+ 已內建這個行為(先要內部記憶體、失敗才退回 PSRAM),所以這個分支把覆寫
 刪掉了。代價是不能再把緩衝減半:上游把 `buffer_size` 量化成 1/1、1/2、1/4、1/8,而 5B 上
-1/8(154KB)的內部緩衝曾經餓死 mbedTLS,請留意開機 log。
+1/8(154KB)的內部緩衝確實會餓死 mbedTLS(`alloc(4770 bytes) failed`、握手 `-0x7F00`)。
+解法改從另一邊下手:板檔設 `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC`,讓 TLS 改配 PSRAM,
+如此就能保住渲染最快的繪圖緩衝設定。
 
 psram 覆寫則要等上游修好才能刪:移除該目錄與對應的 `external_components` 區塊即可回到
 內建元件。

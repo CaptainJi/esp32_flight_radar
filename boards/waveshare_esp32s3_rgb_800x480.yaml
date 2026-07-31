@@ -64,6 +64,13 @@ esp32:
       CONFIG_MBEDTLS_DYNAMIC_BUFFER: "y"          # TLS 緩衝握手時才配、用完即釋放(降峰值)
       CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN: "y"  # 收/發用不同大小,配合 dynamic buffer
       CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN: "8192"  # 預設 16384;減半再省一半 TLS 緩衝
+      # --- LVGL 9 分支追加:mbedtls 自己的配置改走 PSRAM ---
+      # 5B(1024x600)實測:LVGL 9 的繪圖緩衝佔掉 154KB 內部 SRAM 後,TLS 握手
+      # 會配不到記憶體(Dynamic Impl: alloc(4770 bytes) failed → -0x7F00)。
+      # 800x480 的緩衝是 96KB、餘裕較大,但同樣的成因仍在,故一併設定。
+      # 兩者是同一個 Kconfig choice,要把預設項一起關掉才切得過去。
+      CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC: "n"
+      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
       # 不要開 CONFIG_LCD_RGB_RESTART_IN_VSYNC:實測於本板無效——位移沒有消失,
       # 反而因為每個 VBlank 重置 GDMA 通道而造成畫面嚴重抖動。
       # 不要開 CONFIG_LCD_RGB_ISR_IRAM_SAFE:理論上它能修水平錯置(flash cache

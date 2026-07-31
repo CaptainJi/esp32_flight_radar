@@ -36,11 +36,34 @@ ESPHOME_BUILD_PATH=.esphome/build9 esphome run radar-s3-5b.yaml
   無條件開啟,本板 flash 不在 IDF 支援名單 → 0x106 無限重開機)。
 - 兩片 Waveshare S3 板檔的 `external_components` 由 `[psram, lvgl]` 改成 `[psram]`。
 
-### 2. 繪圖緩衝大小
+### 2. 繪圖緩衝大小 → 改用「TLS 記憶體搬去 PSRAM」解決
 上游把 `buffer_size` 量化成 1/2/4/8,**19% 以下一律 frac=8**,無法再像 LVGL 8 分支
-那樣壓到 1/16。1024x600 的 1/8 = 154KB 內部 SRAM;LVGL 8 分支實測這個大小會餓死
-mbedtls(握手 -0x7F00)。若在 9.5 重現,解法是再開一份最小的 lvgl 覆寫把緩衝減半。
-→ **測試時請看開機 log 有沒有 mbedtls/alloc 失敗、資料抓不抓得到。**
+那樣壓到 1/16。1024x600 的 1/8 = 154KB 內部 SRAM。
+
+實機上果然重現了 LVGL 8 分支那個老問題:
+
+```
+E (8280) Dynamic Impl: alloc(4770 bytes) failed
+E (8280) esp-tls-mbedtls: mbedtls_ssl_handshake returned -0x7F00
+W (8282) radar_bg: weather failed: -1
+```
+
+原因:mbedtls dynamic buffer 走 `esp_mbedtls_mem_calloc()`,預設是 `calloc()`,而
+4770 < `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`(16KB)必定被導回內部 RAM;繪圖緩衝
+把內部 RAM 吃掉後就配不出來。
+
+解法不是縮緩衝(那要再 fork 一次 lvgl 元件),而是在板檔 `sdkconfig_options` 把
+mbedtls 的配置整個移到 PSRAM——`esp_mem.c` 在這個選項下會改用
+`heap_caps_calloc(MALLOC_CAP_SPIRAM)`:
+
+```yaml
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC: "n"    # 同一個 Kconfig choice,預設項要一起關
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+```
+
+這樣 154KB 的內部 SRAM 繪圖緩衝(渲染最快的設定)得以保留,TLS 也不再和它搶內部
+RAM。TLS 每次交易只有幾 KB,對 PSRAM 頻寬的影響遠小於面板掃描的 73MB/s。
+兩片 S3 板檔都已設定(800x480 是 96KB 緩衝、餘裕較大,但成因相同,一併設)。
 
 ### 3. YAML
 - P4 板檔的 `display: rotation: 180°` 要移到 `lvgl:` 區塊(LVGL 9 由 LVGL 自己轉),
