@@ -16,6 +16,27 @@ esphome:
   platformio_options:
     lib_deps:
       - kikuchan98/pngle@^1.0.0
+    # ---- LVGL 9:平行繪圖單元(把渲染分到第二顆核心)----
+    # LVGL 9 把繪製拆成 draw unit + draw task 佇列。開了 OS 之後,LVGL 會替每個
+    # 軟體繪圖單元開一條 FreeRTOS 執行緒(lv_draw_sw.c 的 lv_draw_sw_init),
+    # 任務就能同時被兩條執行緒消化;ESP32-S3/P4 都是雙核,第二顆核心原本閒著。
+    # LVGL 8 沒有這個機制,所以這是「升級 9 才拿得到」的加速。
+    #
+    # 為什麼用 build_flags 而不是 lvgl: 的選項:ESPHome 沒有把這些開出來,但它
+    # 產生 lv_conf.h 時會跳過任何已出現在 build_flags 裡的 LV_* 定義
+    # (components/lvgl/__init__.py 的 generate_lv_conf_h),所以這裡設得進去。
+    #
+    # 要 A/B 比較就把這四行註解掉重編(單執行緒 = 與 LVGL 8 相同的行為)。
+    build_flags:
+      - "-DLV_USE_OS=2"                     # 2 = LV_OS_FREERTOS(lv_conf_internal.h)
+      - "-DLV_DRAW_SW_DRAW_UNIT_CNT=2"      # 兩個軟體繪圖單元 = 兩條 swdraw 執行緒
+      - "-DLV_USE_FREERTOS_TASK_NOTIFY=1"   # 用 task notify 同步,比號誌快;ESPHome
+                                            # 預設會把它壓成 0,這裡設回 LVGL 的預設
+      # 堆疊大小要 x4:LVGL 的 lv_freertos.c 把 usStackSize 除以 sizeof(StackType_t)
+      # 才丟給 xTaskCreate(vanilla FreeRTOS 的堆疊深度以「字」計),但 ESP-IDF 的
+      # xTaskCreate 收的是「位元組」。照 LVGL 預設 8KB 會變成實際 2KB → 繪圖執行緒
+      # 爆堆疊。32768/4 = 實際 8KB/條,兩條共 16KB 內部 RAM。
+      - "-DLV_DRAW_THREAD_STACK_SIZE=32768"
   includes:
     - map_data.h
     - radar_fetch.h

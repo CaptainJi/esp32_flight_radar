@@ -114,6 +114,34 @@ AES 硬體加速器走 DMA,來源在 PSRAM 時要另外配一塊「內部 DMA �
    有無 alloc 失敗)、底圖/回波/ATC 圖層外觀與 `main` 一致、觸控與換頁流暢度、
    `lvgl` 慢操作警告次數。P4 的觸控方向也只有上機才驗得了(見上)。
 
+## 加速:平行繪圖單元(LVGL 9 專屬)
+
+LVGL 9 把繪製拆成 draw unit + draw task 佇列;開了 OS 之後,每個軟體繪圖單元會有
+自己的 FreeRTOS 執行緒(`lv_draw_sw.c` 的 `lv_draw_sw_init`),任務就能被兩條執行緒
+同時消化。S3/P4 都是雙核,第二顆核心原本閒著。LVGL 8 沒有這個機制。
+
+設定寫在 `common/core.yaml` 的 `platformio_options.build_flags`(ESPHome 沒把這些選項
+開出來,但它產生 `lv_conf.h` 時會跳過任何已出現在 build_flags 裡的 `LV_*` 定義,
+所以設得進去):
+
+```yaml
+- "-DLV_USE_OS=2"                     # LV_OS_FREERTOS
+- "-DLV_DRAW_SW_DRAW_UNIT_CNT=2"
+- "-DLV_USE_FREERTOS_TASK_NOTIFY=1"
+- "-DLV_DRAW_THREAD_STACK_SIZE=32768"  # 見下,實際是 8KB/條
+```
+
+**踩到的坑**:LVGL 的 `lv_freertos.c` 把 `usStackSize / sizeof(StackType_t)` 丟給
+`xTaskCreate`(vanilla FreeRTOS 的堆疊深度以「字」計),但 **ESP-IDF 的 xTaskCreate 收
+的是「位元組」**。照 LVGL 預設 8KB 會變成實際 2KB → 繪圖執行緒爆堆疊。所以這裡填
+32768(/4 = 實際 8KB),兩條執行緒共 16KB 內部 RAM。
+
+執行緒安全:本專案所有 LVGL API 都在主迴圈任務裡呼叫(背景的 `radar_fetch` 任務只碰
+自己的緩衝與旗標),所以不需要 `lv_lock()`。
+
+**A/B 方法**:把那四行註解掉重編,就是單執行緒(與 LVGL 8 相同的行為)。開機 log 的
+`dump_config` 會印 `SW draw units: 2 (threaded)` 或 `1 (single-threaded)`,可以確認生效。
+
 ## 比較速度時建議看的數字
 - 開機 log 的 `lvgl` 慢操作警告(`Component lvgl took …`)出現次數與毫秒數;
 - 切換頁面、拖滑桿的手感;

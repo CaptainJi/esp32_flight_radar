@@ -154,8 +154,13 @@ void LvglComponent::dump_config() {
                 "  Display width/height: %d x %d\n"
                 "  Buffer size: %zu%%\n"
                 "  Rotation: %d\n"
-                "  Draw rounding: %d",
-                this->width_, this->height_, 100 / this->buffer_frac_, this->rotation_, (int) this->draw_rounding);
+                "  Draw rounding: %d\n"
+                // 本地覆寫:把平行繪圖單元的設定印出來,方便 A/B 比較時確認生效
+                // (common/core.yaml 的 build_flags 控制,LV_USE_OS=2 才會開執行緒)
+                "  SW draw units: %d (%s)",
+                this->width_, this->height_, 100 / this->buffer_frac_, this->rotation_, (int) this->draw_rounding,
+                LV_USE_OS ? LV_DRAW_SW_DRAW_UNIT_CNT : 1,
+                LV_USE_OS ? "threaded" : "single-threaded");
   if (this->rotation_type_ != ROTATION_UNUSED) {
     const char *rot_type = "hardware via display driver";
     if (this->rotation_type_ == RotationType::ROTATION_SOFTWARE) {
