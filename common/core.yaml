@@ -1090,7 +1090,7 @@ interval:
               if (d2 > rng) { e2 *= rng / d2; n2 *= rng / d2; }
               int px2 = RS(240) + (int) (e2 / rng * (float) RADAR_R);
               int py2 = RS(240) - (int) (n2 / rng * (float) RADAR_R);
-              static lv_point_t vp[AC_SLOTS][2];
+              static lv_point_precise_t vp[AC_SLOTS][2];   // LVGL 9 的 line 點座標型別
               vp[shown][0].x = px;  vp[shown][0].y = py;
               vp[shown][1].x = px2; vp[shown][1].y = py2;
               lv_line_set_points(vecs[shown], vp[shown], 2);
@@ -1199,7 +1199,7 @@ interval:
           lv_obj_t *lines[9] = { id(sweep_line)->obj,
                                  id(tail0)->obj, id(tail1)->obj, id(tail2)->obj, id(tail3)->obj,
                                  id(tail4)->obj, id(tail5)->obj, id(tail6)->obj, id(tail7)->obj };
-          static lv_point_t lp[9][2];
+          static lv_point_precise_t lp[9][2];   // LVGL 9 的 line 點座標型別
           for (int k = 0; k < 9; k++) {
             float a = (cur - k * 1.0f) * DEG;       // 第0條=掃描線,其後每條退 1°
             lp[k][0].x = RS(240); lp[k][0].y = RS(240);

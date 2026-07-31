@@ -5700,7 +5700,7 @@ lvgl:
                                : id(kb_target) == 1 ? (lv_obj_t *) id(ta_lon)
                                : id(kb_target) == 2 ? (lv_obj_t *) id(ta_rng)
                                                     : (lv_obj_t *) id(ta_poll);
-                  lv_textarea_del_char(ta);
+                  lv_textarea_delete_char(ta);   // LVGL 9 改名(舊:lv_textarea_del_char)
         - button:
             x: 575
             y: 273

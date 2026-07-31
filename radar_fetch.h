@@ -507,10 +507,11 @@ inline void echo_composite_tile(const std::string &url, uint8_t *tmp, int tw, in
       if (tx < 0 || tx >= tw) continue;
       uint8_t *sp = tmp + ((size_t) ty * tw + tx) * 4;
       if (sp[3] < 32) continue;   // 無降雨=透明
-      lv_color_t col = lv_color_make(sp[0], sp[1], sp[2]);
+      // LVGL 9 的 lv_color_t 一律是 24-bit,畫布緩衝才是 RGB565 → 存前先轉
+      uint16_t col = lv_color_to_u16(lv_color_make(sp[0], sp[1], sp[2]));
       uint8_t *op = orow + (size_t) x * 3;
-      op[0] = col.full & 0xFF;
-      op[1] = (col.full >> 8) & 0xFF;
+      op[0] = col & 0xFF;
+      op[1] = (col >> 8) & 0xFF;
       op[2] = sp[3];
     }
   }
@@ -680,28 +681,65 @@ inline uint8_t atc_layer_mask(bool atc, bool asp, bool rwy, bool apt, bool fix) 
   return atc ? (uint8_t) ((asp ? 1 : 0) | (rwy ? 2 : 0) | (apt ? 4 : 0) | (fix ? 8 : 0)) : 0;
 }
 
+namespace radar_bg {
+
+// LVGL 9 把 canvas 的 lv_canvas_draw_* 全砍掉,改成「開一個 layer → 送 lv_draw_*
+// 任務 → finish_layer 才真正繪製」。任務會一路排隊到 finish_layer,而底圖動輒
+// 上千段線,全堆在佇列裡會吃掉大量 LVGL 堆積(每個任務都含一份 dsc 複本),
+// 所以每累積 FLUSH_EVERY 個任務就收一次 layer 再開新的,把記憶體壓在常數級。
+// 收 layer 也是「繪圖任務真正執行」的時機——任何指向區域變數的 dsc 內容
+// (例如 points 陣列)都必須活到那時,故本檔一律只用 p1/p2 與靜態字串。
+class CanvasPainter {
+ public:
+  explicit CanvasPainter(lv_obj_t *canvas) : cv_(canvas) { lv_canvas_init_layer(cv_, &layer_); }
+  ~CanvasPainter() { lv_canvas_finish_layer(cv_, &layer_); }
+  CanvasPainter(const CanvasPainter &) = delete;
+  CanvasPainter &operator=(const CanvasPainter &) = delete;
+  lv_layer_t *layer() { return &layer_; }
+  void tick() {
+    if (++pending_ >= FLUSH_EVERY) {
+      lv_canvas_finish_layer(cv_, &layer_);
+      lv_canvas_init_layer(cv_, &layer_);
+      pending_ = 0;
+    }
+  }
+
+ private:
+  static constexpr int FLUSH_EVERY = 128;
+  lv_obj_t *cv_;
+  lv_layer_t layer_;
+  int pending_ = 0;
+};
+
+}  // namespace radar_bg
+
 inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
                                bool map_show, bool echo_show, uint8_t atc_layers) {
-  lv_img_dsc_t *img = lv_canvas_get_img(cv);
-  if (!img || !img->data) return;
-  const size_t BYTES = (size_t) RADAR_CANVAS * RADAR_CANVAS * sizeof(lv_color_t);
+  lv_draw_buf_t *db = lv_canvas_get_draw_buf(cv);   // LVGL 9:canvas 緩衝改由 draw_buf 描述
+  if (!db || !db->data) return;
+  // canvas 建成 LV_COLOR_FORMAT_NATIVE(= RGB565,2 bytes/px);LVGL 9 的
+  // lv_color_t 是 24-bit,不能再拿來當畫布像素型別,直接用 uint16_t。
+  // ESPHome 設 LV_DRAW_BUF_STRIDE_ALIGN=1,所以 stride 就是寬 x 2、可平坦定址。
+  uint16_t *px = (uint16_t *) (void *) db->data;
+  const size_t NPX = (size_t) RADAR_CANVAS * RADAR_CANVAS;
+  const size_t BYTES = NPX * sizeof(uint16_t);
   static uint8_t *cache = nullptr;   // 底色+輪廓快取(PSRAM,416KB)
   if (!cache) cache = (uint8_t *) heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
   static float c_lat = NAN, c_lon = NAN, c_rng = NAN;
   static bool c_map = false;
   bool fresh = cache && c_lat == lat0 && c_lon == lon0 && c_rng == rng && c_map == map_show;
   if (fresh) {
-    memcpy((void *) img->data, cache, BYTES);
+    memcpy((void *) px, cache, BYTES);
   } else {
-    // 不要用 lv_canvas_fill_bg:它逐像素呼叫 set_px_color + set_px_alpha
-    // (570x570 = 324,900 次 x2),每次都重算 offset 再走 lv_memcpy_small。
+    // 不要用 lv_canvas_fill_bg:它逐像素呼叫 lv_canvas_set_px,每次都重算 offset。
     // 1024x600 的 RGB 面板 GDMA 同時在吃 PSRAM 頻寬,兩者相撞會慢到每像素
-    // ~230us,開機直接被 task watchdog 打死。canvas 是 TRUE_COLOR(無 alpha)
-    // 且此處為不透明填滿,可直接對緩衝區做 16-bit 填充(lv_color_fill 在 IRAM)。
-    lv_color_fill((lv_color_t *) img->data, lv_color_hex(0x040C08),
-                  (uint32_t) RADAR_CANVAS * RADAR_CANVAS);
+    // ~230us,開機直接被 task watchdog 打死。canvas 無 alpha 且此處為不透明
+    // 填滿,直接對緩衝區做 16-bit 填充(LVGL 9 已無 lv_color_fill,自己寫迴圈)。
+    const uint16_t bg = lv_color_to_u16(lv_color_hex(0x040C08));
+    for (size_t i = 0; i < NPX; i++) px[i] = bg;
     lv_obj_invalidate(cv);   // 補回 lv_canvas_fill_bg 原本會做的失效標記
     if (map_show) {
+      radar_bg::CanvasPainter pt(cv);
       float coslat = cosf(lat0 * 3.14159265f / 180.0f);
       // 輪廓分層:海岸線最亮、國界中、州/省界最暗,近距離時線一多才分得出主次。
       // 分隔符(NAN,kind)的第二個值帶種類;舊 map_data.h 是 NAN,NAN,讀到 NAN
@@ -732,8 +770,10 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
         p.x = (lv_coord_t) (RADAR_CX + e / rng * (float) RADAR_R);
         p.y = (lv_coord_t) (RADAR_CX - n / rng * (float) RADAR_R);
         if (have_prev && (d2 <= r2 || pd2 <= r2)) {
-          lv_point_t seg[2] = {prev, p};
-          lv_canvas_draw_line(cv, seg, 2, &dsc);
+          dsc.p1.x = prev.x; dsc.p1.y = prev.y;
+          dsc.p2.x = p.x;    dsc.p2.y = p.y;
+          lv_draw_line(pt.layer(), &dsc);
+          pt.tick();
         }
         prev = p;
         pd2 = d2;
@@ -741,37 +781,43 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
       }
     }
     if (cache) {
-      memcpy(cache, img->data, BYTES);
+      memcpy(cache, px, BYTES);
       c_lat = lat0; c_lon = lon0; c_rng = rng; c_map = map_show;
     }
   }
   // 回波預混合:g_echo_buf 為 [color_lo][color_hi][alpha],逐像素混進底圖
+  // LVGL 9 的 lv_color_mix 走 24-bit,這裡改用 RGB565 專用的 lv_color_16_16_mix
+  //(標了 LV_ATTRIBUTE_FAST_MEM,與舊版一樣是 IRAM 內的快速路徑)
   if (echo_show && radar_bg::g_echo_buf) {
-    lv_color_t *dst = (lv_color_t *) (void *) img->data;
     const uint8_t *sp = radar_bg::g_echo_buf;
-    for (size_t px = 0; px < (size_t) RADAR_CANVAS * RADAR_CANVAS; px++, sp += 3) {
+    for (size_t i = 0; i < NPX; i++, sp += 3) {
       if (sp[2] < 8) continue;   // 無降雨=透明,保留底圖
-      lv_color_t fg;
-      fg.full = (uint16_t) sp[0] | ((uint16_t) sp[1] << 8);
-      dst[px] = lv_color_mix(fg, dst[px], sp[2]);
+      uint16_t fg = (uint16_t) sp[0] | ((uint16_t) sp[1] << 8);
+      px[i] = lv_color_16_16_mix(fg, px[i], sp[2]);
     }
   }
   // 十字線與 4 圈距離環:蓋在回波上,顏色/位置與原 widget 版一致
+  radar_bg::CanvasPainter pt(cv);
   lv_draw_line_dsc_t xd;
   lv_draw_line_dsc_init(&xd);
   xd.color = lv_color_hex(0x003820);
   xd.width = 1;
-  lv_point_t xh[2] = {{0, RADAR_CX}, {RADAR_CANVAS, RADAR_CX}};
-  lv_canvas_draw_line(cv, xh, 2, &xd);
-  lv_point_t xv[2] = {{RADAR_CX, 0}, {RADAR_CX, RADAR_CANVAS}};
-  lv_canvas_draw_line(cv, xv, 2, &xd);
+  xd.p1 = {0, RADAR_CX}; xd.p2 = {RADAR_CANVAS, RADAR_CX};
+  lv_draw_line(pt.layer(), &xd);
+  xd.p1 = {RADAR_CX, 0}; xd.p2 = {RADAR_CX, RADAR_CANVAS};
+  lv_draw_line(pt.layer(), &xd);
   lv_draw_arc_dsc_t ad;
   lv_draw_arc_dsc_init(&ad);
   ad.color = lv_color_hex(0x006030);
   ad.width = 1;
+  ad.center = {RADAR_CX, RADAR_CX};
+  ad.start_angle = 0;
+  ad.end_angle = 360;
   const lv_coord_t RINGS[4] = {RADAR_CX, (lv_coord_t)(RADAR_CX*3/4), (lv_coord_t)(RADAR_CX/2), (lv_coord_t)(RADAR_CX/4)};
-  for (int k = 0; k < 4; k++)
-    lv_canvas_draw_arc(cv, RADAR_CX, RADAR_CX, RINGS[k], 0, 360, &ad);
+  for (int k = 0; k < 4; k++) {
+    ad.radius = (uint16_t) RINGS[k];
+    lv_draw_arc(pt.layer(), &ad);
+  }
   // ---- ATC 靜態圖層(僅 ATC 模式,依 bitmask 逐層開關):空域/跑道+延伸線/機場/導航點 ----
   // 跟距離環一樣每次重建時畫、不進快取;重建只在切換或座標變更時發生,成本無感
   if (atc_layers) {
@@ -800,8 +846,10 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
         prj(AIRSPACE_PTS[as.off + 2 * k], AIRSPACE_PTS[as.off + 2 * k + 1], e, n, p);
         float d2 = e * e + n * n;
         if (hp && (d2 <= r2 || pd2 <= r2)) {
-          lv_point_t s[2] = {prev, p};
-          lv_canvas_draw_line(cv, s, 2, &asd);
+          asd.p1.x = prev.x; asd.p1.y = prev.y;
+          asd.p2.x = p.x;    asd.p2.y = p.y;
+          lv_draw_line(pt.layer(), &asd);
+          pt.tick();
         }
         prev = p; pd2 = d2; hp = true;
       }
@@ -831,16 +879,20 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
         for (float s = 0; s < dl; s += 9.0f) {
           float t0 = s / dl, t1 = (s + 5.0f) / dl;
           if (t1 > 1.0f) t1 = 1.0f;
-          lv_point_t sx[2] = {
-              {(lv_coord_t) (x1.x + ddx * t0), (lv_coord_t) (x1.y + ddy * t0)},
-              {(lv_coord_t) (x1.x + ddx * t1), (lv_coord_t) (x1.y + ddy * t1)}};
-          lv_canvas_draw_line(cv, sx, 2, &exd);
+          exd.p1.x = (lv_coord_t) (x1.x + ddx * t0);
+          exd.p1.y = (lv_coord_t) (x1.y + ddy * t0);
+          exd.p2.x = (lv_coord_t) (x1.x + ddx * t1);
+          exd.p2.y = (lv_coord_t) (x1.y + ddy * t1);
+          lv_draw_line(pt.layer(), &exd);
+          pt.tick();
         }
       }
       prj(r.lat1, r.lon1, e1, n1, p1);
       prj(r.lat2, r.lon2, e2, n2, p2);
-      lv_point_t sr[2] = {p1, p2};
-      lv_canvas_draw_line(cv, sr, 2, &rwd);
+      rwd.p1.x = p1.x; rwd.p1.y = p1.y;
+      rwd.p2.x = p2.x; rwd.p2.y = p2.y;
+      lv_draw_line(pt.layer(), &rwd);
+      pt.tick();
     }
     }
     // 導航點:小空心三角 + 名稱(暗色,避免壓過航機)
@@ -851,19 +903,28 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     fxd.width = 1;
     lv_draw_label_dsc_t fld;
     lv_draw_label_dsc_init(&fld);
-    fld.font = lv_font_default();
+    fld.font = lv_font_get_default();   // LVGL 9 改名(舊:lv_font_default)
     fld.color = lv_color_hex(0x50805E);
     for (int i = 0; i < FIXES_LEN; i++) {
       float e, n;
       lv_point_t p;
       prj(FIXES[i].lat, FIXES[i].lon, e, n, p);
       if (e * e + n * n > r2) continue;
-      lv_point_t tri[4] = {{(lv_coord_t)(p.x), (lv_coord_t)(p.y - 3)},
-                           {(lv_coord_t)(p.x + 3), (lv_coord_t)(p.y + 3)},
-                           {(lv_coord_t)(p.x - 3), (lv_coord_t)(p.y + 3)},
-                           {(lv_coord_t)(p.x), (lv_coord_t)(p.y - 3)}};
-      lv_canvas_draw_line(cv, tri, 4, &fxd);
-      lv_canvas_draw_text(cv, p.x + 5, p.y - 6, 60, &fld, FIXES[i].name);
+      // 三角形逐邊畫:LVGL 9 的 line dsc 雖可帶 points 陣列,但繪圖任務要到
+      // finish_layer 才執行,指到區域變數的陣列那時已失效,故老實拆三段。
+      const lv_point_t tri[4] = {{(lv_coord_t)(p.x), (lv_coord_t)(p.y - 3)},
+                                 {(lv_coord_t)(p.x + 3), (lv_coord_t)(p.y + 3)},
+                                 {(lv_coord_t)(p.x - 3), (lv_coord_t)(p.y + 3)},
+                                 {(lv_coord_t)(p.x), (lv_coord_t)(p.y - 3)}};
+      for (int e = 0; e < 3; e++) {
+        fxd.p1.x = tri[e].x;     fxd.p1.y = tri[e].y;
+        fxd.p2.x = tri[e + 1].x; fxd.p2.y = tri[e + 1].y;
+        lv_draw_line(pt.layer(), &fxd);
+      }
+      fld.text = FIXES[i].name;   // 靜態字串,撐得到繪圖任務派送
+      lv_area_t fa = {p.x + 5, p.y - 6, p.x + 5 + 60 - 1, p.y - 6 + 40};
+      lv_draw_label(pt.layer(), &fld, &fa);
+      pt.tick();
     }
     }
     // 機場:實心小方塊 + ICAO 代碼(最上層)
@@ -874,15 +935,19 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     apd.bg_opa = LV_OPA_COVER;
     lv_draw_label_dsc_t ald;
     lv_draw_label_dsc_init(&ald);
-    ald.font = lv_font_default();
+    ald.font = lv_font_get_default();
     ald.color = lv_color_hex(0x9AC8E0);
     for (int i = 0; i < AIRPORTS_LEN; i++) {
       float e, n;
       lv_point_t p;
       prj(AIRPORTS[i].lat, AIRPORTS[i].lon, e, n, p);
       if (e * e + n * n > r2) continue;
-      lv_canvas_draw_rect(cv, p.x - 2, p.y - 2, 5, 5, &apd);
-      lv_canvas_draw_text(cv, p.x + 5, p.y - 14, 60, &ald, AIRPORTS[i].icao);
+      lv_area_t ra = {p.x - 2, p.y - 2, p.x + 2, p.y + 2};   // 5x5 實心小方塊
+      lv_draw_rect(pt.layer(), &apd, &ra);
+      ald.text = AIRPORTS[i].icao;
+      lv_area_t aa = {p.x + 5, p.y - 14, p.x + 5 + 60 - 1, p.y - 14 + 40};
+      lv_draw_label(pt.layer(), &ald, &aa);
+      pt.tick();
     }
     }
   }

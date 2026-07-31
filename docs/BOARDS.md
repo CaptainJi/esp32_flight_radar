@@ -62,10 +62,17 @@ file:
 | Override | Why |
 |----------|-----|
 | `components/psram` | For octal + 120 MHz on IDF ≥ 5.4, ESPHome unconditionally enables `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR`. IDF's implementation only accepts flash vendor IDs `0xC8`/`0x20` and aborts with `0x106` otherwise, so these boards boot-loop. The option cannot be pushed back to `n` through `sdkconfig_options` — psram's `to_code` runs last and always wins — hence the component copy. |
-| `components/lvgl` | ESPHome allocates the LVGL draw buffer with `malloc()`, which lands in PSRAM when `CONFIG_SPIRAM_USE_MALLOC=y`. Rendering then competes with the RGB panel's scanout DMA for the same bus, which shows up as UI stalls of several hundred ms and as flicker. The override uses `heap_caps_malloc(..., MALLOC_CAP_INTERNAL)` with a 1/16-screen buffer instead. 1/8 starves mbedTLS (handshakes fail and data fetches stop); 1/32 loses more to per-flush overhead than it gains. |
 
-Both can go once upstream ESPHome handles these cases: delete the directory and the
-matching `external_components` block to fall back to the built-in components.
+There used to be a second override, `components/lvgl`, which moved the LVGL draw buffer
+from PSRAM into internal SRAM (rendering otherwise competes with the RGB panel's scanout
+DMA for the same bus, which shows up as UI stalls of several hundred ms and as flicker).
+ESPHome 2026.4+ does this itself — it asks for internal memory first and falls back to
+PSRAM — so on this branch the override is gone. What is lost with it is the ability to
+halve the buffer again: upstream quantises `buffer_size` to 1/1, 1/2, 1/4 or 1/8, and on
+the 5B a 1/8 (154 KB) internal buffer previously starved mbedTLS. Watch the boot log.
+
+The psram override can go once upstream ESPHome handles that case: delete the directory
+and the matching `external_components` block to fall back to the built-in component.
 
 > **Status of the Waveshare boards.** The **5B (1024×600)** has been flashed and tuned
 > on real hardware — panel timings, PSRAM speed, draw-buffer placement and the backlight
@@ -145,9 +152,15 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 | 覆寫 | 原因 |
 |------|------|
 | `components/psram` | octal + 120 MHz 且 IDF ≥ 5.4 時,ESPHome 會無條件開啟 `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR`。IDF 的實作只接受 flash 廠商 ID `0xC8`/`0x20`,其他一律回 `0x106` 並 abort,於是這些板子開機就無限重啟。這個選項無法用 `sdkconfig_options` 壓回 `n`(psram 的 `to_code` 最後執行、必定覆蓋),只能整個覆寫元件。 |
-| `components/lvgl` | ESPHome 用 `malloc()` 配置 LVGL 繪圖緩衝,而 `CONFIG_SPIRAM_USE_MALLOC=y` 時它會落在 PSRAM。渲染於是和 RGB 面板的掃描 DMA 搶同一條匯流排,表現出來就是數百 ms 的 UI 卡頓與閃爍。覆寫改用 `heap_caps_malloc(..., MALLOC_CAP_INTERNAL)` 配 1/16 螢幕的緩衝。1/8 會餓死 mbedTLS(握手失敗、抓不到資料);1/32 則因 flush 次數變多而得不償失。 |
 
-上游修好後這兩個都可以刪掉:移除該目錄與對應的 `external_components` 區塊即可回到內建元件。
+原本還有第二個覆寫 `components/lvgl`,作用是把 LVGL 繪圖緩衝從 PSRAM 移到內部 SRAM
+(否則渲染會和 RGB 面板的掃描 DMA 搶同一條匯流排,表現為數百 ms 的 UI 卡頓與閃爍)。
+ESPHome 2026.4+ 已內建這個行為(先要內部記憶體、失敗才退回 PSRAM),所以這個分支把覆寫
+刪掉了。代價是不能再把緩衝減半:上游把 `buffer_size` 量化成 1/1、1/2、1/4、1/8,而 5B 上
+1/8(154KB)的內部緩衝曾經餓死 mbedTLS,請留意開機 log。
+
+psram 覆寫則要等上游修好才能刪:移除該目錄與對應的 `external_components` 區塊即可回到
+內建元件。
 
 > **微雪各板的狀態。5B(1024×600)** 已在實機上燒錄並調校 —— 面板時序、PSRAM 速度、繪圖
 > 緩衝位置與下面的背光行為,全部來自那台機器的實測。**5(800×480)** 與 5B 是同一片 PCB、

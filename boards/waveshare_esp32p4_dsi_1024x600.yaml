@@ -102,11 +102,11 @@ i2c:
 #      BSP_POWER_AMP_IO 53   (功放致能,高電位開)
 #  ES8311 掛在跟觸控同一條 I2C(GPIO7/8)。rtttl 產生的是 16-bit / 單聲道 /
 #  16 kHz PCM(見 ESPHome rtttl.cpp 的 SAMPLE_RATE),所以下面三者都設 16 kHz。
-#  ESP32-P4 沒有 legacy I2S driver → use_legacy: false 是必要的。
+#  ESP32-P4 沒有 legacy I2S driver;ESPHome 2026.4+ 已整個移除 legacy 驅動,
+#  連帶拿掉 use_legacy 選項(本分支用的 2026.6.5 若還寫著會驗證失敗)。
 # =====================================================================
 i2s_audio:
   - id: i2s_out
-    use_legacy: false
     i2s_mclk_pin: GPIO13
     i2s_bclk_pin: GPIO12
     i2s_lrclk_pin: GPIO10
@@ -221,12 +221,18 @@ display:
     # 這個 model 在 ESPHome 標了 no_transform=True(EK79007 走 DPI,沒有 MADCTL
     # 之類的硬體鏡像可用),所以只能靠 LVGL 的軟體旋轉。
     # 代價:LVGL 會另外配一份與繪圖緩衝同大的旋轉緩衝,每次 flush 多一次搬移。
-    # 下方 touchscreen 的 mirror_x/mirror_y 必須與這個旋轉成對存在:
-    # GT911 的 raw 原點在實體右下,轉正畫面後要靠鏡像才能對上 UI 座標。
-    rotation: 180°
+    # LVGL 9(ESPHome 2026.4+)起 rotation 必須寫在 lvgl: 區塊(display 有
+    # rotation 時 lvgl 元件會直接報錯),見下方。
 
-# ---- LVGL:位元組序與 display 對齊 ----
-# LVGL 元件預設 big_endian(會設 LV_COLOR_16_SWAP=1),而 mipi_dsi 預設
-# little_endian。兩邊不一致會讓每個 RGB565 像素高低位元組顛倒(綠變暗紅)。
+# ---- LVGL:旋轉與位元組序 ----
+# rotation:面板掃描方向與 UI 差 180 度,LVGL 9 由 lvgl 元件自己轉(display 的
+# rotation 已移到這裡)。LVGL 9 也會自動把觸控座標跟著旋轉,所以 touchscreen
+# 仍然不需要 transform:——但這片板子尚未實機驗證過 LVGL 9,若上機後發現觸控
+# 上下左右相反,就是自動旋轉與 GT911 原生座標重複轉了,屆時再處理。
+# byte_order:LVGL 元件預設 big_endian(LV_COLOR_16_SWAP),mipi_dsi 是
+# little_endian;兩邊不一致會讓 RGB565 高低位元組顛倒(綠變暗紅)。
+# (LVGL 9 版會自動從 display 繼承 byte_order,這裡明寫是為了與註解對照;
+#  萬一與 display 不一致,元件會在驗證階段直接報錯。)
 lvgl:
+  rotation: 180°
   byte_order: little_endian

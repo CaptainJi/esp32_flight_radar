@@ -83,8 +83,8 @@ esp32:
 
 # ---- 本地覆寫的元件(components/,各檔內有「本地覆寫」註解標明唯一改動點)----
 # psram    :停用溫感 timing 選項,保住 120MHz octal(詳下)
-# lvgl     :繪圖緩衝改配內部 SRAM(1/16 螢幕,77KB)——渲染不再與面板掃描
-#            搶 PSRAM 匯流排,lvgl 慢操作 7 次/150s → 約 0
+# (lvgl 覆寫已在 LVGL 9 分支移除:ESPHome 2026.4+ 的 lvgl 元件自己就會優先把
+#  繪圖緩衝配進內部 SRAM,詳見本檔末的 lvgl: 區塊)
 # (曾試 mipi_rgb 覆寫加深 bounce buffer 10→20 行:對錯置/抖動皆無效——
 #  使用者實測「開機瞬間就偏、每次偏移量相同」,證明錯置是靜態時序問題而非
 #  underrun 累積,已撤回。)
@@ -95,14 +95,14 @@ esp32:
 # 不在名單 → 開機 init function failed (0x106) → 無限重開機。該選項無法用
 # sdkconfig_options 壓回 n(psram 元件的 to_code 在使用者選項之後執行,必定
 # 覆寫),所以改用 external_components 覆寫整個 psram 元件,只拿掉那一行。
-# components/psram/__init__.py 是 ESPHome 2026.3.3 的複本 + 該處註解掉;
+# components/psram/__init__.py 是 ESPHome 2026.6.5 的複本 + 該處註解掉;
 # 升級 ESPHome 後若上游已修好,刪掉 components/psram 與這段 external_components
 # 即可回到內建元件。
 external_components:
   - source:
       type: local
       path: components
-    components: [psram, lvgl]
+    components: [psram]
 
 # 120MHz octal 才餵得動 1024x600@60Hz(~73 MB/s);下方 display 的 pclk 需與此
 # 成對設定(52MHz ≈ 59.6 Hz)。若哪天必須退回 80MHz,pclk 要同時降到 30MHz。
@@ -252,27 +252,24 @@ display:
 # 這裡設而不寫進 ui/ui_1024x600.yaml,是因為那個檔案由 tools/scale_layout.py
 # 自動生成,手改會被下次生成蓋掉。
 #
-# 不設時預設為 0,而 lvgl_esphome.cpp:496-506 的邏輯是:
+# 不設時預設為 0,而 LVGL 9 版 lvgl_esphome.cpp 的邏輯是:
 #   frac=0 → 當成 1(全螢幕)→ 1024*600*2 = 1.2MB 緩衝
-#   且 `buffer_frac_ >= MIN_BUFFER_FRAC/2`(即 >= 4)不成立 → 跳過 malloc(),
-#   直接走 lv_custom_mem_alloc() 配到 PSRAM。
+#   且 `buffer_frac_ >= MIN_BUFFER_FRAC/2`(即 >= 4)不成立 → 跳過內部 SRAM
+#   嘗試,直接配到 PSRAM。
 # 結果每次渲染要 PSRAM 寫一次(draw buffer)+ 搬一次(→ framebuffer)= 2.4MB
 # PSRAM 流量,還要跟面板 DMA 搶匯流排。
 #
-# 歷史教訓:單設 buffer_size(不搭配 components/lvgl 覆寫)是無效的——
-# CONFIG_SPIRAM_USE_MALLOC=y 會讓 malloc() 把 153KB 導去 PSRAM,緩衝只是變小
-# 沒換位置,實測延遲反而略差(467/581/1050 vs 403/510/564 ms)。
+# LVGL 8 時代這裡還要靠 components/lvgl 覆寫才能把緩衝配進內部 SRAM
+# (單設 buffer_size 無效:CONFIG_SPIRAM_USE_MALLOC=y 會讓 malloc() 把緩衝
+#  導去 PSRAM,只是變小沒換位置)。ESPHome 2026.4+ 的 LVGL 9 元件已內建這個
+# 行為:buffer_frac >= 4 時先用 heap_caps_aligned_alloc(MALLOC_CAP_8BIT)
+# 要內部 SRAM,失敗才退回 PSRAM,所以覆寫整份元件的做法已刪除。
 #
-# 現行做法(Seeed round-display workshop 配方):components/lvgl 覆寫把
-# 繪圖緩衝改用 heap_caps_malloc(MALLOC_CAP_INTERNAL) 配進內部 SRAM,
-# buffer_size: 12% → frac=8,覆寫內再減半 → 77KB(1/16 螢幕)局部緩衝。
-# 渲染全程在 SRAM、分 16 段,只有 flush 寫 PSRAM framebuffer,不再與面板
-# 掃描 DMA 搶匯流排。實測 lvgl 慢操作警告 7 次/150s → 約 0。
-# 大小取捨(皆實測):154KB(1/8)渲染最快但餓死 TLS;77KB(1/16)兩者兼得
-# ← 採用;38KB(1/32)TLS 健康但 32 段 flush 開銷讓慢操作暴增到 464~861ms,
-# 縮過頭。
-# 開機 log 會印 "draw buffer ... in internal SRAM (1/16 screen)";若印
-# "falling back" 表示內部 RAM 不足,退回 PSRAM(行為同舊版,不會開不了機)。
+# buffer_size: 12% → frac=8 → 1024*600/8*2 ≈ 154KB(1/8 螢幕)。
+# 注意:上游把 frac 量化成 1/2/4/8,19% 以下一律 frac=8,無法再像 LVGL 8
+# 分支那樣壓到 1/16(77KB)。LVGL 8 分支的實測是 154KB 渲染最快但會餓死
+# mbedtls(握手 -0x7F00、抓不到資料),77KB 才兩者兼得——若這裡也重現,
+# 開機 log 會出現 mbedtls alloc 失敗;那就要改回本地覆寫元件把緩衝減半。
 lvgl:
   buffer_size: 12%
 

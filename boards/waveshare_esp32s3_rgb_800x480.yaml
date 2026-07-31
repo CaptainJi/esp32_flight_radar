@@ -82,8 +82,8 @@ esp32:
 
 # ---- 本地覆寫的元件(components/,各檔內有「本地覆寫」註解標明唯一改動點)----
 # psram    :停用溫感 timing 選項,保住 120MHz octal(詳下)
-# lvgl     :繪圖緩衝改配內部 SRAM(1/16 螢幕,77KB)——渲染不再與面板掃描
-#            搶 PSRAM 匯流排,lvgl 慢操作 7 次/150s → 約 0
+# (lvgl 覆寫已在 LVGL 9 分支移除:ESPHome 2026.4+ 的 lvgl 元件自己就會優先把
+#  繪圖緩衝配進內部 SRAM,詳見本檔末的 lvgl: 區塊)
 # (曾試 mipi_rgb 覆寫加深 bounce buffer 10→20 行:對錯置/抖動皆無效——
 #  使用者實測「開機瞬間就偏、每次偏移量相同」,證明錯置是靜態時序問題而非
 #  underrun 累積,已撤回。)
@@ -94,14 +94,14 @@ esp32:
 # 不在名單 → 開機 init function failed (0x106) → 無限重開機。該選項無法用
 # sdkconfig_options 壓回 n(psram 元件的 to_code 在使用者選項之後執行,必定
 # 覆寫),所以改用 external_components 覆寫整個 psram 元件,只拿掉那一行。
-# components/psram/__init__.py 是 ESPHome 2026.3.3 的複本 + 該處註解掉;
+# components/psram/__init__.py 是 ESPHome 2026.6.5 的複本 + 該處註解掉;
 # 升級 ESPHome 後若上游已修好,刪掉 components/psram 與這段 external_components
 # 即可回到內建元件。
 external_components:
   - source:
       type: local
       path: components
-    components: [psram, lvgl]
+    components: [psram]
 
 # 沿用 5B 的 120MHz octal 設定(同一片 PCB)。800x480 的掃描頻寬只有 1024x600
 # 的六成,壓力小得多,但 psram 覆寫仍必要(否則開機 0x106,見上)。
@@ -250,18 +250,15 @@ display:
 # 版由 tools/scale_layout.py 生成,不能手改),把板子專屬設定集中在板檔。
 #
 # 不設時預設為 0 → LVGL 會配「整螢幕」緩衝,而 lvgl_esphome.cpp 的
-# `buffer_frac_ >= MIN_BUFFER_FRAC/2`(>= 4)不成立 → 跳過 malloc()、直接
-# lv_custom_mem_alloc() 配到 PSRAM。渲染流量就會和面板掃描 DMA 搶同一條匯流排。
+# `buffer_frac_ >= MIN_BUFFER_FRAC/2`(>= 4)不成立 → 跳過內部 SRAM 嘗試、
+# 直接配到 PSRAM。渲染流量就會和面板掃描 DMA 搶同一條匯流排。
 #
-# components/lvgl 覆寫改用 heap_caps_malloc(MALLOC_CAP_INTERNAL) 配進內部 SRAM:
-# buffer_size: 12% → frac=8,覆寫內再減半 → 1/16 螢幕
-#   800x480  : 800*480*2/16  = 48KB
-#   1024x600 : 1024*600*2/16 = 77KB(5B 上實測過的甜蜜點)
-# 渲染全程在 SRAM,只有 flush 寫 PSRAM framebuffer。
-# 5B 上的實測取捨:1/8 渲染最快但會餓死 TLS(mbedtls 握手 -0x7F00);1/16 兩者
-# 兼得;1/32 反而因 flush 次數多而變慢。800x480 需求更低,1/16 綽綽有餘。
-# 開機 log 會印 "draw buffer ... in internal SRAM (1/16 screen)";若印
-# "falling back" 表示內部 RAM 不足,退回 PSRAM(不會開不了機)。
+# ESPHome 2026.4+ 的 LVGL 9 元件已內建「先要內部 SRAM、失敗才退 PSRAM」,
+# 所以 LVGL 8 分支的 components/lvgl 覆寫在此已刪除。
+# buffer_size: 12% → frac=8 → 800*480/8*2 = 96KB(1/8 螢幕)。
+# 上游把 frac 量化成 1/2/4/8,19% 以下一律 frac=8,無法再壓到 1/16。
+# LVGL 8 分支在 5B(1024x600)上曾實測 1/8(154KB)會餓死 mbedtls;800x480 的
+# 1/8 只要 96KB,理論上有餘裕,但仍請留意開機 log 有無 mbedtls alloc 失敗。
 lvgl:
   buffer_size: 12%
 

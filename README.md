@@ -67,7 +67,7 @@ overrides and how to add a board — is in **[docs/BOARDS.md](docs/BOARDS.md)**.
 
 ### Software requirements
 
-- **[ESPHome](https://esphome.io/) 2026.3.x is recommended** (`pip install esphome==2026.3.*`). The firmware calls the LVGL **v8** canvas draw API directly, so it does **not** build on 2026.4.0+ (which switched to LVGL v9) — see issue #5. The 1024×600 boards additionally need the `mipi_rgb` / `mipi_dsi` drivers added in 2025.9.0, so their working range is **2025.9 – 2026.3** (2026.3.x covers all three boards). The original 800×480 `radar.yaml` works on any ≤ 2026.3.x.
+- **[ESPHome](https://esphome.io/) 2026.4.0 or newer is required on this branch** (`pip install esphome==2026.6.*`). This is the **LVGL 9.5** branch: the firmware calls the LVGL **v9** canvas layer API, so it does **not** build on 2026.3.x or older (those ship LVGL v8 — use `main` for them). See [PLAN_LVGL9.md](PLAN_LVGL9.md) for the port notes and how to build both branches side by side.
 - The dependency `pngle` is pulled in automatically via `platformio_options`.
 
 ### Flashing
@@ -179,7 +179,7 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 
 ### 軟體需求
 
-- **建議 [ESPHome](https://esphome.io/) 2026.3.x**(`pip install esphome==2026.3.*`)。韌體直接呼叫 LVGL **v8** canvas 繪圖 API,故 **無法**在 2026.4.0+(改用 LVGL v9)編譯——見 issue #5。兩塊 1024×600 板另需 2025.9.0 才加入的 `mipi_rgb` / `mipi_dsi` 驅動,可用範圍為 **2025.9 – 2026.3**(2026.3.x 三塊板全涵蓋)。原始 800×480 `radar.yaml` 在任何 ≤2026.3.x 皆可。
+- **本分支需要 [ESPHome](https://esphome.io/) 2026.4.0 以上**(`pip install esphome==2026.6.*`)。這是 **LVGL 9.5** 分支:韌體呼叫的是 LVGL **v9** 的 canvas layer 繪圖 API,故 **無法**在 2026.3.x 以下(LVGL v8)編譯——那些版本請用 `main`。移植說明與兩個分支並存的建置方式見 [PLAN_LVGL9.md](PLAN_LVGL9.md)。
 - 相依的 `pngle` 會由 `platformio_options` 自動安裝。
 
 ### 燒錄
