@@ -12,6 +12,8 @@ radar_gemini.yaml
 /screenshot
 /demo.mp4
 tools/cache/
-components/*/__pycache__/
+# 編譯時產生的位元組碼,任何深度都不要追蹤
+# (舊規則 components/*/__pycache__/ 只吃一層,漏掉 components/lvgl/widgets/)
+__pycache__/
 .claude/settings.local.json
 .claude/*.tmp.*
