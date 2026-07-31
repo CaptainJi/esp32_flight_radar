@@ -1220,18 +1220,26 @@ interval:
           float prev = id(sweep_angle);
           float cur = fmodf((float) now / PERIOD * 360.0f, 360.0f);
           id(sweep_angle) = cur;
+          // 背光關著時面板雖然是暗的,LVGL 卻照常重繪(這個專案從來沒有呼叫
+          // lvgl.pause)。掃描線每幀 invalidate 的是「圓心到端點」的軸對齊
+          // 矩形,九條疊起來接近一個象限,等於白白拿重繪去跟面板掃描 DMA 搶
+          // PSRAM 頻寬。這裡跳過所有會 invalidate 的呼叫;角度與輝度衰減仍
+          // 照時間推進,所以亮起來的瞬間不會跳格。
+          const bool dark = !id(backlight).current_values.is_on();
           const float DEG = 3.14159265f / 180.0f;
           // 掃描線 + 8 條尾巴一起算(共用三角函式基準,減少重複)
-          lv_obj_t *lines[9] = { id(sweep_line)->obj,
-                                 id(tail0)->obj, id(tail1)->obj, id(tail2)->obj, id(tail3)->obj,
-                                 id(tail4)->obj, id(tail5)->obj, id(tail6)->obj, id(tail7)->obj };
-          static lv_point_precise_t lp[9][2];   // LVGL 9 的 line 點座標型別
-          for (int k = 0; k < 9; k++) {
-            float a = (cur - k * 1.0f) * DEG;       // 第0條=掃描線,其後每條退 1°
-            lp[k][0].x = RS(240); lp[k][0].y = RS(240);
-            lp[k][1].x = RS(240) + (lv_coord_t) ((float) RADAR_R * sinf(a));
-            lp[k][1].y = RS(240) - (lv_coord_t) ((float) RADAR_R * cosf(a));
-            lv_line_set_points(lines[k], lp[k], 2);
+          if (!dark) {
+            lv_obj_t *lines[9] = { id(sweep_line)->obj,
+                                   id(tail0)->obj, id(tail1)->obj, id(tail2)->obj, id(tail3)->obj,
+                                   id(tail4)->obj, id(tail5)->obj, id(tail6)->obj, id(tail7)->obj };
+            static lv_point_precise_t lp[9][2];   // LVGL 9 的 line 點座標型別
+            for (int k = 0; k < 9; k++) {
+              float a = (cur - k * 1.0f) * DEG;       // 第0條=掃描線,其後每條退 1°
+              lp[k][0].x = RS(240); lp[k][0].y = RS(240);
+              lp[k][1].x = RS(240) + (lv_coord_t) ((float) RADAR_R * sinf(a));
+              lp[k][1].y = RS(240) - (lv_coord_t) ((float) RADAR_R * cosf(a));
+              lv_line_set_points(lines[k], lp[k], 2);
+            }
           }
           // 航班點:被掃描線掃過→高亮,之後依時間漸暗(不受幀率影響)
           if (id(slot_glow).size() != 10) return;
@@ -1254,6 +1262,7 @@ interval:
             id(slot_glow)[i] = g;
             // 已回到基底且上一幀也是基底 → 略過 recolor(省重繪)
             if (g < 0.02f && g0 < 0.02f) continue;
+            if (dark) continue;   // 螢幕是暗的:輝度值照算,但不要 invalidate 圖示
             int idx = (i < (int) id(slot_map).size()) ? id(slot_map)[i] : -1;
             bool selg = (idx >= 0 && !id(sel_cs_g).empty() &&
                          idx < (int) id(ac_cs).size() && id(ac_cs)[idx] == id(sel_cs_g));
