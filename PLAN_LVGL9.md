@@ -142,6 +142,47 @@ LVGL 9 把繪製拆成 draw unit + draw task 佇列;開了 OS 之後,每個軟�
 **A/B 方法**:把那四行註解掉重編,就是單執行緒(與 LVGL 8 相同的行為)。開機 log 的
 `dump_config` 會印 `SW draw units: 2 (threaded)` 或 `1 (single-threaded)`,可以確認生效。
 
+### 實測結論:更慢,已預設關閉
+
+5B 實機開了之後:
+
+```
+W lvgl took a long time for an operation (631 ms), max is 560 ms
+W lvgl took a long time for an operation (708 ms), max is 660 ms
+E Dynamic Impl: alloc(16937 bytes) failed        ← 兩條執行緒的 16KB 堆疊又把 TLS 擠爆
+```
+
+掃描線的延遲感也變重。推測原因:本專案的畫面是「很多小任務」(標籤、線段),
+每個任務都要付一次執行緒同步的成本,而任務本身的工作量很小——管理成本吃掉了
+平行化的好處。平行繪圖單元適合大面積、少量任務的畫面(例如整片漸層、大圖縮放)。
+
+程式碼與註解都留著(`common/core.yaml` 裡註解掉的 build_flags),要再試很容易。
+
+## 加速:底圖線條直接寫像素(取代 LVGL 的繪圖任務)
+
+上面那筆 631~708ms 指向真正的瓶頸:**底圖重建**。LVGL 9 的每一筆 `lv_draw_*` 都要
+配一個 draw task、複製一份 dsc、排隊,再等 `finish_layer` 派送執行(LVGL 8 的
+`lv_canvas_draw_line` 是當場畫完)。底圖的地圖輪廓上千段、ATC 空域再上百段,全是
+1px 純色線——不需要抗鋸齒也不需要混色,管理成本遠大於畫線本身。
+
+`radar_bg::PixCanvas`(radar_fetch.h)直接對 canvas 的 RGB565 緩衝寫像素:
+Cohen–Sutherland 裁切 + Bresenham,外加 `line2`(2px)與 `fill_rect`。改用它的有:
+
+| 圖層 | 之前 | 現在 |
+|---|---|---|
+| 地圖輪廓(上千段) | `lv_draw_line` x N | `pc.line()` |
+| 十字線 | `lv_draw_line` x2 | `pc.line()` |
+| ATC 空域邊界 | `lv_draw_line` x N | `pc.line()` |
+| 跑道 + 延伸虛線 | `lv_draw_line` x N | `pc.line()` / `pc.line2()` |
+| 導航點三角 | `lv_draw_line` x3N | `pc.line()` |
+| 機場方塊 | `lv_draw_rect` | `pc.fill_rect()` |
+| **距離環(4 圈)** | `lv_draw_arc` | **不變**——圓弧抗鋸齒自己補不划算,且只有 4 個任務 |
+| **所有文字標籤** | `lv_draw_label` | **不變**——字形點陣與字型度量交給 LVGL |
+
+疊圖順序有保住:距離環的 `CanvasPainter` 用一個 scope 包起來,離開時 `finish_layer`
+會把環真的畫進緩衝,之後 ATC 圖層的直接寫入才會蓋在環之上。導航點/機場則是
+「圖形先全部寫完 → 再開一個 layer 一次畫所有標籤」,文字仍在最上層。
+
 ## 比較速度時建議看的數字
 - 開機 log 的 `lvgl` 慢操作警告(`Component lvgl took …`)出現次數與毫秒數;
 - 切換頁面、拖滑桿的手感;

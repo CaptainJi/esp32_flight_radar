@@ -26,17 +26,22 @@ esphome:
     # 產生 lv_conf.h 時會跳過任何已出現在 build_flags 裡的 LV_* 定義
     # (components/lvgl/__init__.py 的 generate_lv_conf_h),所以這裡設得進去。
     #
-    # 要 A/B 比較就把這四行註解掉重編(單執行緒 = 與 LVGL 8 相同的行為)。
-    build_flags:
-      - "-DLV_USE_OS=2"                     # 2 = LV_OS_FREERTOS(lv_conf_internal.h)
-      - "-DLV_DRAW_SW_DRAW_UNIT_CNT=2"      # 兩個軟體繪圖單元 = 兩條 swdraw 執行緒
-      - "-DLV_USE_FREERTOS_TASK_NOTIFY=1"   # 用 task notify 同步,比號誌快;ESPHome
-                                            # 預設會把它壓成 0,這裡設回 LVGL 的預設
-      # 堆疊大小要 x4:LVGL 的 lv_freertos.c 把 usStackSize 除以 sizeof(StackType_t)
-      # 才丟給 xTaskCreate(vanilla FreeRTOS 的堆疊深度以「字」計),但 ESP-IDF 的
-      # xTaskCreate 收的是「位元組」。照 LVGL 預設 8KB 會變成實際 2KB → 繪圖執行緒
-      # 爆堆疊。32768/4 = 實際 8KB/條,兩條共 16KB 內部 RAM。
-      - "-DLV_DRAW_THREAD_STACK_SIZE=32768"
+    # >>> 實測結論:在這個 UI 上反而更慢,預設關閉 <<<
+    # 5B 實機:開了之後 lvgl 慢操作變成 631~708ms、掃描線的延遲感變重,而且兩條
+    # 執行緒的 16KB 內部堆疊又把 TLS 擠爆(Dynamic Impl: alloc(16937) failed)。
+    # 原因推測:本專案的畫面是「很多小任務」(標籤、線段),每個任務都要付一次
+    # 執行緒同步成本,而任務本身的工作量很小,管理成本吃掉了平行化的好處。
+    # 想再試就把下面四行取消註解(開機 log 的 dump_config 會印 SW draw units)。
+    #build_flags:
+    #  - "-DLV_USE_OS=2"                     # 2 = LV_OS_FREERTOS(lv_conf_internal.h)
+    #  - "-DLV_DRAW_SW_DRAW_UNIT_CNT=2"      # 兩個軟體繪圖單元 = 兩條 swdraw 執行緒
+    #  - "-DLV_USE_FREERTOS_TASK_NOTIFY=1"   # 用 task notify 同步,比號誌快;ESPHome
+    #                                        # 預設會把它壓成 0,這裡設回 LVGL 的預設
+    #  # 堆疊大小要 x4:LVGL 的 lv_freertos.c 把 usStackSize 除以 sizeof(StackType_t)
+    #  # 才丟給 xTaskCreate(vanilla FreeRTOS 的堆疊深度以「字」計),但 ESP-IDF 的
+    #  # xTaskCreate 收的是「位元組」。照 LVGL 預設 8KB 會變成實際 2KB → 繪圖執行緒
+    #  # 爆堆疊。32768/4 = 實際 8KB/條,兩條共 16KB 內部 RAM。
+    #  - "-DLV_DRAW_THREAD_STACK_SIZE=32768"
   includes:
     - map_data.h
     - radar_fetch.h
