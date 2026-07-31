@@ -116,6 +116,17 @@ inline std::string g_route;
 inline volatile bool g_route_ready = false;
 inline uint8_t *g_echo_buf = nullptr;    // 離屏合成緩衝 456*456*3 (PSRAM)
 inline volatile bool g_echo_ready = false;   // true=g_echo_buf 有整幀待主迴圈換上
+// 回波非透明像素的逐列水平範圍(x0 > x1 表示該列全透明)。
+// 底圖重建每次都要把回波混進去,原本是整張 RADAR_CANVAS² 逐像素掃(570² =
+// 324,900 次,每次讀 3 bytes PSRAM ≈ 950KB),但降雨通常只佔畫面一小塊、常常
+// 甚至整張全空。合成時順手記下每列的左右界,混合就只走真的有資料的區段;
+// 空白列連一次 PSRAM 讀取都不必。初值 0/0 是安全的:未寫入的緩衝 alpha=0,
+// 混合迴圈本來就會跳過。
+inline int16_t g_echo_x0[RADAR_CANVAS];
+inline int16_t g_echo_x1[RADAR_CANVAS];
+inline void echo_spans_clear() {
+  for (int y = 0; y < RADAR_CANVAS; y++) { g_echo_x0[y] = RADAR_CANVAS; g_echo_x1[y] = -1; }
+}
 inline volatile bool g_auth_fail = false;
 struct WxInfo { float temp, hum, wspd, wdir; };   // 在地天氣(Open-Meteo)
 inline WxInfo g_wx;
@@ -512,6 +523,8 @@ inline void echo_composite_tile(const std::string &url, uint8_t *tmp, int tw, in
       op[0] = col.full & 0xFF;
       op[1] = (col.full >> 8) & 0xFF;
       op[2] = sp[3];
+      if (x < g_echo_x0[y]) g_echo_x0[y] = (int16_t) x;   // 這列有降雨的左右界,
+      if (x > g_echo_x1[y]) g_echo_x1[y] = (int16_t) x;   // 供底圖混合跳過空白區
     }
   }
 }
@@ -554,6 +567,7 @@ inline void do_echo(const Job &j) {
   if (!g_echo_buf || !tmp) { ESP_LOGE("radar_bg", "echo buf alloc fail"); return; }
 
   memset(g_echo_buf, 0, (size_t) RADAR_CANVAS * RADAR_CANVAS * 3);   // 先清成透明(離屏,不影響畫面)
+  echo_spans_clear();   // 逐列範圍跟著歸零,不然會留著上一幀的降雨區
   for (int k = 0; k < 4; k++) {
     char url[200];
     snprintf(url, sizeof(url), "%s%s/512/%d/%ld/%ld/2/1_1.png",
@@ -745,15 +759,23 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
       c_lat = lat0; c_lon = lon0; c_rng = rng; c_map = map_show;
     }
   }
-  // 回波預混合:g_echo_buf 為 [color_lo][color_hi][alpha],逐像素混進底圖
+  // 回波預混合:g_echo_buf 為 [color_lo][color_hi][alpha],逐像素混進底圖。
+  // 只走 g_echo_x0/x1 記下的逐列範圍——降雨通常只佔畫面一小塊,沒下雨時整張
+  // 全空,這樣就從「必掃 324,900 像素、讀 950KB PSRAM」變成只碰真的有資料的
+  // 區段。底圖重建每次都做這一步(不進快取),所以省下的是每次的固定成本。
   if (echo_show && radar_bg::g_echo_buf) {
-    lv_color_t *dst = (lv_color_t *) (void *) img->data;
-    const uint8_t *sp = radar_bg::g_echo_buf;
-    for (size_t px = 0; px < (size_t) RADAR_CANVAS * RADAR_CANVAS; px++, sp += 3) {
-      if (sp[2] < 8) continue;   // 無降雨=透明,保留底圖
-      lv_color_t fg;
-      fg.full = (uint16_t) sp[0] | ((uint16_t) sp[1] << 8);
-      dst[px] = lv_color_mix(fg, dst[px], sp[2]);
+    lv_color_t *rows = (lv_color_t *) (void *) img->data;
+    for (int y = 0; y < RADAR_CANVAS; y++) {
+      const int xa = radar_bg::g_echo_x0[y], xb = radar_bg::g_echo_x1[y];
+      if (xa > xb) continue;   // 整列無降雨:一次 PSRAM 讀取都不必
+      const uint8_t *sp = radar_bg::g_echo_buf + ((size_t) y * RADAR_CANVAS + xa) * 3;
+      lv_color_t *dst = rows + (size_t) y * RADAR_CANVAS + xa;
+      for (int x = xa; x <= xb; x++, sp += 3, dst++) {
+        if (sp[2] < 8) continue;   // 區段內的空隙,保留底圖
+        lv_color_t fg;
+        fg.full = (uint16_t) sp[0] | ((uint16_t) sp[1] << 8);
+        *dst = lv_color_mix(fg, *dst, sp[2]);
+      }
     }
   }
   // 十字線與 4 圈距離環:蓋在回波上,顏色/位置與原 widget 版一致
