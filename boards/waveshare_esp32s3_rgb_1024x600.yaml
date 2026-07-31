@@ -65,19 +65,11 @@ esp32:
       CONFIG_MBEDTLS_DYNAMIC_BUFFER: "y"          # TLS 緩衝握手時才配、用完即釋放(降峰值)
       CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN: "y"  # 收/發用不同大小,配合 dynamic buffer
       CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN: "8192"  # 預設 16384;減半再省一半 TLS 緩衝
-      # --- LVGL 9 分支追加:mbedtls 自己的配置改走 PSRAM ---
-      # LVGL 9 的繪圖緩衝吃掉 154KB 內部 SRAM(上游 buffer_size 最小只能到 1/8,
-      # 不像 LVGL 8 分支的覆寫可以壓到 1/16),實測開機後 TLS 就配不到記憶體:
-      #   Dynamic Impl: alloc(4770 bytes) failed → mbedtls_ssl_handshake -0x7F00
-      # dynamic buffer 的配置走 esp_mbedtls_mem_calloc(),預設是 calloc();而
-      # 4770 < CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL(16KB)必定被導回內部 RAM,
-      # 內部 RAM 用完就只能失敗。改成 EXTERNAL 讓它明確走
-      # heap_caps_calloc(MALLOC_CAP_SPIRAM),TLS 就完全不佔內部 RAM。
-      # (TLS 每次交易只有幾 KB,對 PSRAM 頻寬的影響遠小於面板掃描的 73MB/s;
-      #  這樣就能保住 154KB 的內部 SRAM 繪圖緩衝——渲染最快的設定。)
-      # 兩者是同一個 Kconfig choice,要把預設項一起關掉才切得過去。
-      CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC: "n"
-      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+      # 曾試 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC(TLS 記憶體改配 PSRAM)來遷就
+      # LVGL 9 的 154KB 繪圖緩衝,結果只是把問題往下推:AES 硬體加速器碰到
+      # PSRAM 來源時要另配「內部 DMA 跳板緩衝」(esp_aes_dma_core.c),照樣
+      # 配不出來 → esp-aes: Failed to allocate memory、TLS 讀取 -0x0001。
+      # 正解是把繪圖緩衝壓回 77KB(見 components/lvgl 覆寫),故此選項已移除。
       # 不要開 CONFIG_LCD_RGB_RESTART_IN_VSYNC:實測於本板無效——位移沒有消失,
       # 反而因為每個 VBlank 重置 GDMA 通道而造成畫面嚴重抖動。
       # 不要開 CONFIG_LCD_RGB_ISR_IRAM_SAFE:理論上它能修水平錯置(flash cache
@@ -96,8 +88,8 @@ esp32:
 
 # ---- 本地覆寫的元件(components/,各檔內有「本地覆寫」註解標明唯一改動點)----
 # psram    :停用溫感 timing 選項,保住 120MHz octal(詳下)
-# (lvgl 覆寫已在 LVGL 9 分支移除:ESPHome 2026.4+ 的 lvgl 元件自己就會優先把
-#  繪圖緩衝配進內部 SRAM,詳見本檔末的 lvgl: 區塊)
+# lvgl     :繪圖緩衝再減半到 1/16 螢幕並強制內部 SRAM——上游 2026.4+ 雖已會
+#            優先要內部 SRAM,但 buffer_size 最小只能到 1/8,那個大小會餓死 TLS
 # (曾試 mipi_rgb 覆寫加深 bounce buffer 10→20 行:對錯置/抖動皆無效——
 #  使用者實測「開機瞬間就偏、每次偏移量相同」,證明錯置是靜態時序問題而非
 #  underrun 累積,已撤回。)
@@ -115,7 +107,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [psram]
+    components: [psram, lvgl]
 
 # 120MHz octal 才餵得動 1024x600@60Hz(~73 MB/s);下方 display 的 pclk 需與此
 # 成對設定(52MHz ≈ 59.6 Hz)。若哪天必須退回 80MHz,pclk 要同時降到 30MHz。
@@ -272,18 +264,22 @@ display:
 # 結果每次渲染要 PSRAM 寫一次(draw buffer)+ 搬一次(→ framebuffer)= 2.4MB
 # PSRAM 流量,還要跟面板 DMA 搶匯流排。
 #
-# LVGL 8 時代這裡還要靠 components/lvgl 覆寫才能把緩衝配進內部 SRAM
-# (單設 buffer_size 無效:CONFIG_SPIRAM_USE_MALLOC=y 會讓 malloc() 把緩衝
-#  導去 PSRAM,只是變小沒換位置)。ESPHome 2026.4+ 的 LVGL 9 元件已內建這個
-# 行為:buffer_frac >= 4 時先用 heap_caps_aligned_alloc(MALLOC_CAP_8BIT)
-# 要內部 SRAM,失敗才退回 PSRAM,所以覆寫整份元件的做法已刪除。
+# ESPHome 2026.4+ 的 LVGL 9 元件已內建「先要內部 SRAM、失敗才退 PSRAM」
+# (buffer_frac >= 4 時),這部分不必再覆寫;但它把 buffer_size 量化成
+# 1/1、1/2、1/4、1/8,19% 以下一律 frac=8,最小只到 1/8。
 #
-# buffer_size: 12% → frac=8 → 1024*600/8*2 ≈ 154KB(1/8 螢幕)。
-# 注意:上游把 frac 量化成 1/2/4/8,19% 以下一律 frac=8,無法再像 LVGL 8
-# 分支那樣壓到 1/16(77KB)。154KB 確實會餓死 mbedtls(實測 alloc(4770) 失敗
-# → 握手 -0x7F00 → 抓不到資料),但這裡不縮緩衝,而是用上面的
-# CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC 把 TLS 的記憶體整個移到 PSRAM,
-# 兩邊就不再互搶內部 RAM——渲染保持在最快的 154KB 設定。
+# buffer_size: 12% → frac=8 → 1024*600/8*2 ≈ 154KB,而 154KB 的內部 SRAM
+# 會把 TLS 餓死(實測 alloc(4770) 失敗 → 握手 -0x7F00)。試過改讓 TLS 配
+# PSRAM,結果換成 AES 硬體加速器配不到內部 DMA 跳板緩衝(esp-aes: Failed to
+# allocate memory),等於把問題往下推一層。
+#
+# 所以照 LVGL 8 分支的結論:components/lvgl 覆寫在元件內再減半一次 →
+# 1/16 螢幕 = 77KB,並明確要求 MALLOC_CAP_INTERNAL。三種大小的實測取捨:
+#   154KB(1/8) 渲染最快、但餓死 TLS
+#    77KB(1/16)兩者兼得 ← 採用(與 main 的 LVGL 8 分支同一設定,便於比較)
+#    38KB(1/32)TLS 健康但 32 段 flush 的開銷讓慢操作暴增
+# 開機 log 會印 "draw buffer 76800 bytes in internal SRAM (1/16 screen)";
+# 若印 "falling back" 表示內部 RAM 不足、退回 PSRAM(不會開不了機)。
 lvgl:
   buffer_size: 12%
 

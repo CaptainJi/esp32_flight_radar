@@ -67,12 +67,13 @@ There used to be a second override, `components/lvgl`, which moved the LVGL draw
 from PSRAM into internal SRAM (rendering otherwise competes with the RGB panel's scanout
 DMA for the same bus, which shows up as UI stalls of several hundred ms and as flicker).
 ESPHome 2026.4+ does this itself — it asks for internal memory first and falls back to
-PSRAM — so on this branch the override is gone. What is lost with it is the ability to
-halve the buffer again: upstream quantises `buffer_size` to 1/1, 1/2, 1/4 or 1/8, and on
-the 5B a 1/8 (154 KB) internal buffer does starve mbedTLS (`alloc(4770 bytes) failed`,
-handshakes return `-0x7F00`). The fix is on the other side: the board files set
-`CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC` so TLS allocates from PSRAM instead, which keeps the
-fastest draw-buffer setting.
+PSRAM — so that part of the override is gone. What upstream cannot do is go below 1/8 of
+the screen: `buffer_size` is quantised to 1/1, 1/2, 1/4 or 1/8, and on the 5B a 1/8
+(154 KB) internal buffer starves mbedTLS (`alloc(4770 bytes) failed`, handshakes return
+`-0x7F00`). Moving TLS to PSRAM only moves the problem — the AES accelerator then fails to
+allocate its internal DMA bounce buffer (`esp-aes: Failed to allocate memory`). So the
+override survives, reduced to one change: halve the buffer once more (1/16 = 77 KB) and
+insist on `MALLOC_CAP_INTERNAL`.
 
 The psram override can go once upstream ESPHome handles that case: delete the directory
 and the matching `external_components` block to fall back to the built-in component.
@@ -159,10 +160,11 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 原本還有第二個覆寫 `components/lvgl`,作用是把 LVGL 繪圖緩衝從 PSRAM 移到內部 SRAM
 (否則渲染會和 RGB 面板的掃描 DMA 搶同一條匯流排,表現為數百 ms 的 UI 卡頓與閃爍)。
 ESPHome 2026.4+ 已內建這個行為(先要內部記憶體、失敗才退回 PSRAM),所以這個分支把覆寫
-刪掉了。代價是不能再把緩衝減半:上游把 `buffer_size` 量化成 1/1、1/2、1/4、1/8,而 5B 上
-1/8(154KB)的內部緩衝確實會餓死 mbedTLS(`alloc(4770 bytes) failed`、握手 `-0x7F00`)。
-解法改從另一邊下手:板檔設 `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC`,讓 TLS 改配 PSRAM,
-如此就能保住渲染最快的繪圖緩衝設定。
+刪掉了這部分。上游做不到的是「小於 1/8 螢幕」:`buffer_size` 被量化成 1/1、1/2、1/4、1/8,
+而 5B 上 1/8(154KB)的內部緩衝會餓死 mbedTLS(`alloc(4770 bytes) failed`、握手 `-0x7F00`)。
+把 TLS 改配 PSRAM 只是把問題往下推——換成 AES 加速器配不到內部 DMA 跳板緩衝
+(`esp-aes: Failed to allocate memory`)。所以覆寫仍在,只精簡成一件事:再減半一次
+(1/16 = 77KB)並明確要求 `MALLOC_CAP_INTERNAL`。
 
 psram 覆寫則要等上游修好才能刪:移除該目錄與對應的 `external_components` 區塊即可回到
 內建元件。

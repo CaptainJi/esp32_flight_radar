@@ -64,13 +64,9 @@ esp32:
       CONFIG_MBEDTLS_DYNAMIC_BUFFER: "y"          # TLS 緩衝握手時才配、用完即釋放(降峰值)
       CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN: "y"  # 收/發用不同大小,配合 dynamic buffer
       CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN: "8192"  # 預設 16384;減半再省一半 TLS 緩衝
-      # --- LVGL 9 分支追加:mbedtls 自己的配置改走 PSRAM ---
-      # 5B(1024x600)實測:LVGL 9 的繪圖緩衝佔掉 154KB 內部 SRAM 後,TLS 握手
-      # 會配不到記憶體(Dynamic Impl: alloc(4770 bytes) failed → -0x7F00)。
-      # 800x480 的緩衝是 96KB、餘裕較大,但同樣的成因仍在,故一併設定。
-      # 兩者是同一個 Kconfig choice,要把預設項一起關掉才切得過去。
-      CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC: "n"
-      CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+      # (曾試 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC 把 TLS 記憶體移到 PSRAM,在 5B
+      #  上反而觸發 esp-aes 配不到內部 DMA 跳板緩衝,已撤回;改用 components/lvgl
+      #  覆寫把繪圖緩衝減半。)
       # 不要開 CONFIG_LCD_RGB_RESTART_IN_VSYNC:實測於本板無效——位移沒有消失,
       # 反而因為每個 VBlank 重置 GDMA 通道而造成畫面嚴重抖動。
       # 不要開 CONFIG_LCD_RGB_ISR_IRAM_SAFE:理論上它能修水平錯置(flash cache
@@ -89,8 +85,8 @@ esp32:
 
 # ---- 本地覆寫的元件(components/,各檔內有「本地覆寫」註解標明唯一改動點)----
 # psram    :停用溫感 timing 選項,保住 120MHz octal(詳下)
-# (lvgl 覆寫已在 LVGL 9 分支移除:ESPHome 2026.4+ 的 lvgl 元件自己就會優先把
-#  繪圖緩衝配進內部 SRAM,詳見本檔末的 lvgl: 區塊)
+# lvgl     :繪圖緩衝再減半到 1/16 螢幕並強制內部 SRAM——上游 2026.4+ 雖已會
+#            優先要內部 SRAM,但 buffer_size 最小只能到 1/8,那個大小會餓死 TLS
 # (曾試 mipi_rgb 覆寫加深 bounce buffer 10→20 行:對錯置/抖動皆無效——
 #  使用者實測「開機瞬間就偏、每次偏移量相同」,證明錯置是靜態時序問題而非
 #  underrun 累積,已撤回。)
@@ -108,7 +104,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [psram]
+    components: [psram, lvgl]
 
 # 沿用 5B 的 120MHz octal 設定(同一片 PCB)。800x480 的掃描頻寬只有 1024x600
 # 的六成,壓力小得多,但 psram 覆寫仍必要(否則開機 0x106,見上)。
@@ -261,11 +257,11 @@ display:
 # 直接配到 PSRAM。渲染流量就會和面板掃描 DMA 搶同一條匯流排。
 #
 # ESPHome 2026.4+ 的 LVGL 9 元件已內建「先要內部 SRAM、失敗才退 PSRAM」,
-# 所以 LVGL 8 分支的 components/lvgl 覆寫在此已刪除。
-# buffer_size: 12% → frac=8 → 800*480/8*2 = 96KB(1/8 螢幕)。
-# 上游把 frac 量化成 1/2/4/8,19% 以下一律 frac=8,無法再壓到 1/16。
-# LVGL 8 分支在 5B(1024x600)上曾實測 1/8(154KB)會餓死 mbedtls;800x480 的
-# 1/8 只要 96KB,理論上有餘裕,但仍請留意開機 log 有無 mbedtls alloc 失敗。
+# 但 buffer_size 被量化成 1/1、1/2、1/4、1/8,最小只到 1/8;5B 上實測 1/8
+# (154KB)會餓死 TLS,所以 components/lvgl 覆寫在元件內再減半一次。
+# buffer_size: 12% → frac=8 → 覆寫內減半 → 1/16 螢幕 = 800*480*2/16 = 48KB。
+# 開機 log 會印 "draw buffer ... in internal SRAM (1/16 screen)";若印
+# "falling back" 表示內部 RAM 不足,退回 PSRAM(不會開不了機)。
 lvgl:
   buffer_size: 12%
 

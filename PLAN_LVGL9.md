@@ -52,18 +52,24 @@ W (8282) radar_bg: weather failed: -1
 4770 < `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`(16KB)必定被導回內部 RAM;繪圖緩衝
 把內部 RAM 吃掉後就配不出來。
 
-解法不是縮緩衝(那要再 fork 一次 lvgl 元件),而是在板檔 `sdkconfig_options` 把
-mbedtls 的配置整個移到 PSRAM——`esp_mem.c` 在這個選項下會改用
-`heap_caps_calloc(MALLOC_CAP_SPIRAM)`:
+**試過但失敗的解法**:板檔設 `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC`,讓 TLS 自己的記憶體
+改配 PSRAM(IDF 預設是 `CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=y`)。握手是過了,但問題只是
+往下推一層:
 
-```yaml
-CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC: "n"    # 同一個 Kconfig choice,預設項要一起關
-CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC: "y"
+```
+E (44630) esp-aes: Failed to allocate memory
+E (44630) esp-tls-mbedtls: read error :-0x0001
 ```
 
-這樣 154KB 的內部 SRAM 繪圖緩衝(渲染最快的設定)得以保留,TLS 也不再和它搶內部
-RAM。TLS 每次交易只有幾 KB,對 PSRAM 頻寬的影響遠小於面板掃描的 73MB/s。
-兩片 S3 板檔都已設定(800x480 是 96KB 緩衝、餘裕較大,但成因相同,一併設)。
+AES 硬體加速器走 DMA,來源在 PSRAM 時要另外配一塊「內部 DMA 跳板緩衝」
+(`esp_aes_dma_core.c` 的 `realloc_input/realloc_output`,大小同 TLS record,可達 8KB),
+內部 RAM 一樣配不出來。→ 已撤回。
+
+**最後採用**:照 LVGL 8 分支的結論,把 `components/lvgl` 覆寫加回來,唯一改動是在
+`LvglComponent::setup()` 內把緩衝再減半(1/8 → **1/16 = 77KB**)並明確要求
+`MALLOC_CAP_INTERNAL`。這樣記憶體配置與 `main` 完全一致(mbedtls 照舊走內部 RAM),
+**LVGL 版本成為唯一變數**,比較速度才公平。三種大小的實測取捨(LVGL 8 分支):
+154KB 渲染最快但餓死 TLS;77KB 兩者兼得;38KB 因 flush 次數暴增反而更慢。
 
 ### 3. YAML
 - P4 板檔的 `display: rotation: 180°` 要移到 `lvgl:` 區塊(LVGL 9 由 LVGL 自己轉),
