@@ -18,53 +18,23 @@ lvgl:
             y: 12
             width: 456
             height: 456
-        # ===== 掃描扇形:8 條尾巴(間隔 1°,漸暗連成餘暉)+ 1 條掃描線 =====
-        # 每條線再切成 4 段獨立的 line widget(8×4 + 1×4 = 36 個)。
-        # 為什麼要切:lv_line 的自身尺寸是「(0,0) 到所有點的最大 x/y」(見
-        # lv_line.c 的 LV_EVENT_GET_SELF_SIZE),而 widget 本身放在 page 原點,
-        # 所以「圓心→端點」這種線的 invalidate 區塊其實是從畫面左上角一路涵蓋
-        # 到端點:掃到右下象限時等於每幀重繪整個雷達方框(456×456)。
-        # 切成 4 段後,common/core.yaml 的 30ms lambda 每幀會先把每段 widget
-        # 用 lv_obj_set_pos 移到「該段自己的外接矩形」左上角,再設相對座標,
-        # invalidate 面積因此降到 4 個小方塊。畫面內容完全不變。
-        # 下面的 points 只是開機佔位值,第一幀就會被 lambda 覆蓋。
-        - line: { id: t0s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x008B45, line_width: 5 }
-        - line: { id: t0s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x008B45, line_width: 5 }
-        - line: { id: t0s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x008B45, line_width: 5 }
-        - line: { id: t0s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x008B45, line_width: 5 }
-        - line: { id: t1s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x007A3C, line_width: 5 }
-        - line: { id: t1s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x007A3C, line_width: 5 }
-        - line: { id: t1s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x007A3C, line_width: 5 }
-        - line: { id: t1s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x007A3C, line_width: 5 }
-        - line: { id: t2s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x006A34, line_width: 5 }
-        - line: { id: t2s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x006A34, line_width: 5 }
-        - line: { id: t2s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x006A34, line_width: 5 }
-        - line: { id: t2s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x006A34, line_width: 5 }
-        - line: { id: t3s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00592C, line_width: 5 }
-        - line: { id: t3s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00592C, line_width: 5 }
-        - line: { id: t3s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00592C, line_width: 5 }
-        - line: { id: t3s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00592C, line_width: 5 }
-        - line: { id: t4s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x004A25, line_width: 5 }
-        - line: { id: t4s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x004A25, line_width: 5 }
-        - line: { id: t4s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x004A25, line_width: 5 }
-        - line: { id: t4s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x004A25, line_width: 5 }
-        - line: { id: t5s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00391C, line_width: 5 }
-        - line: { id: t5s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00391C, line_width: 5 }
-        - line: { id: t5s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00391C, line_width: 5 }
-        - line: { id: t5s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00391C, line_width: 5 }
-        - line: { id: t6s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x002814, line_width: 5 }
-        - line: { id: t6s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x002814, line_width: 5 }
-        - line: { id: t6s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x002814, line_width: 5 }
-        - line: { id: t6s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x002814, line_width: 5 }
-        - line: { id: t7s0, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00190C, line_width: 5 }
-        - line: { id: t7s1, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00190C, line_width: 5 }
-        - line: { id: t7s2, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00190C, line_width: 5 }
-        - line: { id: t7s3, opa: 60%, points: ["0, 0", "0, 57"], line_color: 0x00190C, line_width: 5 }
-        # 掃描線(最亮,畫在尾巴之上)
-        - line: { id: sw_s0, opa: 80%, points: ["0, 0", "0, 57"], line_color: 0x00A050, line_width: 2 }
-        - line: { id: sw_s1, opa: 80%, points: ["0, 0", "0, 57"], line_color: 0x00A050, line_width: 2 }
-        - line: { id: sw_s2, opa: 80%, points: ["0, 0", "0, 57"], line_color: 0x00A050, line_width: 2 }
-        - line: { id: sw_s3, opa: 80%, points: ["0, 0", "0, 57"], line_color: 0x00A050, line_width: 2 }
+        # 掃描尾巴(4 條漸暗,程式每幀更新座標)
+        # 掃描尾巴(8 條,間隔 2°,漸暗連成扇形餘暉)
+        - line: { id: tail0, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x008B45, line_width: 5 }
+        - line: { id: tail1, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x007A3C, line_width: 5 }
+        - line: { id: tail2, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x006A34, line_width: 5 }
+        - line: { id: tail3, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00592C, line_width: 5 }
+        - line: { id: tail4, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x004A25, line_width: 5 }
+        - line: { id: tail5, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00391C, line_width: 5 }
+        - line: { id: tail6, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x002814, line_width: 5 }
+        - line: { id: tail7, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00190C, line_width: 5 }
+        # 掃描線(100ms 轉動)
+        - line:
+            id: sweep_line
+            points: ["240, 240", "240, 14"]
+            line_color: 0x00A050
+            line_width: 2
+            opa: 80%
         # 航班標記 ×10:飛機圖示(依航向旋轉)+ ATC 資料標籤,可點選
         - obj:
             id: ac0
