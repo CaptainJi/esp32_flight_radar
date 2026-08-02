@@ -19,8 +19,11 @@ LVGL 9 不是自己換 PlatformIO 版本號就好:ESPHome 的 lvgl 元件本身�
 
 ```bash
 conda activate esphome-lvgl9
-ESPHOME_BUILD_PATH=.esphome/build9 esphome run radar-s3-5b.yaml
+ESPHOME_BUILD_PATH=build9 esphome run radar-s3-5b.yaml
 ```
+
+⚠️ `ESPHOME_BUILD_PATH` 是**相對於 `.esphome/`** 的,不要寫成 `.esphome/build9`,
+否則會產生 `.esphome/.esphome/build9/`。
 
 (`main` 分支照舊:`conda activate esphome`,不帶 `ESPHOME_BUILD_PATH`。
 兩者建置目錄分開,切分支不會互相清掉編譯快取。)
