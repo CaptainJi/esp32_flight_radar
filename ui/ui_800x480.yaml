@@ -18,16 +18,17 @@ lvgl:
             y: 12
             width: 456
             height: 456
-        # 掃描尾巴(4 條漸暗,程式每幀更新座標)
-        # 掃描尾巴(8 條,間隔 2°,漸暗連成扇形餘暉)
-        - line: { id: tail0, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x008B45, line_width: 5 }
-        - line: { id: tail1, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x007A3C, line_width: 5 }
-        - line: { id: tail2, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x006A34, line_width: 5 }
-        - line: { id: tail3, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00592C, line_width: 5 }
-        - line: { id: tail4, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x004A25, line_width: 5 }
-        - line: { id: tail5, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00391C, line_width: 5 }
-        - line: { id: tail6, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x002814, line_width: 5 }
-        - line: { id: tail7, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00190C, line_width: 5 }
+        # 掃描尾巴(4 條漸暗,程式每幀更新座標,角度見 common/core.yaml 的 TAIL_DEG)
+        # 原本是 8 條、間隔 1°、線寬 5。每幀最貴的一項是 lv_draw_line:LVGL 是在
+        # 「線的外接矩形」上跑遮罩混色,45° 時那個矩形約 160x160,而九條線的矩形
+        # 幾乎完全重疊,等於同一片區域被反覆混色九次。條數減半 = 這項成本減半。
+        # 為了讓扇形不出現梳齒狀空隙,間距加倍(1°→2°)時線寬也要跟著加寬:
+        # 外緣 r=226 時 2° 的間距是 7.9px,線寬取 9 才能保住和原本一樣的 1.1px 重疊。
+        # 顏色取原本 8 段漸層的偶數項,漸層的起點、終點和斜率都不變。
+        - line: { id: tail0, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x007A3C, line_width: 9 }
+        - line: { id: tail1, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00592C, line_width: 9 }
+        - line: { id: tail2, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00391C, line_width: 9 }
+        - line: { id: tail3, opa: 60%, points: ["240, 240", "240, 20"], line_color: 0x00190C, line_width: 9 }
         # 掃描線(100ms 轉動)
         - line:
             id: sweep_line

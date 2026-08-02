@@ -1227,14 +1227,19 @@ interval:
           // 照時間推進,所以亮起來的瞬間不會跳格。
           const bool dark = !id(backlight).current_values.is_on();
           const float DEG = 3.14159265f / 180.0f;
-          // 掃描線 + 8 條尾巴一起算(共用三角函式基準,減少重複)
+          // 掃描線 + 4 條尾巴一起算(共用三角函式基準,減少重複)。
+          // 尾巴從 8 條減半成 4 條:每幀最貴的是 lv_draw_line,LVGL 在「線的外接
+          // 矩形」上跑遮罩混色,45° 時那塊約 160x160,而所有線的矩形幾乎完全重疊,
+          // 同一片區域被反覆混色。條數減半 = 這一項直接減半。
+          // 角度不是等距的 k*2°:那樣第一條尾巴會離掃描線 2°,外緣多出約 2px 的
+          // 縫。改成 1.75° 起跳、間隔 2°,扇形的內外緣位置和原本 1°~8° 幾乎一致。
+          static const float TAIL_DEG[5] = { 0.0f, 1.75f, 3.75f, 5.75f, 7.75f };
           if (!dark) {
-            lv_obj_t *lines[9] = { id(sweep_line)->obj,
-                                   id(tail0)->obj, id(tail1)->obj, id(tail2)->obj, id(tail3)->obj,
-                                   id(tail4)->obj, id(tail5)->obj, id(tail6)->obj, id(tail7)->obj };
-            static lv_point_precise_t lp[9][2];   // LVGL 9 的 line 點座標型別
-            for (int k = 0; k < 9; k++) {
-              float a = (cur - k * 1.0f) * DEG;       // 第0條=掃描線,其後每條退 1°
+            lv_obj_t *lines[5] = { id(sweep_line)->obj,
+                                   id(tail0)->obj, id(tail1)->obj, id(tail2)->obj, id(tail3)->obj };
+            static lv_point_precise_t lp[5][2];   // LVGL 9 的 line 點座標型別
+            for (int k = 0; k < 5; k++) {
+              float a = (cur - TAIL_DEG[k]) * DEG;    // 第0條=掃描線,其後依序後退
               lp[k][0].x = RS(240); lp[k][0].y = RS(240);
               lp[k][1].x = RS(240) + (lv_coord_t) ((float) RADAR_R * sinf(a));
               lp[k][1].y = RS(240) - (lv_coord_t) ((float) RADAR_R * cosf(a));
