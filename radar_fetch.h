@@ -501,20 +501,30 @@ inline void echo_composite_tile(const std::string &url, uint8_t *tmp, int tw, in
   int y_hi = (int) ceilf (RADAR_CX + ((float) (j + 1) - by) * inv);
   if (x_lo < 0) x_lo = 0; if (x_hi > RADAR_CANVAS) x_hi = RADAR_CANVAS;
   if (y_lo < 0) y_lo = 0; if (y_hi > RADAR_CANVAS) y_hi = RADAR_CANVAS;
+  // 每像素原本要做 2 次浮點除法(ESP32-S3 的 FPU 沒有除法指令,編譯器會展開成
+  // 倒數近似 + 牛頓迭代)。tile_km 在整個迴圈裡是常數,先取倒數改成乘法,kx/ky
+  // 也改成沿著掃描線累加,內圈就只剩乘加。~32 萬像素下省下的是幾十毫秒等級,
+  // 但這段本來就跑在背景 task,實際感受有限。
+  const float inv_tile = 1.0f / tile_km;
+  const float inv_tile_tw = inv_tile * (float) tw;
+  const float inv_tile_th = inv_tile * (float) th;
+  const float i_tile = (float) i * tile_km;
+  const float j_tile = (float) j * tile_km;
+  const float kx0 = bx * tile_km + (float) (x_lo - RADAR_CX) * kmpp;
   for (int y = y_lo; y < y_hi; y++) {
-    float ky = by * tile_km + (y - RADAR_CX) * kmpp;
-    int tj = (int) floorf(ky / tile_km);
+    float ky = by * tile_km + (float) (y - RADAR_CX) * kmpp;
+    int tj = (int) floorf(ky * inv_tile);
     if (tj != j) continue;
-    int ty = (int) ((ky - j * tile_km) / tile_km * th);
+    int ty = (int) ((ky - j_tile) * inv_tile_th);
     if (ty < 0 || ty >= th) continue;
     int dy2 = (y - RADAR_CX) * (y - RADAR_CX);
     uint8_t *orow = g_echo_buf + (size_t) y * RADAR_CANVAS * 3;
-    for (int x = x_lo; x < x_hi; x++) {
-      float kx = bx * tile_km + (x - RADAR_CX) * kmpp;
-      int ti = (int) floorf(kx / tile_km);
+    float kx = kx0;
+    for (int x = x_lo; x < x_hi; x++, kx += kmpp) {
+      int ti = (int) floorf(kx * inv_tile);
       if (ti != i) continue;
       if ((x - RADAR_CX) * (x - RADAR_CX) + dy2 > RADAR_R * RADAR_R) continue;   // 圓外(留透明)
-      int tx = (int) ((kx - i * tile_km) / tile_km * tw);
+      int tx = (int) ((kx - i_tile) * inv_tile_tw);
       if (tx < 0 || tx >= tw) continue;
       uint8_t *sp = tmp + ((size_t) ty * tw + tx) * 4;
       if (sp[3] < 32) continue;   // 無降雨=透明

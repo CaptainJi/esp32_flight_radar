@@ -16,6 +16,15 @@ esphome:
   platformio_options:
     lib_deps:
       - kikuchan98/pngle@^1.0.0
+    build_flags:
+      # LVGL 每次 lv_obj_invalidate() 會把區塊存進 disp->inv_areas[],預設只有
+      # 32 格;存滿了它不是丟棄而是「整個螢幕重畫」。掃描扇形改成 36 段
+      # widget 之後,每幀 set_pos(舊區塊)+ 尺寸刷新(新區塊)就有 ~72 次,
+      # 再加上航班圖示 recolor,32 格一定爆掉,反而變成每幀全螢幕重繪。
+      # 128 格 = 128×(8+1) ≈ 1.2KB RAM,換掉那個懸崖很划算。
+      # (v8 定義在 hal/lv_hal_disp.h、v9 在 display/lv_display_private.h,
+      #  兩邊都是 #ifndef 包起來的,所以 -D 有效。)
+      - "-DLV_INV_BUF_SIZE=128"
   includes:
     - map_data.h
     - radar_fetch.h
@@ -1195,24 +1204,55 @@ interval:
           float cur = fmodf((float) now / PERIOD * 360.0f, 360.0f);
           id(sweep_angle) = cur;
           // 背光關著時面板雖然是暗的,LVGL 卻照常重繪(這個專案從來沒有呼叫
-          // lvgl.pause)。掃描線每幀 invalidate 的是「圓心到端點」的軸對齊
-          // 矩形,九條疊起來接近一個象限,等於白白拿重繪去跟面板掃描 DMA 搶
-          // PSRAM 頻寬。這裡跳過所有會 invalidate 的呼叫;角度與輝度衰減仍
-          // 照時間推進,所以亮起來的瞬間不會跳格。
+          // lvgl.pause),等於白白拿重繪去跟面板掃描 DMA 搶 PSRAM 頻寬。
+          // 這裡跳過所有會 invalidate 的呼叫;角度與輝度衰減仍照時間推進,
+          // 所以亮起來的瞬間不會跳格。
           const bool dark = !id(backlight).current_values.is_on();
           const float DEG = 3.14159265f / 180.0f;
-          // 掃描線 + 8 條尾巴一起算(共用三角函式基準,減少重複)
+          // 掃描線 + 8 條尾巴一起算(共用三角函式基準,減少重複)。
+          // 每條線切成 4 段(見 ui/ui_800x480.yaml 的說明):lv_line 的自身尺寸
+          // 是「(0,0) 到最大點座標」,widget 又固定在 page 原點,所以整條線的
+          // invalidate 區塊會從畫面左上角一路涵蓋到端點。這裡每幀先把每段移到
+          // 該段自己的外接矩形左上角,再給相對座標,重繪面積因而大幅縮小。
           if (!dark) {
-            lv_obj_t *lines[9] = { id(sweep_line)->obj,
-                                   id(tail0)->obj, id(tail1)->obj, id(tail2)->obj, id(tail3)->obj,
-                                   id(tail4)->obj, id(tail5)->obj, id(tail6)->obj, id(tail7)->obj };
-            static lv_point_t lp[9][2];
+            static lv_obj_t *segs[36] = {};
+            if (segs[0] == nullptr) {
+              lv_obj_t *init[36] = {
+                id(sw_s0)->obj, id(sw_s1)->obj, id(sw_s2)->obj, id(sw_s3)->obj,   // 第0條=掃描線
+                id(t0s0)->obj, id(t0s1)->obj, id(t0s2)->obj, id(t0s3)->obj,
+                id(t1s0)->obj, id(t1s1)->obj, id(t1s2)->obj, id(t1s3)->obj,
+                id(t2s0)->obj, id(t2s1)->obj, id(t2s2)->obj, id(t2s3)->obj,
+                id(t3s0)->obj, id(t3s1)->obj, id(t3s2)->obj, id(t3s3)->obj,
+                id(t4s0)->obj, id(t4s1)->obj, id(t4s2)->obj, id(t4s3)->obj,
+                id(t5s0)->obj, id(t5s1)->obj, id(t5s2)->obj, id(t5s3)->obj,
+                id(t6s0)->obj, id(t6s1)->obj, id(t6s2)->obj, id(t6s3)->obj,
+                id(t7s0)->obj, id(t7s1)->obj, id(t7s2)->obj, id(t7s3)->obj
+              };
+              for (int i = 0; i < 36; i++) segs[i] = init[i];
+            }
+            static lv_point_t lp[36][2];
+            const int CX = RS(240), CY = RS(240);
             for (int k = 0; k < 9; k++) {
               float a = (cur - k * 1.0f) * DEG;       // 第0條=掃描線,其後每條退 1°
-              lp[k][0].x = RS(240); lp[k][0].y = RS(240);
-              lp[k][1].x = RS(240) + (lv_coord_t) ((float) RADAR_R * sinf(a));
-              lp[k][1].y = RS(240) - (lv_coord_t) ((float) RADAR_R * cosf(a));
-              lv_line_set_points(lines[k], lp[k], 2);
+              float sa = sinf(a), ca = cosf(a);
+              // 分段半徑。四段的接縫是兩次抗鋸齒端點疊在一起,會比線身略暗;
+              // 若九條線的接縫都落在同一半徑上就會排成三圈淡弧,所以每條線把
+              // 接縫錯開 1/9 段,交給相鄰尾巴的線身蓋掉。
+              float rb[5];
+              rb[0] = 0.0f;
+              rb[4] = (float) RADAR_R;
+              for (int s = 1; s <= 3; s++)
+                rb[s] = (float) RADAR_R * ((float) s - 0.5f + (float) k / 9.0f) * 0.25f;
+              for (int s = 0; s < 4; s++) {
+                int i = k * 4 + s;
+                int x0 = CX + (int) (rb[s] * sa),     y0 = CY - (int) (rb[s] * ca);
+                int x1 = CX + (int) (rb[s + 1] * sa), y1 = CY - (int) (rb[s + 1] * ca);
+                int mx = x0 < x1 ? x0 : x1, my = y0 < y1 ? y0 : y1;
+                lp[i][0].x = x0 - mx; lp[i][0].y = y0 - my;
+                lp[i][1].x = x1 - mx; lp[i][1].y = y1 - my;
+                lv_obj_set_pos(segs[i], mx, my);
+                lv_line_set_points(segs[i], lp[i], 2);
+              }
             }
           }
           // 航班點:被掃描線掃過→高亮,之後依時間漸暗(不受幀率影響)
