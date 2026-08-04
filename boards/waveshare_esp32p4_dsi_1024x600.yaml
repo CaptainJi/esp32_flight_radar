@@ -116,6 +116,37 @@ sd_storage:
   data3_pin: GPIO42
   slot: 0
   mount_path: /sdcard
+  # 元件在 P4 上的預設是 SDMMC_FREQ_HIGHSPEED(40MHz)。實機在那個速度下卡片
+  # 枚舉得到(CSD 讀得到)但資料讀出來是壞的:FATFS 拿到垃圾 MBR、去讀超出容量
+  # 的位置,IDF 於是回 ESP_ERR_INVALID_SIZE(sdmmc_cmd.c:690 只有這一個來源),
+  # 表現為連續的 sdmmc_read_blocks failed (0x104) 然後 mount_to_vfs 失敗。
+  # 枚舉是在 400kHz 做的,所以「認得到卡但讀不到資料」正是速度太快的典型徵狀。
+  # 20MHz = SDMMC_FREQ_DEFAULT,IDF 各家 SD 範例的預設值。
+  data_rate: 20MHz
+
+# 診斷用(TF 卡調通後請把整段刪掉,恢復 common/core.yaml 的 INFO):
+# sd_storage 的掛載細節(LDO 通道、卡片型別/容量、每次嘗試)都是 ESP_LOGD,
+# 全域 INFO 時看不到。ESPHome 不允許單一 tag 比全域更詳細,所以只能整體拉到
+# DEBUG,再把跟這件事無關又吵的 tag 壓回 INFO。
+logger:
+  level: DEBUG
+  logs:
+    sd_storage: DEBUG
+    lvgl: INFO
+    display: INFO
+    sensor: INFO
+    text_sensor: INFO
+    binary_sensor: INFO
+    number: INFO
+    switch: INFO
+    select: INFO
+    light: INFO
+    api: INFO
+    api.service: INFO
+    wifi: INFO
+    json: INFO
+    component: INFO
+    esp-idf: INFO
 
 # ---- Backlight (real PWM GPIO on the P4 board) ----
 # 腳位依官方 BSP(components.espressif.com 的 waveshare/esp32_p4_wifi6_touch_lcd_7b,
