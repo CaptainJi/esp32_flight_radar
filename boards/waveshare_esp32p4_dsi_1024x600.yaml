@@ -123,6 +123,12 @@ sd_storage:
   # 枚舉是在 400kHz 做的,所以「認得到卡但讀不到資料」正是速度太快的典型徵狀。
   # 20MHz = SDMMC_FREQ_DEFAULT,IDF 各家 SD 範例的預設值。
   data_rate: 20MHz
+  # 1-bit 模式:只用 D0,把 D1-D3 三條資料線的訊號品質整個從變因裡拿掉。
+  # 換這一項是因為它和降速是「不同機制」——降到 20MHz 之後卡仍然掛不起來,
+  # 而卡本身在 PC 上讀得到,那就要懷疑並列資料線(走線長度/上拉/串擾)。
+  # 代價是頻寬 1/4,但截圖一張 BMP 約 1.8MB、幾秒一次,完全無感。
+  # 掛起來之後可以再試著改回 4-bit,確認到底是哪一條線的問題。
+  mode_1bit: true
 
 # 診斷用(TF 卡調通後請把整段刪掉,恢復 common/core.yaml 的 INFO):
 # sd_storage 的掛載細節(LDO 通道、卡片型別/容量、每次嘗試)都是 ESP_LOGD,
@@ -146,7 +152,10 @@ logger:
     wifi: INFO
     json: INFO
     component: INFO
-    esp-idf: INFO
+    # esp-idf 刻意「不」壓回 INFO:IDF 自己的 sdmmc / diskio_sdmmc / vfs_fat_sdmmc
+    # 錯誤全部經由這個 tag 轉出來,那才是指出「失敗在哪一層」的關鍵資訊。
+    # (第一次改成 INFO 之後那些行就消失了,反而看不出是卡片初始化失敗還是
+    #  FATFS 讀不到有效的開機磁區。)
 
 # ---- Backlight (real PWM GPIO on the P4 board) ----
 # 腳位依官方 BSP(components.espressif.com 的 waveshare/esp32_p4_wifi6_touch_lcd_7b,
