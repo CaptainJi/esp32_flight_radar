@@ -28,9 +28,21 @@ esphome:
       - "-DSCREEN_W=${disp_w}"
       - "-DSCREEN_H=${disp_h}"
       - "-DRADAR_CANVAS=${radar_canvas}"
-      - "-DRADAR_DISPLAY_RGB=0"    # MIPI-DSI: disable the RGB framebuffer screenshot
+      - "-DRADAR_DISPLAY_RGB=3"    # 3 = MIPI-DSI:截圖改讀 DPI framebuffer
       # 板載 ES8311 codec + 功放 → 鬧鐘頁的喇叭下拉多一項 LOCAL SPEAKER(見 alarm.h)
       - "-DRADAR_LOCAL_SPK=1"
+      # microSD 由下方的 sd_storage 元件掛在 /sdcard,radar_fetch.h 不自己掛載
+      - "-DRADAR_SD_EXT=1"
+
+# ---- 本地覆寫元件 ----
+# storage / sd_storage 取自 p1ngb4ck 的 ESPHome fork(釘 commit,見兩者 __init__.py
+# 的檔首說明)。sd_storage.cpp 有一處本地修補:上游沒有設定 host.pwr_ctrl_handle,
+# 而 P4 的 SD IO 電軌要靠晶片內部 LDO 供電,不開卡就不會回應。
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [storage, sd_storage]
 
 esp32:
   board: esp32-p4-evboard
@@ -38,6 +50,21 @@ esp32:
   cpu_frequency: 360MHz
   framework:
     type: esp-idf
+    advanced:
+      # microSD 要用 FATFS,而 ESPHome 對 IDF 建置做了兩層瘦身,兩層都要解:
+      #  1) fatfs 元件預設不編進去(DEFAULT_EXCLUDED_IDF_COMPONENTS)→ 缺 esp_vfs_fat.h
+      #  2) disable_fatfs 預設 true 會把 CONFIG_FATFS_VOLUME_COUNT 設成 0 → 掛不起來
+      disable_fatfs: false
+      include_builtin_idf_components: [fatfs]
+    sdkconfig_options:
+      # FATFS 長檔名。IDF 預設是 CONFIG_FATFS_LFN_NONE(只支援 8.3 短檔名),
+      # 此時 CONFIG_FATFS_MAX_LFN 這個巨集根本不存在,而 sd_storage 的目錄列舉
+      # 直接引用它 → 編譯錯誤 "CONFIG_FATFS_MAX_LFN was not declared"。
+      # (fork 是靠它自己改過的 esp32 元件設這個預設值,我們沒有搬那個元件。)
+      # 順帶也讓截圖檔名 shot_YYYYMMDD_HHMMSS.bmp 不會被截成 8.3。
+      CONFIG_FATFS_LFN_NONE: "n"
+      CONFIG_FATFS_LFN_HEAP: "y"
+      CONFIG_FATFS_MAX_LFN: "255"
 
 psram:
   mode: hex        # ESP32-P4 only supports HEX-mode PSRAM
@@ -62,8 +89,33 @@ esp32_hosted:
   # sdio_frequency 可選(預設 40MHz);若 Wi-Fi 不穩可調降。
   #
   # 注意:這裡是「P4 ↔ C6 之間的 SDIO」,不要跟 TF 卡插槽的 SDMMC 搞混——
-  # 官方 04_sdmmc 範例的 TF 腳位是 CLK 43 / CMD 44 / D0-D3 39,40,41,42,
-  # 與下方 C6 用的這組完全不同。
+  # TF 卡的腳位見下方 sd_storage,與 C6 用的這組完全不同。
+  # 兩者都用 SDMMC 週邊,但 P4 有兩個 slot:C6 佔 slot 1,TF 卡走 slot 0,不衝突。
+
+# ---- microSD (TF slot, native SDMMC) ----
+# 三指截圖除了 :8081/screenshot.bmp 之外,另存一份 BMP 到卡上(見 radar_fetch.h
+# 的 sd_save_shot;RADAR_SD_EXT=1 表示掛載交給這個元件,我們不自己掛)。
+#
+# 腳位來源:Espressif 官方 P4 BSP(esp-bsp/bsp/esp32_p4_function_ev_board/
+# include/bsp/esp32_p4_function_ev_board.h:115-120)——
+#     BSP_SD_D0..D3 = 39,40,41,42   BSP_SD_CMD = 44   BSP_SD_CLK = 43
+# 與 Waveshare 官方 04_sdmmc 範例列的腳位相同,7B 沿用 EV Board 的接線。
+#
+# 電源:P4 的 SD IO 電軌由晶片內部 LDO 通道 4 供電。上游元件沒有處理這件事,
+# 我們在 components/sd_storage/sd_storage.cpp 補上(該檔檔首有說明)。若開機
+# log 出現 "on-chip LDO ch4 unavailable" 或掛載三次都失敗,先懷疑這個通道編號,
+# 可用 build_flags 的 -DSD_STORAGE_P4_LDO_CHAN=<n> 覆寫。
+sd_storage:
+  type: sd_mmc
+  id: tf_card
+  clk_pin: GPIO43
+  cmd_pin: GPIO44
+  data0_pin: GPIO39
+  data1_pin: GPIO40
+  data2_pin: GPIO41
+  data3_pin: GPIO42
+  slot: 0
+  mount_path: /sdcard
 
 # ---- Backlight (real PWM GPIO on the P4 board) ----
 # 腳位依官方 BSP(components.espressif.com 的 waveshare/esp32_p4_wifi6_touch_lcd_7b,

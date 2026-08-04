@@ -9,10 +9,17 @@
 //   RADAR_DISPLAY_RGB  which display driver the screenshot grab should use:
 //                 1 = parallel-RGB via `rpi_dpi_rgb`  (generic 800x480 board)
 //                 2 = parallel-RGB via `mipi_rgb`     (Waveshare Touch-LCD-5/5B)
-//                 0 = neither (e.g. MIPI-DSI on ESP32-P4) -> screenshot disabled
+//                 3 = MIPI-DSI via `mipi_dsi`         (Waveshare ESP32-P4 7B)
+//                 0 = none -> screenshot disabled
 //                 1 and 2 are both parallel-RGB panels, so the IDF call
 //                 esp_lcd_rgb_panel_get_frame_buffer() works for both; only the
 //                 ESPHome wrapper class holding the panel handle differs.
+//                 3 is a DPI panel created by esp_lcd_new_panel_dpi(), so the
+//                 read-back call is esp_lcd_dpi_panel_get_frame_buffer() instead
+//                 -- everything after the grab (BMP header, row conversion, the
+//                 :8081 server, sd_save_shot) is shared. The macro name says RGB
+//                 for historical reasons; renaming it would touch every board
+//                 file and both README language sections for no benefit.
 #ifndef RADAR_CANVAS
 #define RADAR_CANVAS 456
 #endif
@@ -39,6 +46,14 @@
 #ifndef RADAR_SD_SPI
 #define RADAR_SD_SPI 0
 #endif
+// RADAR_SD_EXT:卡由「別人」掛好,我們只負責寫檔。ESP32-P4 走這條——TF 插槽接在
+// 原生 SDMMC 上,掛載交給板檔的 sd_storage 元件(見 boards/waveshare_esp32p4_*)。
+// 兩種模式的差別只在 sd_mount();寫檔那半段完全共用,因為掛好之後就只是
+// fopen("/sdcard/...") 而已。兩者互斥,不要同時開。
+#ifndef RADAR_SD_EXT
+#define RADAR_SD_EXT 0
+#endif
+#define RADAR_SD_ANY (RADAR_SD_SPI || RADAR_SD_EXT)
 // 雷達可同時顯示的航班數(= ui/*.yaml 裡 ac/ai/sq/ad/vec/tr 這幾組 widget 的組數)。
 // 資料端不設上限:radar_fetch 依距離由近而遠排序,超過這個數的遠機不繪出。
 // 改這個值必須同步 ui/ui_800x480.yaml 的 widget 組數(並重跑 tools/scale_layout.py)。
@@ -64,8 +79,10 @@
 #include "freertos/queue.h"
 #include "esp_http_client.h"
 #include "esp_http_server.h"
-#if RADAR_DISPLAY_RGB
+#if RADAR_DISPLAY_RGB == 1 || RADAR_DISPLAY_RGB == 2
 #include "esp_lcd_panel_rgb.h"
+#elif RADAR_DISPLAY_RGB == 3
+#include "esp_lcd_mipi_dsi.h"
 #endif
 #include "esp_heap_caps.h"
 #include "esp_flash.h"
@@ -77,7 +94,9 @@
 #include "driver/sdspi_host.h"
 #include "sdmmc_cmd.h"
 #include "esp_vfs_fat.h"
-#include <ctime>
+#endif
+#if RADAR_SD_ANY
+#include <ctime>          // 檔名的時間戳,兩種掛載模式都要
 #endif
 extern "C" {
 #include "pngle.h"
@@ -89,6 +108,8 @@ extern "C" {
 #include "esphome/components/rpi_dpi_rgb/rpi_dpi_rgb.h"
 #elif RADAR_DISPLAY_RGB == 2
 #include "esphome/components/mipi_rgb/mipi_rgb.h"
+#elif RADAR_DISPLAY_RGB == 3
+#include "esphome/components/mipi_dsi/mipi_dsi.h"
 #endif
 #include "map_data.h"
 
@@ -1046,9 +1067,11 @@ inline char g_shot_path[40] = "";            // 寫進 SD 的檔名(不含目錄
 inline volatile bool g_shot_valid = false;
 
 #if RADAR_DISPLAY_RGB
-// 兩個 RGB 驅動的 panel handle 都叫 handle_ 且都是 protected,只有類別不同。
+// 三個驅動的 panel handle 都叫 handle_ 且都是 protected,只有類別不同。
 #if RADAR_DISPLAY_RGB == 1
 using RadarRgbDisplay = esphome::rpi_dpi_rgb::RpiDpiRgb;
+#elif RADAR_DISPLAY_RGB == 3
+using RadarRgbDisplay = esphome::mipi_dsi::MipiDsi;
 #else
 using RadarRgbDisplay = esphome::mipi_rgb::MipiRgb;
 #endif
@@ -1088,7 +1111,12 @@ inline void shot_bmp_row(int y, uint8_t *row) {
 // ---- microSD(SPI):三指截圖另存一份到 TF 卡 ----
 // 檔名 shot_YYYYMMDD_HHMMSS.bmp;SNTP 還沒對到時間就退回流水號。
 // 掛載只嘗試一次(g_sd_tried),失敗就永遠走 HTTP 那條路,不每次重試拖慢截圖。
-#if RADAR_SD_SPI
+#if RADAR_SD_EXT
+// 卡已經由 ESPHome 的 sd_storage 元件掛在 /sdcard(P4 走這條),我們不碰掛載。
+// 沒插卡時元件的 setup() 會 mark_failed,這裡的 fopen 自然失敗 → 退回 HTTP 那條路,
+// 行為和 SPI 模式一致。
+inline bool sd_mount() { return true; }
+#elif RADAR_SD_SPI
 inline bool g_sd_ready = false;
 inline bool g_sd_tried = false;
 
@@ -1126,7 +1154,10 @@ inline bool sd_mount() {
   g_sd_ready = true;
   return true;
 }
+#endif  // RADAR_SD_EXT / RADAR_SD_SPI
 
+#if RADAR_SD_ANY
+// 寫檔這半段兩種掛載模式完全共用:掛好之後就只是標準 POSIX。
 inline bool sd_save_shot() {
   g_shot_path[0] = 0;
   if (!sd_mount()) return false;
@@ -1164,7 +1195,7 @@ inline bool sd_save_shot() {
 }
 #else
 inline bool sd_save_shot() { return false; }
-#endif  // RADAR_SD_SPI
+#endif  // RADAR_SD_ANY
 
 inline esp_err_t shot_http_get(httpd_req_t *req) {
   if (!g_shot_valid || !g_shot_buf) { httpd_resp_send_404(req); return ESP_OK; }
@@ -1188,8 +1219,16 @@ inline bool screenshot_capture(RadarRgbDisplay *disp) {
   if (!g_shot_buf) g_shot_buf = (uint8_t *) heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
   if (!g_shot_buf) return false;
   void *fb = nullptr;
+#if RADAR_DISPLAY_RGB == 3
+  // MIPI-DSI:面板由 esp_lcd_new_panel_dpi() 建立(num_fbs = 1),像素經
+  // esp_lcd_panel_draw_bitmap() 寫進那份 DPI framebuffer,所以讀回來就是當前畫面。
+  // 板檔的 rotation: 180° 是 LVGL 的軟體旋轉,framebuffer 裡已經是轉正後的內容。
+  if (esp_lcd_dpi_panel_get_frame_buffer(RpiSpy::handle(disp), 1, &fb) != ESP_OK || !fb)
+    return false;
+#else
   if (esp_lcd_rgb_panel_get_frame_buffer(RpiSpy::handle(disp), 1, &fb) != ESP_OK || !fb)
     return false;
+#endif
   g_shot_valid = false;                      // 服務端讀到一半時避免撕裂判定
   memcpy(g_shot_buf, fb, BYTES);
   g_shot_valid = true;
