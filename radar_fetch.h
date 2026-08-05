@@ -102,6 +102,7 @@ extern "C" {
 #include "pngle.h"
 }
 #include "esp_log.h"
+#include "esphome/core/application.h"   // App.feed_wdt():截圖寫卡是主迴圈裡的長工作
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/image/image.h"
 #if RADAR_DISPLAY_RGB == 1
@@ -1177,17 +1178,31 @@ inline bool sd_save_shot() {
   uint8_t hdr[54];
   shot_bmp_header(hdr);
   bool ok = fwrite(hdr, 1, 54, f) == 54;
-  uint8_t *row = (uint8_t *) malloc((size_t) SCREEN_W * 3);
-  if (row == nullptr) {
+  // 一次湊滿 CHUNK_ROWS 列再寫。原本一列一列寫(1024x600 = 600 次 × 3KB)在 P4 上
+  // 慢到把主迴圈卡死、觸發 task watchdog 重開機:整張圖是 1.8MB,而每次 fwrite 都
+  // 要穿過 FATFS 的 512B 磁區快取。加大到 48KB 一批,交易次數少 16 倍。
+  // 這仍然是主迴圈裡的同步阻塞操作(截圖是使用者主動觸發、可以接受頓一下),
+  // 所以每批之後餵一次看門狗——不然寫得再快也只是把爆掉的門檻往後推。
+  const int CHUNK_ROWS = 16;
+  const size_t ROW_BYTES = (size_t) SCREEN_W * 3;
+  uint8_t *buf = (uint8_t *) heap_caps_malloc(ROW_BYTES * CHUNK_ROWS, MALLOC_CAP_SPIRAM);
+  if (buf == nullptr) buf = (uint8_t *) malloc(ROW_BYTES * CHUNK_ROWS);
+  if (buf == nullptr) {
     ok = false;
   } else {
+    int n = 0;                                    // 緩衝內已累積的列數
     for (int y = SCREEN_H - 1; ok && y >= 0; y--) {
-      shot_bmp_row(y, row);
-      ok = fwrite(row, 1, (size_t) SCREEN_W * 3, f) == (size_t) SCREEN_W * 3;
+      shot_bmp_row(y, buf + (size_t) n * ROW_BYTES);
+      if (++n == CHUNK_ROWS || y == 0) {
+        ok = fwrite(buf, 1, ROW_BYTES * n, f) == ROW_BYTES * n;
+        n = 0;
+        esphome::App.feed_wdt();
+      }
     }
-    free(row);
+    free(buf);
   }
   fclose(f);
+  esphome::App.feed_wdt();                        // fclose 會 flush + 更新目錄項目
   if (!ok) { remove(path); ESP_LOGW("radar_sd", "write failed (card full?)"); return false; }
   snprintf(g_shot_path, sizeof(g_shot_path), "%s", strrchr(path, '/') + 1);
   ESP_LOGI("radar_sd", "saved %s", path);
