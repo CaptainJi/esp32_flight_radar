@@ -243,13 +243,28 @@ touchscreen:
     id: my_touch
     display: main_display
     update_interval: 20ms
-    # 不要加 transform:GT911 的原點本來就在實體左上,raw 座標與面板一致。
-    # 實測(display rotation: 180° 已生效、畫面正立時,依序點四角的 raw):
+    # GT911 的 raw 原點就在實體左上,與面板一致。實測(畫面正立時點四角的 raw):
     #   左上 (27,13)    右上 (1013,12)
     #   左下 (23,593)   右下 (1010,597)
-    # 範圍與方向都正確,所以既不需要 calibration 也不需要鏡像。
-    # (曾誤加 mirror_x/mirror_y,結果 1023-27=996 把座標整個翻掉;當時是把
-    #  「顛倒畫面上看到的左上」誤當成實體左上而推錯,已撤回。)
+    # 範圍與方向都正確,所以不需要 calibration。
+    #
+    # >>> 但這個分支「需要」鏡像,而 main 分支「不需要」,原因在旋轉做在哪一層 <<<
+    #
+    # ESPHome 的觸控基底類別完全不看顯示器旋轉,只套下面 transform: 裡明寫的東西
+    # (touchscreen.cpp 的 add_raw_touch_position_,只用 swap_x_y_/invert_x_/invert_y_)。
+    # 真正會動觸控座標的是 LVGL 元件本身:
+    #     lvgl_esphome.cpp:443  rotate_coordinates(data->point.x, data->point.y)
+    #     lvgl_esphome.cpp:105  180° → x = width - x - 1;  y = height - y - 1
+    # 而它用的是「lvgl: 區塊的 rotation」。
+    #   main  (LVGL 8):rotation 寫在 display: → LVGL 的 rotation_ 是 NONE → 不翻 → 免鏡像
+    #   lvgl9 (LVGL 9):rotation 被迫搬到 lvgl: → LVGL 翻 180° → 要在這裡先翻回來
+    # mirror_x + mirror_y 合起來就是 180° 旋轉,正好抵消。
+    #
+    # 所以:把 rotation 從 display: 搬到 lvgl: 的那次改動,順帶讓觸控多轉了一次。
+    # 若哪天 rotation 又搬回 display:(或 LVGL 元件不再自己轉),這段要一起拿掉。
+    transform:
+      mirror_x: true
+      mirror_y: true
     on_touch:
       - lambda: |-
           if (!id(backlight).current_values.is_on()) {
@@ -308,9 +323,11 @@ display:
 
 # ---- LVGL:旋轉與位元組序 ----
 # rotation:面板掃描方向與 UI 差 180 度,LVGL 9 由 lvgl 元件自己轉(display 的
-# rotation 已移到這裡)。LVGL 9 也會自動把觸控座標跟著旋轉,所以 touchscreen
-# 仍然不需要 transform:——但這片板子尚未實機驗證過 LVGL 9,若上機後發現觸控
-# 上下左右相反,就是自動旋轉與 GT911 原生座標重複轉了,屆時再處理。
+# rotation 已移到這裡)。注意它「同時」會把觸控座標一起翻(lvgl_esphome.cpp:443),
+# 而 GT911 的 raw 原點本來就對齊 UI,所以上面的 touchscreen 必須加 mirror_x/mirror_y
+# 把那一次翻轉抵消掉——理由詳見該處註解。
+# (先前這裡預留了一句「若上機後發現觸控上下左右相反,就是重複轉了」——實機證實
+#  確實如此,已在 touchscreen 那邊修正。)
 # byte_order:LVGL 元件預設 big_endian(LV_COLOR_16_SWAP),mipi_dsi 是
 # little_endian;兩邊不一致會讓 RGB565 高低位元組顛倒(綠變暗紅)。
 # (LVGL 9 版會自動從 display 繼承 byte_order,這裡明寫是為了與註解對照;
