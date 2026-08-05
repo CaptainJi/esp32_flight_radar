@@ -29,6 +29,11 @@ esphome:
       - "-DSCREEN_H=${disp_h}"
       - "-DRADAR_CANVAS=${radar_canvas}"
       - "-DRADAR_DISPLAY_RGB=3"    # 3 = MIPI-DSI:截圖改讀 DPI framebuffer
+      # 這兩項都跟著下方 lvgl: 區塊走,改那裡就要一起改(理由見 radar_fetch.h):
+      #   這塊板子 display 與 lvgl 都是 little_endian → framebuffer 是原生 RGB565
+      - "-DSHOT_SWAP_BYTES=0"
+      #   lvgl: rotation: 180° → framebuffer 裡存的是顛倒的畫面,截圖要轉回來
+      - "-DRADAR_SHOT_ROT180=1"
       # 板載 ES8311 codec + 功放 → 鬧鐘頁的喇叭下拉多一項 LOCAL SPEAKER(見 alarm.h)
       - "-DRADAR_LOCAL_SPK=1"
       # microSD 由下方的 sd_storage 元件掛在 /sdcard,radar_fetch.h 不自己掛載
@@ -274,7 +279,14 @@ touchscreen:
             lv_obj_add_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
             lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x04180C), 0);
           }
-    # 三指下滑 → 截圖(1.5 秒內平均 y 下移 70px 觸發一次;DSI 上截圖停用,手勢無作用)
+    # 三指下滑 → 截圖(1.5 秒內平均 y 移動 70px 觸發一次)
+    #
+    # 注意這裡的方向與其他板子相反,原因是這塊板子多了 mirror_y:
+    # 上面 transform 的 mirror_x/mirror_y 是為了抵消 LVGL 9 對「指標輸入」的
+    # 180° 旋轉(見該處註解),但它作用在觸控元件內部(normalize_ 的 invert_y_),
+    # 而這個 on_update 拿到的 tp.y 正是鏡像之後的值——它不經過 LVGL 那條路。
+    # 結果:視覺上往下滑,tp.y 反而遞減。所以判斷式要反過來寫。
+    # 若哪天拿掉了 mirror_y,這裡也要跟著改回 my - shot_y0。
     on_update:
       - lambda: |-
           int n = (int) touches.size();
@@ -286,7 +298,7 @@ touchscreen:
               id(shot_armed) = true;
               id(shot_y0) = my;
               id(shot_ms) = millis();
-            } else if (my - id(shot_y0) > 70.0f && millis() - id(shot_ms) < 1500) {
+            } else if (id(shot_y0) - my > 70.0f && millis() - id(shot_ms) < 1500) {
               id(shot_armed) = false;
               id(take_screenshot).execute();
             }

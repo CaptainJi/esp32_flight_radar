@@ -1060,7 +1060,20 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
 }
 
 // ---- 三指下滑截圖:抓 RGB 面板 framebuffer → BMP,經 HTTP(:8081)供 HA downloader 下載 ----
-#define SHOT_SWAP_BYTES 1   // 若截圖紅藍對調/顏色錯亂,改 1 重編譯
+// framebuffer 裡的 RGB565 是不是位元組交換過的,取決於 LVGL 的 byte_order:
+//   S3 板:LVGL 預設 big_endian(LV_COLOR_16_SWAP=1)→ 要交換 → 1
+//   P4  :板檔把 display 與 lvgl 都設 little_endian → 原生序 → 用 build_flags 設 0
+// (實測:P4 上開著交換時,背景 0x040C08 的 RGB565 0x0061 被讀成 0x6100,
+//  深綠變成深橘褐 (96,32,0)。)
+#ifndef SHOT_SWAP_BYTES
+#define SHOT_SWAP_BYTES 1
+#endif
+// 截圖是否要轉 180°。LVGL 的軟體旋轉是「先把 UI 轉好再送進 framebuffer」,面板
+// 再以相差 180° 的方向掃出來,所以使用者看到的是正的、framebuffer 裡存的是顛倒的。
+// 直接讀回來會得到顛倒的畫面,需要轉回來。跟著板檔的 lvgl: rotation: 一起設。
+#ifndef RADAR_SHOT_ROT180
+#define RADAR_SHOT_ROT180 0
+#endif
 inline uint8_t *g_shot_buf = nullptr;        // 800*480*2 快照(PSRAM,首次截圖才配置)
 inline char g_shot_path[40] = "";            // 寫進 SD 的檔名(不含目錄);空=沒寫到卡
                                              // 宣告在 RADAR_DISPLAY_RGB 守衛外:截圖停用的
@@ -1084,9 +1097,17 @@ struct RpiSpy : public RadarRgbDisplay {
 };
 
 // 24-bit BMP 標頭(row 3*W 對 800/1024 都是 4 的倍數,免 padding)。HTTP 與 SD 共用。
-inline void shot_bmp_header(uint8_t hdr[54]) {
-  memset(hdr, 0, 54);
-  uint32_t img = (uint32_t) SCREEN_W * SCREEN_H * 3, sz = 54 + img, off = 54, ihsz = 40;
+// 標頭墊到 512 B(一個磁區)而不是緊湊的 54 B。BMP 的 bfOffBits 欄位本來就允許
+// 像素資料放在任意偏移,所有讀取器都會遵守,所以這是合規做法而非 hack。
+// 為什麼要這樣:像素資料若從第 54 B 開始,後面每一批寫入都跨在 512 B 磁區邊界上,
+// FATFS 只能對每個磁區做「讀-改-寫」,無法把整磁區直接串流給卡片。實機量到
+// 1.8MB 花 8.2 秒(約 225 KB/s),對 4-bit 40MHz 的 SDMMC 慢得離譜。
+// 對齊之後每批 48KB 剛好是 96 個完整磁區。
+#define SHOT_HDR_BYTES 512
+inline void shot_bmp_header(uint8_t hdr[SHOT_HDR_BYTES]) {
+  memset(hdr, 0, SHOT_HDR_BYTES);
+  uint32_t img = (uint32_t) SCREEN_W * SCREEN_H * 3, sz = SHOT_HDR_BYTES + img,
+           off = SHOT_HDR_BYTES, ihsz = 40;
   int32_t w = SCREEN_W, h = SCREEN_H;
   uint16_t planes = 1, bpp = 24;
   hdr[0] = 'B'; hdr[1] = 'M';
@@ -1097,9 +1118,19 @@ inline void shot_bmp_header(uint8_t hdr[54]) {
 
 // 把 g_shot_buf 的第 y 列(RGB565)轉成 BMP 的一列(24-bit BGR)。
 inline void shot_bmp_row(int y, uint8_t *row) {
+  // 呼叫端從 SCREEN_H-1 往下數(BMP 由下往上存)。ROT180 時把來源的列與欄都反向,
+  // 合起來就是 180° 旋轉;#if 是編譯期的,內圈不會多出分支。
+#if RADAR_SHOT_ROT180
+  const uint16_t *src = (const uint16_t *) g_shot_buf + (size_t) (SCREEN_H - 1 - y) * SCREEN_W;
+#else
   const uint16_t *src = (const uint16_t *) g_shot_buf + (size_t) y * SCREEN_W;
+#endif
   for (int x = 0; x < SCREEN_W; x++) {
+#if RADAR_SHOT_ROT180
+    uint16_t v = src[SCREEN_W - 1 - x];
+#else
     uint16_t v = src[x];
+#endif
 #if SHOT_SWAP_BYTES
     v = (uint16_t) ((v >> 8) | (v << 8));
 #endif
@@ -1175,9 +1206,9 @@ inline bool sd_save_shot() {
   }
   FILE *f = fopen(path, "wb");
   if (!f) { ESP_LOGW("radar_sd", "fopen %s failed", path); return false; }
-  uint8_t hdr[54];
+  uint8_t hdr[SHOT_HDR_BYTES];
   shot_bmp_header(hdr);
-  bool ok = fwrite(hdr, 1, 54, f) == 54;
+  bool ok = fwrite(hdr, 1, SHOT_HDR_BYTES, f) == SHOT_HDR_BYTES;
   // 一次湊滿 CHUNK_ROWS 列再寫。原本一列一列寫(1024x600 = 600 次 × 3KB)在 P4 上
   // 慢到把主迴圈卡死、觸發 task watchdog 重開機:整張圖是 1.8MB,而每次 fwrite 都
   // 要穿過 FATFS 的 512B 磁區快取。加大到 48KB 一批,交易次數少 16 倍。
@@ -1215,10 +1246,10 @@ inline bool sd_save_shot() { return false; }
 inline esp_err_t shot_http_get(httpd_req_t *req) {
   if (!g_shot_valid || !g_shot_buf) { httpd_resp_send_404(req); return ESP_OK; }
   const int H = SCREEN_H;
-  uint8_t hdr[54];
+  uint8_t hdr[SHOT_HDR_BYTES];
   shot_bmp_header(hdr);
   httpd_resp_set_type(req, "image/bmp");
-  httpd_resp_send_chunk(req, (const char *) hdr, 54);
+  httpd_resp_send_chunk(req, (const char *) hdr, SHOT_HDR_BYTES);
   static uint8_t row[SCREEN_W * 3];
   for (int y = H - 1; y >= 0; y--) {         // BMP 由下往上
     shot_bmp_row(y, row);
