@@ -89,13 +89,32 @@ and the matching `external_components` block to fall back to the built-in compon
 > `byte_order` must match between the display and the `lvgl` block (both `little_endian`
 > here — the display default; leaving LVGL on its own `big_endian` default swaps every
 > RGB565 byte pair and tints the whole screen dark red), the panel scans 180° from the UI
-> so the display needs `rotation: 180°` (this model is `no_transform`, so LVGL does it in
-> software and allocates a second rotation buffer), and the GT911 needs **no** transform —
-> its origin already matches the panel. Note the SDIO bus to the C6 is *not* the microSD
-> SDMMC bus: the official `04_sdmmc` example uses CLK 43 / CMD 44 / D0-D3 39,40,41,42
-> for the card, which are different pins. On the P4 the parallel-RGB framebuffer
-> screenshot is compiled out (MIPI-DSI has no equivalent grab); every other feature is
-> shared. Wi-Fi over the C6 has not been confirmed working yet.
+> so it needs `rotation: 180°` — on this branch that goes in the **`lvgl:`** block, not
+> `display:`, which LVGL 9 rejects outright (this model is `no_transform`, so LVGL does
+> it in software and allocates a second rotation buffer).
+>
+> That rotation has two consequences that are easy to miss, because they pull in
+> opposite directions. The LVGL component rotates **pointer input** by the same angle,
+> while ESPHome's touchscreen base never looks at rotation at all — so the GT911, whose
+> raw origin already matches the UI, needs `mirror_x` + `mirror_y` to cancel LVGL's
+> flip. But the three-finger gesture handler reads the touchscreen's own coordinates,
+> which do *not* pass through LVGL, so it sees the mirrored values and its comparison
+> has to invert with them. Change one and you must change the other.
+>
+> **microSD works on this branch.** The card is on the native SDMMC bus — CLK 43 /
+> CMD 44 / D0-D3 39,40,41,42, slot 0, which does not collide with the C6's SDIO on
+> slot 1. Two things are not obvious: the P4 powers the card's IO rail from an on-chip
+> LDO that nothing turns on by default (patched into the vendored `sd_storage`, channel
+> 4, matching Espressif's own P4 BSP), and the card must be **FAT32** — exFAT and NTFS
+> are not compiled in, and an NTFS card fails in a thoroughly misleading way: it mounts
+> far enough to read sector 0, then FATFS treats the NTFS boot code as a partition table
+> and reads past the end of the card.
+>
+> **Screenshots work too**, reading the DPI framebuffer back with
+> `esp_lcd_dpi_panel_get_frame_buffer()`. Two board flags go with it: `SHOT_SWAP_BYTES=0`
+> because this framebuffer is native RGB565 rather than byte-swapped, and
+> `RADAR_SHOT_ROT180=1` because LVGL rotates the UI *before* it reaches the framebuffer,
+> so what you see upright is stored upside down. Wi-Fi over the C6 is confirmed working.
 >
 > **Take pin numbers from the official BSP, not from the P4 family in general.** The
 > component-registry BSP `waveshare/esp32_p4_wifi6_touch_lcd_7b`
@@ -176,12 +195,26 @@ psram 覆寫則要等上游修好才能刪:移除該目錄與對應的 `external
 > **P4-7B 已實機燒錄**,面板、顏色、觸控都驗證過。有三件事必須同時正確,而且互相牽動:
 > `byte_order` 要與 `lvgl` 區塊一致(這裡兩邊都是 `little_endian`,即 display 的預設值;
 > 若讓 LVGL 留在它自己的 `big_endian` 預設,每個 RGB565 的位元組對會被交換,整片畫面偏
-> 暗紅)、面板掃描方向與 UI 差 180 度所以 display 要 `rotation: 180°`(這個 model 標了
-> `no_transform`,只能由 LVGL 軟體旋轉並另配一份旋轉緩衝)、而 GT911 **不要**任何
-> transform —— 它的原點本來就與面板一致。注意連到 C6 的 SDIO **不是** microSD 的 SDMMC:
-> 官方 `04_sdmmc` 範例給 TF 卡用的是 CLK 43 / CMD 44 / D0-D3 39,40,41,42,是另一組腳位。
-> P4 上平行 RGB 的 framebuffer 截圖會被編譯掉(DSI 無對應的抓取方式),其餘功能完全共用。
-> 透過 C6 的 Wi-Fi 目前尚未確認可用。
+> 暗紅)、面板掃描方向與 UI 差 180 度所以要 `rotation: 180°` —— 本分支這一項寫在
+> **`lvgl:`** 區塊而不是 `display:`,後者在 LVGL 9 會直接被拒絕(這個 model 標了
+> `no_transform`,只能由 LVGL 軟體旋轉並另配一份旋轉緩衝)。
+>
+> 這個旋轉有兩個容易漏掉的連鎖效應,而且方向相反。LVGL 元件會把**指標輸入**也轉同樣
+> 的角度,而 ESPHome 的觸控基底類別根本不看旋轉 —— 所以原點本來就對齊 UI 的 GT911
+> 反而需要 `mirror_x` + `mirror_y` 去抵消 LVGL 那一次。但三指手勢讀的是觸控元件自己
+> 的座標,**不經過** LVGL,拿到的是鏡像後的值,判斷式必須跟著反過來。改一邊就要改另一邊。
+>
+> **本分支的 microSD 可用。** 卡走原生 SDMMC —— CLK 43 / CMD 44 / D0-D3 39,40,41,42,
+> slot 0,與 C6 佔用的 slot 1 不衝突。兩件不明顯的事:P4 的卡片 IO 電軌由晶片內部 LDO
+> 供電,而預設沒有人會打開它(已修補進 vendored 的 `sd_storage`,通道 4,與 Espressif
+> 官方 P4 BSP 一致);以及卡片必須是 **FAT32** —— exFAT 與 NTFS 都沒有編進去,而 NTFS
+> 的失敗方式極具誤導性:它會成功讀到第 0 磁區,然後 FATFS 把 NTFS 的開機碼當成分割表,
+> 去讀超出卡片容量的位置。
+>
+> **截圖也可用**,以 `esp_lcd_dpi_panel_get_frame_buffer()` 讀回 DPI framebuffer。
+> 隨附兩個板檔旗標:`SHOT_SWAP_BYTES=0`(這裡的 framebuffer 是原生 RGB565,不是位元組
+> 交換過的)、`RADAR_SHOT_ROT180=1`(LVGL 是先把 UI 轉好才送進 framebuffer,所以你看到
+> 正立的畫面在裡面是顛倒的)。透過 C6 的 Wi-Fi 已確認可用。
 >
 > **腳位要查這片板子的官方 BSP,不要用 P4 家族的通例去推。** 元件登錄庫的
 > `waveshare/esp32_p4_wifi6_touch_lcd_7b`(`include/bsp/esp32_p4_wifi6_touch_lcd_7b.h`)

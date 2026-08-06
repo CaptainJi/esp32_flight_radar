@@ -38,9 +38,6 @@ esphome:
       - "-DRADAR_LOCAL_SPK=1"
       # microSD 由下方的 sd_storage 元件掛在 /sdcard,radar_fetch.h 不自己掛載
       - "-DRADAR_SD_EXT=1"
-      # 暫時:掛載失敗時多印卡片容量與第 0 磁區的真實內容(components/sd_storage
-      # /sd_storage.cpp 的 SD_STORAGE_MOUNT_PROBE 區塊)。TF 卡調通後拿掉。
-      - "-DSD_STORAGE_MOUNT_PROBE=1"
 
 # ---- 本地覆寫元件 ----
 # storage / sd_storage 取自 p1ngb4ck 的 ESPHome fork(釘 commit,見兩者 __init__.py
@@ -125,32 +122,6 @@ sd_storage:
   slot: 0
   mount_path: /sdcard
 
-# 診斷用(TF 卡調通後請把整段刪掉,恢復 common/core.yaml 的 INFO):
-# sd_storage 的掛載細節(LDO 通道、卡片型別/容量、每次嘗試)都是 ESP_LOGD,
-# 全域 INFO 時看不到。ESPHome 不允許單一 tag 比全域更詳細,所以只能整體拉到
-# DEBUG,再把跟這件事無關又吵的 tag 壓回 INFO。
-logger:
-  level: DEBUG
-  logs:
-    sd_storage: DEBUG
-    lvgl: INFO
-    display: INFO
-    sensor: INFO
-    text_sensor: INFO
-    binary_sensor: INFO
-    number: INFO
-    switch: INFO
-    select: INFO
-    light: INFO
-    api: INFO
-    api.service: INFO
-    wifi: INFO
-    json: INFO
-    component: INFO
-    # esp-idf 刻意「不」壓回 INFO:IDF 自己的 sdmmc / diskio_sdmmc / vfs_fat_sdmmc
-    # 錯誤全部經由這個 tag 轉出來,那才是指出「失敗在哪一層」的關鍵資訊。
-    # (第一次改成 INFO 之後那些行就消失了,反而看不出是卡片初始化失敗還是
-    #  FATFS 讀不到有效的開機磁區。)
 
 # ---- Backlight (real PWM GPIO on the P4 board) ----
 # 腳位依官方 BSP(components.espressif.com 的 waveshare/esp32_p4_wifi6_touch_lcd_7b,

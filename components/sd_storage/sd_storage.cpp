@@ -22,10 +22,6 @@
 #include "freertos/task.h"
 #include "esp_idf_version.h"
 #include "esphome/components/storage/storage.h"
-#if defined(SD_STORAGE_MOUNT_PROBE)
-#include <cinttypes>
-#include "esp_heap_caps.h"
-#endif
 
 #if defined(USE_ESP32_VARIANT_ESP32P4)
 // === 本地覆寫:相對於 p1ngb4ck/esphome@d15c20d 的唯一改動 ===
@@ -273,44 +269,6 @@ storage::StorageError SdMmc::mount() {
 
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
-#if defined(SD_STORAGE_MOUNT_PROBE)
-    // === 暫時的 bring-up 診斷,問題查清楚後整段刪掉 ===
-    // esp_vfs_fat_sdmmc_mount() 失敗時不會把 sdmmc_card_t 交出來,所以掛載失敗
-    // 之後我們自己再 init 一次,把「卡片自己回報的容量」和「第 0 磁區的真實內容」
-    // 印出來。這兩項能一次分辨兩種完全不同的病因:
-    //   - capacity 不合理 → CSD 讀錯,問題在卡片初始化階段;
-    //   - capacity 正確但 MBR 簽章不是 55AA → 資料讀回來是垃圾。
-    // 第二種情況下,這裡刻意把磁區讀進「內部 RAM」的對齊緩衝;若我們讀得到正確
-    // 的 MBR 而 FATFS 讀不到,病因就是 FATFS 的緩衝被配到 PSRAM
-    // (CONFIG_FATFS_ALLOC_PREFER_EXTRAM=y)。
-    {
-      sdmmc_card_t probe = {};
-      esp_err_t perr = sdmmc_card_init(&host, &probe);
-      if (perr != ESP_OK) {
-        ESP_LOGE(TAG, "  probe: sdmmc_card_init failed: %s", esp_err_to_name(perr));
-      } else {
-        ESP_LOGE(TAG, "  probe: csd_ver=%d sector_size=%d capacity=%d sectors (%llu MB)", probe.csd.csd_ver,
-                 probe.csd.sector_size, probe.csd.capacity,
-                 ((uint64_t) probe.csd.capacity) * probe.csd.sector_size / (1024 * 1024));
-        auto *sec = (uint8_t *) heap_caps_aligned_alloc(64, 512, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
-        if (sec == nullptr) {
-          ESP_LOGE(TAG, "  probe: no internal DMA buffer");
-        } else {
-          esp_err_t rerr = sdmmc_read_sectors(&probe, sec, 0, 1);
-          if (rerr != ESP_OK) {
-            ESP_LOGE(TAG, "  probe: read sector 0 failed: %s", esp_err_to_name(rerr));
-          } else {
-            // 分割區項目 0 在 0x1BE,其中的起始 LBA 在 +8 → 0x1C6 (454)
-            uint32_t lba0 = (uint32_t) sec[454] | ((uint32_t) sec[455] << 8) | ((uint32_t) sec[456] << 16) |
-                            ((uint32_t) sec[457] << 24);
-            ESP_LOGE(TAG, "  probe: sector0 sig=%02X%02X type0=%02X lba0=%" PRIu32 " (read into internal RAM)",
-                     sec[510], sec[511], sec[450], lba0);
-          }
-          heap_caps_free(sec);
-        }
-      }
-    }
-#endif
     return storage::StorageError::NOT_READY;
   }
 
