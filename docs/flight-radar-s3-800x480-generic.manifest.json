@@ -1,0 +1,13 @@
+{
+  "name": "ESP32 Flight Radar (s3-800x480-generic)",
+  "version": "v1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "https://github.com/delphicchen/esp32_flight_radar/releases/download/v1.0.0/flight-radar-s3-800x480-generic-v1.0.0.factory.bin", "offset": 0 }
+      ]
+    }
+  ]
+}
