@@ -75,7 +75,8 @@ for spec in "${ENTRIES[@]}"; do
 
   # ESP Web Tools 的 manifest。factory bin 是「含 bootloader + 分割表 + app」
   # 的完整映像,燒在 offset 0。
-  # 注意:ESP Web Tools 對 ESP32-P4 的支援度尚未實測,S3 沒問題。
+  # ESP Web Tools / esptool-js 的文件列出 ESP32-P4 為支援的 chipFamily,
+  # 但我們沒有實際用瀏覽器燒過 P4;S3 是確定沒問題的。
   cat > "dist/${OUT}.manifest.json" <<JSON
 {
   "name": "ESP32 Flight Radar (${SLUG})",
