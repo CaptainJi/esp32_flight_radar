@@ -16,6 +16,14 @@ cd "$(dirname "$0")/.."
 # ---- 版本:git tag,沒有 tag 就退回 commit ----
 VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo unknown)"
 
+# ---- manifest 裡韌體的位址 ----
+# 韌體約 2MB 一個,不該進 repo,所以正式發佈時放 GitHub Releases,網頁只放
+# manifest。設了這個變數,manifest 就寫絕對網址;不設則寫相對檔名,方便本機
+# 用 `python3 -m http.server` 在 dist/ 裡直接測。
+#   RELEASE_BASE_URL=https://github.com/<user>/<repo>/releases/download/v1.0.0 \
+#     tools/build_release.sh
+RELEASE_BASE_URL="${RELEASE_BASE_URL:-}"
+
 # ---- 分支 → 板子對照 ----
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 case "$BRANCH" in
@@ -74,10 +82,18 @@ for spec in "${ENTRIES[@]}"; do
   cp "$SRC" "dist/${OUT}.factory.bin"
 
   # ESP Web Tools 的 manifest。factory bin 是「含 bootloader + 分割表 + app」
-  # 的完整映像,燒在 offset 0。
+  # 的完整映像,一律燒在 offset 0 —— S3 的 bootloader 就在檔案開頭,P4 的檔案
+  # 開頭是 0xFF 填充、bootloader 落在 0x2000,兩者都是從 0 寫進去才正確。
+  if [ -n "$RELEASE_BASE_URL" ]; then
+    BIN_URL="${RELEASE_BASE_URL%/}/${OUT}.factory.bin"
+  else
+    BIN_URL="${OUT}.factory.bin"
+  fi
   # ESP Web Tools / esptool-js 的文件列出 ESP32-P4 為支援的 chipFamily,
   # 但我們沒有實際用瀏覽器燒過 P4;S3 是確定沒問題的。
-  cat > "dist/${OUT}.manifest.json" <<JSON
+  # manifest 用「不帶版本號」的固定檔名:docs/install.html 直接引用它,這樣發新版
+  # 只要覆蓋 manifest、不用改網頁。版本資訊在 manifest 內容與韌體檔名裡。
+  cat > "dist/flight-radar-${SLUG}.manifest.json" <<JSON
 {
   "name": "ESP32 Flight Radar (${SLUG})",
   "version": "${VERSION}",
@@ -86,7 +102,7 @@ for spec in "${ENTRIES[@]}"; do
     {
       "chipFamily": "${CHIP}",
       "parts": [
-        { "path": "${OUT}.factory.bin", "offset": 0 }
+        { "path": "${BIN_URL}", "offset": 0 }
       ]
     }
   ]
