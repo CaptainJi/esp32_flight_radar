@@ -54,7 +54,20 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 | `radar.yaml` | esp32-s3-5inch-rgb-001 (generic) | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | **verified on hardware** |
 | `radar-s3-5.yaml` | Waveshare ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | config + build verified, **not yet flashed** |
 | `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | native | **verified on hardware** |
-| `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | **verified on hardware** (panel, colours, touch) |
+| `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | **verified on hardware** — but use `lvgl9` for microSD + screenshots |
+
+> **Which branch do I use?** The two branches are not "old" and "new" — each one
+> serves different boards, and both are maintained:
+>
+> | Board | Branch | ESPHome | LVGL |
+> |-------|--------|---------|------|
+> | the three **ESP32-S3** boards | `main` (you are here) | 2026.3.3 | 8.4 |
+> | **ESP32-P4** Touch-LCD-7B | `lvgl9` | 2026.6.5 | 9.5 |
+>
+> `radar-p4-7b.yaml` builds and runs from this branch, but **without microSD support or
+> screenshots** — both need a component that only loads on the newer ESPHome. If you
+> have the P4 board, use the `lvgl9` branch. The S3 boards stay here because LVGL 9
+> measurably slowed the radar sweep down on them.
 
 Common requirements for the RGB boards: **≥8 MB octal PSRAM** (quad-PSRAM can't feed
 the RGB panel), a **GT911** I²C touch controller, and 16 MB flash (`flash_size` is set
@@ -128,6 +141,7 @@ All of these are Home Assistant / web entities, stored in NVS:
 - Airports / runways / navaids — [OurAirports](https://ourairports.com/) (public domain)
 - Taiwan airspace boundaries — [Taiwan CAA eAIP](https://ais.caa.gov.tw/) ENR 2.1
 - Airspace boundaries elsewhere (optional) — [openAIP](https://www.openaip.net/) (CC BY-NC)
+- microSD storage components (used on the `lvgl9` branch) — [p1ngb4ck's ESPHome fork](https://github.com/p1ngb4ck/esphome)
 - Concept — [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-radar)
 - Climb/descent arrow glyphs — [DejaVu Sans](https://dejavu-fonts.github.io/) (Bitstream Vera / DejaVu license, `fonts/DejaVuSans.ttf`)
 
@@ -168,7 +182,19 @@ Please respect each provider's free-tier terms; this project is a hobby build, n
 | `radar.yaml` | esp32-s3-5inch-rgb-001(通用) | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | **實機驗證過** |
 | `radar-s3-5.yaml` | 微雪 ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | config + 編譯驗證,**尚未實機燒錄** |
 | `radar-s3-5b.yaml` | 微雪 ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | 原生 | **實機驗證過** |
-| `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI(EK79007) | ESP32-C6(esp-hosted/SDIO) | **實機驗證過**(面板、顏色、觸控) |
+| `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI(EK79007) | ESP32-C6(esp-hosted/SDIO) | **實機驗證過** —— 但 microSD 與截圖請用 `lvgl9` |
+
+> **我該用哪個分支?** 兩個分支不是「舊」與「新」的關係,而是各自服務不同的板子,
+> 兩邊都持續維護:
+>
+> | 板子 | 分支 | ESPHome | LVGL |
+> |------|------|---------|------|
+> | 三塊 **ESP32-S3** 板 | `main`(你在這裡) | 2026.3.3 | 8.4 |
+> | **ESP32-P4** Touch-LCD-7B | `lvgl9` | 2026.6.5 | 9.5 |
+>
+> `radar-p4-7b.yaml` 在本分支可以編譯也能跑,但**沒有 microSD 支援、也沒有截圖** ——
+> 兩者都需要只在新版 ESPHome 才載得起來的元件。手上是 P4 板請改用 `lvgl9` 分支。
+> S3 留在這裡,是因為實測 LVGL 9 會讓掃描線變慢。
 
 RGB 板共同需求:**≥8 MB octal PSRAM**(quad 餵不動 RGB 屏)、**GT911** I²C 觸控、16 MB flash
 (`flash_size` 各板自訂)。其他白牌 800×480 RGB+GT911 板(Sunton ESP32-8048S050、Guition
