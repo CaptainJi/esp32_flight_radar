@@ -9,14 +9,15 @@
 #    1. Display bus is MIPI-DSI, not parallel-RGB -> `mipi_dsi` platform
 #       with the built-in Waveshare panel model (dimensions/timings/init).
 #    2. Wi-Fi lives on an ESP32-C6 reached over SDIO -> `esp32_hosted`.
-#    3. The RGB-framebuffer screenshot does not apply on DSI, so the C++
-#       helper is compiled out with RADAR_DISPLAY_RGB=0 (screenshots
-#       become a no-op; everything else is identical).
+#    3. Screenshots read the DPI framebuffer instead of the parallel-RGB
+#       one (RADAR_DISPLAY_RGB=3), and the microSD sits on the native
+#       SDMMC bus rather than SPI -- see the sd_storage block below.
 #
-#  >>> VERIFY on your unit: the ESP32-C6 SDIO pins below come from the
-#      published Waveshare P4 family wiring. Cross-check them against your
-#      board revision if Wi-Fi does not come up. (Backlight GPIO32 and I2C
-#      GPIO7/8 are now taken from the official Waveshare BSP header.) <<<
+#  Wi-Fi over the C6, the panel, touch, microSD and screenshots are all
+#  confirmed working on hardware. Backlight GPIO32 and I2C GPIO7/8 come
+#  from the official Waveshare BSP header; the C6 SDIO pins come from the
+#  published P4 family wiring, so cross-check those against your board
+#  revision if Wi-Fi does not come up on yours.
 #
 #  Resolution / radar geometry come from radar-p4-7b.yaml.
 # =====================================================================
