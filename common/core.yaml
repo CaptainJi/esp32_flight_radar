@@ -18,6 +18,7 @@ esphome:
       - kikuchan98/pngle@^1.0.0
   includes:
     - map_data.h
+    - aircraft_db.h        # 產生器:tools/make_aircraft_db.py(機型輪廓 + 規格表)
     - radar_fetch.h
     - alarm.h
   on_boot:
@@ -339,10 +340,16 @@ globals:
   - { id: ac_cs,  type: 'std::vector<std::string>' }
   - { id: ac_sq,  type: 'std::vector<std::string>' }   # squawk(三家來源都有)
   - { id: ac_ty,  type: 'std::vector<std::string>' }   # ICAO 機型代碼(OpenSky 無,會是空字串)
+  # 以下四項只有 readsb v2(airplanes.live / adsb.lol)提供,OpenSky 一律空值
+  - { id: ac_reg,  type: 'std::vector<std::string>' }  # 註冊號(B-5416)
+  - { id: ac_desc, type: 'std::vector<std::string>' }  # 機型全名,查表失敗時的後備
+  - { id: ac_cat,  type: 'std::vector<std::string>' }  # ADS-B 發射器類別(A3…),通用輪廓用
+  - { id: ac_hex,  type: 'std::vector<uint32_t>' }     # ICAO24 位址,查註冊國用
   - { id: ac_vr,  type: 'std::vector<float>' }   # 垂直速率(m/s)
   - { id: ac_lc,  type: 'std::vector<uint32_t>' } # last_contact(epoch秒),ATC 訊號延遲判斷
   - { id: slot_map, type: 'std::vector<int>' }   # 標記槽 -> 航班索引
   - { id: sel_cs_g, type: std::string }          # 選取中的呼號
+  - { id: spec_on, type: bool, initial_value: 'false' }  # 機型徽章按下 → 顯示輪廓與規格
   - { id: fetch_ms,    type: uint32_t, initial_value: '0' }
   - { id: poll_tick,   type: int,      initial_value: '0' }
   - { id: sweep_angle, type: float,    initial_value: '0' }
@@ -423,6 +430,7 @@ script:
           if (slot < 0 || slot >= (int) id(slot_map).size()) return;
           int i = id(slot_map)[slot];
           if (i < 0 || i >= (int) id(ac_cs).size()) return;
+          id(spec_on) = false;   // 換機/取消選取都回到航班資訊(規格是上一台的)
           if (id(info_on)) {   // 點選飛機 → 退出系統資訊顯示
             id(info_on) = false;
             lv_obj_clear_state((lv_obj_t *) id(info_btn), LV_STATE_CHECKED);
@@ -463,6 +471,27 @@ script:
               i < (int) id(ac_ty).size() ? id(ac_ty)[i].c_str() : "");
       - script.execute: fetch_route
       - script.execute: atc_panel_sync   # 選機→藏圖層面板;取消選取→ATC 模式下重新顯示
+
+  - id: toggle_spec            # 機型徽章當按鈕:輪廓+規格 ↔ 航班資訊
+    mode: single
+    then:
+      - lambda: |-
+          if (id(sel_cs_g).empty() || id(info_on)) return;
+          id(spec_on) = !id(spec_on);
+          if (id(spec_on)) {
+            // 選取狀態存的是呼號不是索引(每輪重排),要現查
+            int i = -1;
+            for (size_t k = 0; k < id(ac_cs).size(); k++)
+              if (id(ac_cs)[k] == id(sel_cs_g)) { i = (int) k; break; }
+            if (i >= 0)
+              radar_fill_spec(id(spec_img), id(spec_l0), id(spec_l1), id(spec_l2),
+                              id(spec_l3), id(spec_l4), id(spec_l5), id(spec_l6),
+                              id(ac_ty)[i].c_str(), id(ac_reg)[i].c_str(),
+                              id(ac_desc)[i].c_str(), id(ac_cat)[i].c_str(),
+                              id(ac_hex)[i], id(ac_cs)[i].c_str(),
+                              id(units_imperial));
+          }
+      - script.execute: atc_panel_sync
 
   - id: show_sysinfo           # i 鈕開啟時,右下角面板顯示系統資訊(每秒刷新)
     mode: single
@@ -540,6 +569,15 @@ script:
           bool show = tab_mode && id(sys_tab) == 1;
           if (show) lv_obj_clear_flag(id(atc_panel), LV_OBJ_FLAG_HIDDEN);
           else      lv_obj_add_flag(id(atc_panel), LV_OBJ_FLAG_HIDDEN);
+          // 機型規格面板:只在「有選機、且不在系統資訊」時才可能出現,
+          // 三個覆蓋層(atc_panel / sys_tabbar / spec_panel)一律在這裡決定,不各自為政
+          bool spec = id(spec_on) && !tab_mode && !id(sel_cs_g).empty();
+          if (!spec) id(spec_on) = false;
+          if (spec) lv_obj_clear_flag(id(spec_panel), LV_OBJ_FLAG_HIDDEN);
+          else      lv_obj_add_flag(id(spec_panel), LV_OBJ_FLAG_HIDDEN);
+          // 徽章按下時反白,當作按鈕的按下狀態
+          lv_obj_set_style_bg_color(id(sel_type_l), lv_color_hex(spec ? 0xFFEE00 : 0x00C060), 0);
+          lv_obj_set_style_text_color(id(sel_type_l), lv_color_hex(spec ? 0x181400 : 0x04180C), 0);
           // 分頁列與分頁鈕高亮(amber 航管配色)
           if (tab_mode) {
             lv_obj_clear_flag(id(sys_tabbar), LV_OBJ_FLAG_HIDDEN);
@@ -882,7 +920,10 @@ interval:
           id(ac_lat).clear(); id(ac_lon).clear(); id(ac_trk).clear();
           id(ac_vel).clear(); id(ac_alt).clear(); id(ac_cs).clear(); id(ac_vr).clear();
           id(ac_lc).clear(); id(ac_sq).clear(); id(ac_ty).clear();
+          id(ac_reg).clear(); id(ac_desc).clear(); id(ac_cat).clear(); id(ac_hex).clear();
           for (auto &ac : radar_bg::g_result) {
+            id(ac_reg).push_back(ac.reg); id(ac_desc).push_back(ac.desc);
+            id(ac_cat).push_back(ac.cat); id(ac_hex).push_back(ac.hex);
             id(ac_lat).push_back(ac.lat); id(ac_lon).push_back(ac.lon);
             id(ac_trk).push_back(ac.trk); id(ac_vel).push_back(ac.vel);
             id(ac_alt).push_back(ac.alt); id(ac_cs).push_back(ac.cs);
@@ -920,7 +961,17 @@ interval:
               lv_label_set_text(id(sel_l4), b2);
               radar_sq_line(id(sel_l5), id(ac_sq)[si].c_str());
               radar_type_badge(id(sel_type_l), id(ac_ty)[si].c_str());
+              // 規格面板開著就一併刷新:機型碼可能後補上來,單位也可能在設定頁被改過
+              if (id(spec_on))
+                radar_fill_spec(id(spec_img), id(spec_l0), id(spec_l1), id(spec_l2),
+                                id(spec_l3), id(spec_l4), id(spec_l5), id(spec_l6),
+                                id(ac_ty)[si].c_str(), id(ac_reg)[si].c_str(),
+                                id(ac_desc)[si].c_str(), id(ac_cat)[si].c_str(),
+                                id(ac_hex)[si], id(ac_cs)[si].c_str(),
+                                id(units_imperial));
             } else {
+              id(spec_on) = false;   // 飛出範圍 → 徽章消失,規格面板不能留著沒法關
+              lv_obj_add_flag(id(spec_panel), LV_OBJ_FLAG_HIDDEN);
               lv_label_set_text(id(sel_l1), "(out of range)");
               lv_label_set_text(id(sel_l2), "");
               lv_label_set_text(id(sel_l3), "");

@@ -215,6 +215,9 @@ ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
 
 - Aircraft states — [OpenSky Network](https://opensky-network.org/), [airplanes.live](https://airplanes.live/), [adsb.lol](https://adsb.lol/)
 - Route lookup — [adsbdb.com](https://www.adsbdb.com/)
+- Aircraft silhouettes — [plane-watch/pw-silhouettes](https://github.com/plane-watch/pw-silhouettes) (CC BY-NC-SA 4.0)
+- Type designators, operators, ICAO24 allocations — ICAO Doc 8643 / Doc 8585 / Annex 10 via [rikgale/ICAOList](https://github.com/rikgale/ICAOList)
+- Aircraft performance — [openap](https://github.com/TUDelft-CNS-ATM/openap) (TU Delft)
 - Weather radar — [RainViewer](https://www.rainviewer.com/)
 - Local weather — [Open-Meteo](https://open-meteo.com/)
 - Taiwan boundaries — [g0v/twgeojson](https://github.com/g0v/twgeojson)
