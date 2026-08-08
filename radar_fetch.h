@@ -122,6 +122,11 @@ struct AcInfo {
   std::string cs;
   std::string sq;   // squawk / mode-A code(三家來源都有;OpenSky 是 states[14])
   std::string ty;   // ICAO 機型代碼(如 B738);只有 airplanes.live / adsb.lol 提供
+  // 以下四項只有 readsb v2(airplanes.live / adsb.lol)有,OpenSky 全部留空/0。
+  std::string reg;  // 註冊號(如 B-5416)
+  std::string desc; // 機型全名(如 BOEING 737-800);aircraft_db 查不到時的後備
+  std::string cat;  // ADS-B 發射器類別(A1~A7 / B1~B7 / C1~C3),查不到機型時的通用輪廓
+  uint32_t hex = 0; // ICAO24 位址,查註冊國籍用(0 = 未知,OpenSky 走這條)
 };
 
 struct Job {
@@ -341,6 +346,10 @@ inline bool do_states_v2(const Job &j, int src) {
       ac.lc = now_s > (uint32_t) seen ? now_s - (uint32_t) seen : 0;
       ac.sq = a["squawk"] | "";
       ac.ty = a["t"] | "";     // ICAO 機型代碼
+      ac.reg = a["r"] | "";    // 註冊號
+      ac.desc = a["desc"] | "";
+      ac.cat = a["category"] | "";
+      ac.hex = (uint32_t) strtoul(a["hex"] | "0", nullptr, 16);
       const char *c = a["flight"] | "";
       ac.cs = c;
       while (!ac.cs.empty() && ac.cs.back() == ' ') ac.cs.pop_back();
@@ -1325,6 +1334,140 @@ inline void radar_type_badge(lv_obj_t *lbl, const char *ty) {
   }
   lv_label_set_text(lbl, ty);
   lv_obj_clear_flag(lbl, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ---- 機型輪廓 + 技術規格(按下機型徽章後蓋在航班資訊上的 spec_panel)----
+// aircraft_db.h 只放純資料(A8 點陣 + AC_SPECS 表),LVGL 的 image descriptor 在這裡組:
+// 兩個 LVGL 大版本的型別名稱不同(main 是 8.4、lvgl9 分支是 9.x),隔在這一小段最好移植。
+// 每張圖給一個獨立的 descriptor 指標——LVGL 的 image cache 以來源指標為 key,共用同一個
+// descriptor 改 data 會畫到上一個機型的快取。AC_SIL_N 個 × 十幾 bytes,RAM 代價可忽略。
+inline const lv_img_dsc_t *radar_sil_dsc(int idx) {
+  static lv_img_dsc_t dsc[AC_SIL_N];
+  static bool built = false;
+  if (!built) {
+    const size_t bytes = (size_t) AC_SIL_W * AC_SIL_H;   // A8:1 byte/px
+    for (int i = 0; i < AC_SIL_N; i++) {
+#if defined(LVGL_VERSION_MAJOR) && LVGL_VERSION_MAJOR >= 9
+      dsc[i].header.magic = LV_IMAGE_HEADER_MAGIC;
+      dsc[i].header.cf = LV_COLOR_FORMAT_A8;
+      dsc[i].header.stride = AC_SIL_W;
+#else
+      dsc[i].header.always_zero = 0;
+      dsc[i].header.cf = LV_IMG_CF_ALPHA_8BIT;
+#endif
+      dsc[i].header.w = AC_SIL_W;
+      dsc[i].header.h = AC_SIL_H;
+      dsc[i].data_size = bytes;
+      dsc[i].data = AC_SIL_A8 + (size_t) i * bytes;
+    }
+    built = true;
+  }
+  return (idx >= 0 && idx < AC_SIL_N) ? &dsc[idx] : nullptr;
+}
+
+// 輪廓依「真實翼展」等比縮放,A380(79.8 m)佔滿整格、C172(11 m)就只有一小塊,
+// 一眼看得出尺寸差。太小會糊成一團,所以設下限 32 px(翼展數字仍照實印在旁邊)。
+// LVGL 對 alpha-only 圖有做 zoom:縮放時走逐列解碼那條路,填色一樣取自 recolor。
+inline uint16_t radar_sil_zoom(uint16_t span_dm) {
+  const float span_m = span_dm ? span_dm * 0.1f : 30.0f;   // 未知翼展 → 中等大小
+  float px = AC_SIL_W * span_m / 80.0f;                    // 80 m ≈ A380,對到滿格
+  if (px < 32.0f) px = 32.0f;
+  if (px > AC_SIL_W) px = AC_SIL_W;
+  return (uint16_t) (256.0f * px / AC_SIL_W);              // 256 = 原尺寸
+}
+
+// 七個 label + 一個 image。分兩層:
+//   上半(l0~l4)是「機型」——查 AC_SPECS,查不到就退到 API 給的 desc;
+//   下半(l5/l6)是「這一台」——註冊號、註冊國、營運者,不需要機型資料庫也印得出來。
+// 數值 0 代表資料庫沒這一項 → 印 "--",不要印出 0.0 m 這種假數字。
+inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t *l2,
+                            lv_obj_t *l3, lv_obj_t *l4, lv_obj_t *l5, lv_obj_t *l6,
+                            const char *ty, const char *reg, const char *desc,
+                            const char *cat, uint32_t hex, const char *cs,
+                            bool imperial) {
+  const AcSpec *s = ac_spec_find(ty);
+  char b[64];
+
+  // ---- 標題:資料庫的 製造商+型號 優先,其次 API 的 desc,再其次只印代碼 ----
+  if (s && *s->mfr)        snprintf(b, sizeof(b), "%s %s", s->mfr, s->model);
+  else if (desc && *desc)  snprintf(b, sizeof(b), "%s", desc);
+  else                     snprintf(b, sizeof(b), "%s  -  NO SPEC DATA",
+                                    ty && *ty ? ty : "UNKNOWN TYPE");
+  lv_label_set_text(l0, b);
+
+  // ---- 尺寸四行 ----
+  // 直升機的 span_dm 存的是主旋翼直徑,標題跟著換,免得看成「翼展」。
+  const bool heli = s && (strcmp(s->cls, "Helicopter") == 0 ||
+                          strcmp(s->cls, "Gyrocopter") == 0);
+  const char *span_tag = heli ? "ROTOR" : "SPAN ";
+  if (s && s->span_dm)
+    snprintf(b, sizeof(b), imperial ? "%s %5.0f ft" : "%s %5.1f m",
+             span_tag, s->span_dm * (imperial ? 0.32808f : 0.1f));
+  else
+    snprintf(b, sizeof(b), "%s    --", span_tag);
+  lv_label_set_text(l1, b);
+
+  if (s && s->len_dm)
+    snprintf(b, sizeof(b), imperial ? "LEN   %5.0f ft" : "LEN   %5.1f m",
+             s->len_dm * (imperial ? 0.32808f : 0.1f));
+  else
+    snprintf(b, sizeof(b), "LEN      --");
+  lv_label_set_text(l2, b);
+
+  if (s && s->mtow_100kg)
+    snprintf(b, sizeof(b), imperial ? "MTOW %6.0f lb" : "MTOW  %5.1f t",
+             s->mtow_100kg * (imperial ? 220.462f : 0.1f));
+  else
+    snprintf(b, sizeof(b), "MTOW     --");
+  lv_label_set_text(l3, b);
+
+  if (s && s->cruise_kt)
+    snprintf(b, sizeof(b), imperial ? "CRZ   %5.0f mph" : "CRZ   %5.0f km/h",
+             s->cruise_kt * (imperial ? 1.1508f : 1.852f));
+  else
+    snprintf(b, sizeof(b), "CRZ      --");
+  lv_label_set_text(l4, b);
+
+  // ---- 這一台飛機:註冊號 / 註冊國(由 ICAO24 位址反查)/ 發動機 ----
+  static const char *const ENG[] = {"", "PISTON", "TURBOPROP", "JET", "ELECTRIC"};
+  const char *country = ac_country_find(hex);
+  char eng[32] = "";
+  if (s) {
+    const char *et = s->eng_t <= 4 ? ENG[s->eng_t] : "";
+    if (s->eng_n && *s->eng)      snprintf(eng, sizeof(eng), "%u x %s", (unsigned) s->eng_n, s->eng);
+    else if (s->eng_n && *et)     snprintf(eng, sizeof(eng), "%u x %s", (unsigned) s->eng_n, et);
+    else if (*s->eng)             snprintf(eng, sizeof(eng), "%s", s->eng);
+  }
+  snprintf(b, sizeof(b), "%s%s%s%s%s",
+           reg && *reg ? reg : "",
+           (reg && *reg && country) ? "  -  " : "",       // 分隔號用 ASCII;字型的預設 glyph 集沒有 U+00B7
+           country ? country : "",
+           ((reg && *reg) || country) && *eng ? "  -  " : "",
+           eng);
+  lv_label_set_text(l5, *b ? b : " ");
+
+  // ---- 營運者:呼號前三碼查 ICAO Doc 8585 三字代碼 ----
+  const AcOperator *op = ac_operator_find(cs);
+  if (op) {
+    if (*op->radio) snprintf(b, sizeof(b), "%s  -  %s", op->name, op->radio);
+    else            snprintf(b, sizeof(b), "%s", op->name);
+    lv_label_set_text(l6, b);
+  } else {
+    lv_label_set_text(l6, " ");
+  }
+
+  // ---- 輪廓:先查機型,查不到退到 ADS-B 發射器類別的通用剪影 ----
+  int16_t sil = s ? s->sil : -1;
+  if (sil < 0) sil = ac_cat_sil(cat);
+  const lv_img_dsc_t *d = radar_sil_dsc(sil);
+  if (d) {
+    lv_img_set_src(img, d);
+    lv_img_set_pivot(img, AC_SIL_W / 2, AC_SIL_H / 2);
+    lv_img_set_zoom(img, radar_sil_zoom(s ? s->span_dm : 0));
+    lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 // ---- 系統資訊(i 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角六個 label ----

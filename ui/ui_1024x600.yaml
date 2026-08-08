@@ -5007,11 +5007,13 @@ lvgl:
         # ICAO 機型代碼:反白徽章,與呼號同一列、靠面板右緣(面板 x490~792)。
         # 只有 airplanes.live / adsb.lol 提供機型,OpenSky 沒有 → 無值時整個隱藏,
         # 不留一塊空的綠底(見 radar_type_badge())。
+        # 同時是按鈕:按下把 spec_panel 蓋上去看輪廓與規格,再按一次收回
+        # (見 common/core.yaml 的 toggle_spec)。pad 給大一點才好按。
         - label:
             id: sel_type_l
-            x: 883
-            y: 268
-            width: 100
+            x: 875
+            y: 260
+            width: 110
             text: ""
             text_align: CENTER
             text_font: font_small
@@ -5019,8 +5021,11 @@ lvgl:
             bg_color: 0x00C060
             bg_opa: COVER
             radius: 5
-            pad_all: 4
+            pad_all: 6
             hidden: true
+            clickable: true
+            on_click:
+              - script.execute: toggle_spec
         - label:
             id: sel_route_l
             x: 625
@@ -5186,6 +5191,49 @@ lvgl:
                     lv_obj_set_style_bg_opa(id(night_ov),
                         (lv_opa_t) ((100.0f - x) / 95.0f * 200.0f), 0);
                   #endif
+
+        # ===== 機型規格面板(按機型徽章後蓋住 ROUTE ~ DIST 那幾行;呼號與徽章刻意留在外面,
+        # 徽章才能再按一次收回)=====
+        # 輪廓圖是 A8(只有 alpha、沒有顏色)的點陣圖,LVGL 用 image_recolor 當填色 →
+        # 亮黃色由這裡的樣式決定,不是圖檔本身。recolor 只有在 recolor_opa > 0 時才會被讀,
+        # 兩個都要設。src 先指向 plane_img 佔位,執行期由 radar_fill_spec() 換成真正的機型。
+        - obj:
+            id: spec_panel
+            x: 613
+            y: 308
+            width: 378
+            height: 210        # 246..414:蓋滿 sel_route_l(248)到 sel_l4(386..404)
+            bg_color: 0x040C08
+            bg_opa: COVER
+            border_width: 0
+            pad_all: 0
+            hidden: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - label:
+                  id: spec_l0
+                  x: 8
+                  y: 3
+                  width: 363
+                  long_mode: SCROLL      # "AIRBUS HELICOPTERS AS350 Ecureuil" 之類會超寬
+                  text: " "
+                  text_font: font_small
+                  text_color: 0xFFEE00
+              - image:
+                  id: spec_img
+                  x: 10
+                  y: 40
+                  src: plane_img
+                  image_recolor: 0xFFEE00
+                  image_recolor_opa: COVER
+                  hidden: true
+              - label: { id: spec_l1, x: 145, y: 40, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              - label: { id: spec_l2, x: 145, y: 73, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              - label: { id: spec_l3, x: 145, y: 105, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              - label: { id: spec_l4, x: 145, y: 138, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              # 下面兩行是「這一台」而不是「這個機型」:註冊號/註冊國/發動機、營運者
+              - label: { id: spec_l5, x: 8, y: 165, width: 363, text: " ", text_font: font_tiny, text_color: 0x8FA894 }
+              - label: { id: spec_l6, x: 8, y: 186, width: 363, text: " ", text_font: font_tiny, text_color: 0x6E8273 }
 
         # ===== ATC 圖層設定面板(ATC 模式且未選機時取代右下天氣;不透明,直接蓋住底下文字)=====
         - obj:

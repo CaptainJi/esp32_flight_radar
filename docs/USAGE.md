@@ -54,6 +54,27 @@ Troubleshooting: `SET HA TOKEN FIRST` = step 2 not done yet; `TOKEN INVALID` = t
 
 > **Security note:** a long-lived token grants full access to your Home Assistant and is stored in the device's flash. Treat it like a password and keep the device on a trusted network — the firmware only uses it for this read-only speaker query.
 
+## Aircraft type silhouettes and specs
+
+Tap an aircraft and, if the data source reports its type, a green **type badge** (`B738`, `A320`, …) appears next to the callsign. **The badge is a button:** press it and the flight lines are replaced by
+
+- a bright-yellow top-down **silhouette**, **drawn to scale by real wingspan** — an A380 fills the box, a Cessna 172 is a speck next to it (floored at 32 px so the small ones stay visible);
+- manufacturer, model, **wingspan, length, MTOW, cruise speed**;
+- **registration, country of registry and engine series** (`B-5416 - China - 2 x CFM56`);
+- the **operator and its radio callsign** (`CHINA AIRLINES - DYNASTY`).
+
+Press it again to go back; selecting another aircraft, opening **SYS** or losing the target also returns to the flight view.
+
+- Everything is **compiled into the firmware** — no lookup, no network round-trip, works offline. About 1.3 MB of the ~5.8 MB free app partition.
+- 318 type designators, 105 drawings, 6004 operators and the full ICAO24 address allocation table.
+- The country comes from the aircraft's **ICAO24 (Mode S) address**, the operator from the **first three letters of the callsign** (ICAO Doc 8585) — both are offline table lookups.
+- A type the database does not know still shows its registration, country and operator, falls back to the type name the API sends, and gets a **generic silhouette chosen by ADS-B emitter category** (large / heavy / rotorcraft / …), so a 747 is at least drawn as a big four-engine jet.
+- **OpenSky does not report aircraft types at all**, so the badge (and therefore the button) only exists when the data source is airplanes.live or adsb.lol.
+- For helicopters the first line reads **ROTOR** — it is the main rotor diameter, not a wingspan.
+- Engines are the **series only** (`CFM56`, `PT6A`, `Trent 700`), not the exact variant.
+- Units follow the **UNIT** setting: metres/tonnes/km-h or feet/pounds/mph.
+- To refresh or extend the database, edit the files in `tools/data/` — `aircraft_specs.csv` (dimensions), `engines.csv`, `common_types.txt` (which types to include), `silhouette_alias.csv` (borrow a look-alike's drawing) — then run `python3 tools/make_aircraft_db.py`.
+
 ## ATC mode
 
 Press the **ATC** button (in the top-right button row, between **ECHO** and **PWR**) to switch the radar from plane icons to an air-traffic-control style view; press again to instantly restore the default view.
@@ -172,6 +193,27 @@ python tools/make_map.py --lat 23.8 --lon 121.0 --radius 320 --countries TW --no
 疑難排解:`SET HA TOKEN FIRST` = 還沒做第 2 步;`TOKEN INVALID` = 權杖錯誤或已撤銷;`HA UNREACHABLE` = HA URL 不對,改用 IP;`NO SPEAKERS FOUND` = HA 裡沒有任何 `media_player` 實體(先新增 Google Cast / Sonos 等整合)。
 
 > **安全性提醒:**長期權杖等同 HA 的完整存取權,且儲存在裝置 flash 中。請把它當密碼看待、讓裝置留在信任的內網;韌體只會用它做這個唯讀的喇叭查詢。
+
+## 機型輪廓與規格
+
+點選飛機後,若資料來源有提供機型,呼號旁會出現綠色的**機型徽章**(`B738`、`A320`…)。**這個徽章就是按鈕**,按下去原本的航班資訊會換成:
+
+- 亮黃色**俯視輪廓**,而且**依真實翼展等比縮放**——A380 佔滿整格,Cessna 172 只有一小塊(下限 32 px,免得小飛機糊掉);
+- 製造商、機型全名、**翼展、機身長度、最大起飛重量、巡航速度**;
+- **註冊號、註冊國、發動機系列**(`B-5416 - China - 2 x CFM56`);
+- **營運者與電台呼號**(`CHINA AIRLINES - DYNASTY`)。
+
+再按一次回到航班資訊;換選別台飛機、開啟 **SYS**、或目標飛出範圍也都會自動回到航班資訊。
+
+- 所有資料**預先編進韌體**——不查詢、不連網,離線可用。約佔 1.3 MB(app 分割區還有約 5.8 MB 可用)。
+- 收錄 318 個機型代碼、105 張輪廓、6004 家營運者,以及完整的 ICAO24 位址分配表。
+- 國籍是由該機的 **ICAO24(Mode S)位址**反查,營運者是由**呼號前三碼**(ICAO Doc 8585)反查,兩者都是離線查表。
+- 資料庫沒收錄的機型,一樣會顯示註冊號、國籍與營運者,機型名稱退用 API 傳來的字串,並依 **ADS-B 發射器類別**給一張通用輪廓(大型/重型/旋翼…),所以 747 至少會畫成一架大型四發噴射機。
+- **OpenSky 完全不提供機型**,所以徽章(以及這個按鈕)只有在資料來源是 airplanes.live 或 adsb.lol 時才會出現。
+- 直升機的第一行標示為 **ROTOR**,那是主旋翼直徑,不是翼展。
+- 發動機只列**主系列**(`CFM56`、`PT6A`、`Trent 700`),不列到變體。
+- 單位跟隨 **UNIT** 設定:公尺/公噸/km-h 或英尺/磅/mph。
+- 要更新或擴充資料庫,編輯 `tools/data/` 底下的檔案——`aircraft_specs.csv`(尺寸)、`engines.csv`(發動機)、`common_types.txt`(收錄哪些機型)、`silhouette_alias.csv`(借用外型相近機型的圖)——再執行 `python3 tools/make_aircraft_db.py`。
 
 ## ATC 模式
 
