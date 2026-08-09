@@ -53,6 +53,11 @@ All need **≥8 MB octal PSRAM**, a **GT911** touch controller and **16 MB flash
   fall back to the free APIs automatically.
 - **Tap any aircraft** for origin → destination, squawk (red on 7500/7600/7700), altitude,
   speed, heading, vertical rate, distance and ICAO type.
+- **Tap the type badge** for the airframe itself: a bright-yellow top-down silhouette drawn
+  to scale by real wingspan, revealed under a scan line, plus manufacturer, model, wingspan,
+  length, MTOW, cruise speed, registration, country of registry, engine series and operator.
+  318 type designators, 105 drawings and 6004 operators, all compiled into the firmware —
+  no lookup, no network, works offline.
 - **ATC mode** — target squares, 2-minute velocity vectors, fading history trails and a local
   conflict alert.
 - **Weather echo** — rain radar from [RainViewer](https://www.rainviewer.com/), decoded on a
@@ -112,6 +117,10 @@ No account or API key is needed unless you specifically choose the OpenSky sourc
   航班,掃描線轉到時目標會亮起。資料來源可在螢幕上切換,OpenSky 失敗會自動退回免金鑰的來源。
 - **點選任一航班** 顯示起訖機場、squawk(7500/7600/7700 轉紅)、高度、速度、航向、
   升降率、距離與 ICAO 機型代碼。
+- **點機型徽章** 看這台飛機本身:亮黃色俯視輪廓(依真實翼展等比縮放、以掃描線方式現形),
+  加上製造商、機型全名、翼展、機身長度、最大起飛重量、巡航速度、註冊號、註冊國、
+  發動機系列與營運者。318 個機型代碼、105 張輪廓、6004 家營運者全部編進韌體 ——
+  不查詢、不連網,離線可用。
 - **ATC 模式** —— 目標方塊、2 分鐘速度向量、漸淡歷史軌跡,以及本地衝突警示。
 - **氣象回波** —— 來自 [RainViewer](https://www.rainviewer.com/) 的雨區雷達,在背景核心
   解碼合成,UI 完全不卡。
@@ -166,6 +175,10 @@ ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
   航班,扫描线转到时目标会亮起。数据源可在屏幕上切换,OpenSky 失败会自动退回免密钥的来源。
 - **点选任一航班** 显示起讫机场、squawk(7500/7600/7700 转红)、高度、速度、航向、
   升降率、距离与 ICAO 机型代码。
+- **点机型徽章** 看这台飞机本身:亮黄色俯视轮廓(依真实翼展等比缩放、以扫描线方式现形),
+  加上制造商、机型全名、翼展、机身长度、最大起飞重量、巡航速度、注册号、注册国、
+  发动机系列与营运者。318 个机型代码、105 张轮廓、6004 家营运者全部编进固件 ——
+  不查询、不连网,离线可用。
 - **ATC 模式** —— 目标方块、2 分钟速度向量、渐淡历史轨迹,以及本地冲突警示。
 - **气象回波** —— 来自 [RainViewer](https://www.rainviewer.com/) 的雨区雷达,在后台核心
   解码合成,UI 完全不卡。
