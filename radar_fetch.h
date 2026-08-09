@@ -1337,43 +1337,81 @@ inline void radar_type_badge(lv_obj_t *lbl, const char *ty) {
 }
 
 // ---- 機型輪廓 + 技術規格(按下機型徽章後蓋在航班資訊上的 spec_panel)----
-// aircraft_db.h 只放純資料(A8 點陣 + AC_SPECS 表),LVGL 的 image descriptor 在這裡組:
-// 兩個 LVGL 大版本的型別名稱不同(main 是 8.4、lvgl9 分支是 9.x),隔在這一小段最好移植。
-// 每張圖給一個獨立的 descriptor 指標——LVGL 的 image cache 以來源指標為 key,共用同一個
-// descriptor 改 data 會畫到上一個機型的快取。AC_SIL_N 個 × 十幾 bytes,RAM 代價可忽略。
-inline const lv_img_dsc_t *radar_sil_dsc(int idx) {
-  static lv_img_dsc_t dsc[AC_SIL_N];
-  static bool built = false;
-  if (!built) {
-    const size_t bytes = (size_t) AC_SIL_W * AC_SIL_H;   // A8:1 byte/px
-    for (int i = 0; i < AC_SIL_N; i++) {
+// aircraft_db.h 只放純資料(A8 點陣 + AC_SPECS 表),LVGL 的型別隔在這一小段:
+// main 是 LVGL 8.4、lvgl9 分支是 9.x,descriptor 的欄位名不同。
+//
+// 縮放為什麼自己算,不交給 lv_img_set_zoom():
+//   LVGL 9 的 lv_draw_sw_img.c 只有「未經 transform 的 A8」有專用快路徑
+//   (:240,blend_dsc.color = draw_dsc->recolor,正是我們要的上色方式)。
+//   一旦設了 zoom,transformed 為真,A8 就掉進通用的 transform_and_recolor,
+//   那條路按彩色點陣圖的位元組寬度走 stride,把 1 byte/px 的 alpha 當成
+//   2~4 bytes/px 讀 → 每列漂移、整塊變雜訊(P4 實測)。LVGL 8 反而支援,
+//   所以這是兩個分支唯一會表現不同的地方。
+//   自己做盒式平均縮放:兩個版本都只走那條已知正確的快路徑,邊緣品質也更好,
+//   而且只在按下徽章時算一次(最多 96x96 次迴圈)。
 #if defined(LVGL_VERSION_MAJOR) && LVGL_VERSION_MAJOR >= 9
-      dsc[i].header.magic = LV_IMAGE_HEADER_MAGIC;
-      dsc[i].header.cf = LV_COLOR_FORMAT_A8;
-      dsc[i].header.stride = AC_SIL_W;
-#else
-      dsc[i].header.always_zero = 0;
-      dsc[i].header.cf = LV_IMG_CF_ALPHA_8BIT;
+// LVGL 9 的兩個快取都以「來源指標」為 key,而我們是同一個 descriptor 換內容(尺寸也會變),
+// 所以資料與 header 兩份都要丟掉。這兩支函式實作在 misc/cache/instance/,但 lvgl.h
+// 沒有把它們的標頭轉出來(9.5 實測),所以在這裡自己宣告。
+extern "C" void lv_image_cache_drop(const void *src);
+extern "C" void lv_image_header_cache_drop(const void *src);
 #endif
-      dsc[i].header.w = AC_SIL_W;
-      dsc[i].header.h = AC_SIL_H;
-      dsc[i].data_size = bytes;
-      dsc[i].data = AC_SIL_A8 + (size_t) i * bytes;
-    }
-    built = true;
-  }
-  return (idx >= 0 && idx < AC_SIL_N) ? &dsc[idx] : nullptr;
+
+inline constexpr int RADAR_SIL_MIN_PX = 32;   // 太小會糊成一團,翼展數字仍照實印
+
+// 輪廓依「真實翼展」等比縮放:A380(79.8 m)佔滿整格、C172(11 m)只有一小塊。
+inline int radar_sil_px(uint16_t span_dm) {
+  const float span_m = span_dm ? span_dm * 0.1f : 30.0f;   // 未知翼展 → 中等大小
+  int px = (int) (AC_SIL_W * span_m / 80.0f + 0.5f);       // 80 m ≈ A380,對到滿格
+  if (px < RADAR_SIL_MIN_PX) px = RADAR_SIL_MIN_PX;
+  if (px > AC_SIL_W) px = AC_SIL_W;
+  return px;
 }
 
-// 輪廓依「真實翼展」等比縮放,A380(79.8 m)佔滿整格、C172(11 m)就只有一小塊,
-// 一眼看得出尺寸差。太小會糊成一團,所以設下限 32 px(翼展數字仍照實印在旁邊)。
-// LVGL 對 alpha-only 圖有做 zoom:縮放時走逐列解碼那條路,填色一樣取自 recolor。
-inline uint16_t radar_sil_zoom(uint16_t span_dm) {
-  const float span_m = span_dm ? span_dm * 0.1f : 30.0f;   // 未知翼展 → 中等大小
-  float px = AC_SIL_W * span_m / 80.0f;                    // 80 m ≈ A380,對到滿格
-  if (px < 32.0f) px = 32.0f;
-  if (px > AC_SIL_W) px = AC_SIL_W;
-  return (uint16_t) (256.0f * px / AC_SIL_W);              // 256 = 原尺寸
+// 把第 idx 張輪廓縮到 px×px 後餵給 image widget。只有一個 descriptor 與一塊緩衝,
+// 因為同一時間只顯示一台飛機;但 LVGL 的 image cache 以來源指標為 key,內容換了
+// 指標沒換 → 必須先把快取丟掉,否則會畫到上一個機型。
+inline void radar_sil_set(lv_obj_t *img, int idx, uint16_t span_dm) {
+  static uint8_t buf[AC_SIL_W * AC_SIL_H];
+  static lv_img_dsc_t dsc;
+  if (idx < 0 || idx >= AC_SIL_N) {
+    lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  const uint8_t *src = AC_SIL_A8 + (size_t) idx * AC_SIL_W * AC_SIL_H;
+  const int px = radar_sil_px(span_dm);
+
+  // 盒式平均(px == AC_SIL_W 時每格只有一個來源像素,等於直接複製)
+  for (int y = 0; y < px; y++) {
+    const int sy0 = y * AC_SIL_H / px, sy1 = (y + 1) * AC_SIL_H / px;
+    for (int x = 0; x < px; x++) {
+      const int sx0 = x * AC_SIL_W / px, sx1 = (x + 1) * AC_SIL_W / px;
+      uint32_t sum = 0, n = 0;
+      for (int sy = sy0; sy < sy1; sy++)
+        for (int sx = sx0; sx < sx1; sx++) { sum += src[sy * AC_SIL_W + sx]; n++; }
+      buf[y * px + x] = n ? (uint8_t) (sum / n) : 0;
+    }
+  }
+
+#if defined(LVGL_VERSION_MAJOR) && LVGL_VERSION_MAJOR >= 9
+  lv_image_cache_drop(&dsc);
+  lv_image_header_cache_drop(&dsc);
+  dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+  dsc.header.cf = LV_COLOR_FORMAT_A8;
+  dsc.header.stride = px;
+#else
+  lv_img_cache_invalidate_src(&dsc);
+  dsc.header.always_zero = 0;
+  dsc.header.cf = LV_IMG_CF_ALPHA_8BIT;
+#endif
+  dsc.header.w = px;
+  dsc.header.h = px;
+  dsc.data_size = (uint32_t) px * px;
+  dsc.data = buf;
+
+  lv_img_set_src(img, &dsc);
+  lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_invalidate(img);
 }
 
 // 七個 label + 一個 image。分兩層:
@@ -1459,15 +1497,7 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
   // ---- 輪廓:先查機型,查不到退到 ADS-B 發射器類別的通用剪影 ----
   int16_t sil = s ? s->sil : -1;
   if (sil < 0) sil = ac_cat_sil(cat);
-  const lv_img_dsc_t *d = radar_sil_dsc(sil);
-  if (d) {
-    lv_img_set_src(img, d);
-    lv_img_set_pivot(img, AC_SIL_W / 2, AC_SIL_H / 2);
-    lv_img_set_zoom(img, radar_sil_zoom(s ? s->span_dm : 0));
-    lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
-  }
+  radar_sil_set(img, sil, s ? s->span_dm : 0);
 }
 
 // ---- 系統資訊(i 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角六個 label ----

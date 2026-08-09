@@ -5219,14 +5219,27 @@ lvgl:
                   text: " "
                   text_font: font_small
                   text_color: 0xFFEE00
-              - image:
-                  id: spec_img
+              # 輪廓的固定外框:圖本身會隨翼展改變大小(radar_sil_set() 直接縮好點陣圖,
+              # 不用 LVGL 的 zoom——見 radar_fetch.h 的說明),靠 align: CENTER 讓小圖
+              # 留在同一個位置置中,不會縮向左上角。外框透明、不吃觸控。
+              - obj:
+                  id: spec_img_box
                   x: 10
                   y: 40
-                  src: plane_img
-                  image_recolor: 0xFFEE00
-                  image_recolor_opa: COVER
-                  hidden: true
+                  width: 120
+                  height: 120
+                  bg_opa: TRANSP
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - image:
+                        id: spec_img
+                        align: CENTER
+                        src: plane_img
+                        image_recolor: 0xFFEE00
+                        image_recolor_opa: COVER
+                        hidden: true
               - label: { id: spec_l1, x: 145, y: 40, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
               - label: { id: spec_l2, x: 145, y: 73, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
               - label: { id: spec_l3, x: 145, y: 105, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
