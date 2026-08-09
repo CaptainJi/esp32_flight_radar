@@ -516,6 +516,8 @@ script:
                               id(ac_desc)[i].c_str(), id(ac_cat)[i].c_str(),
                               id(ac_hex)[i], id(ac_cs)[i].c_str(),
                               id(units_imperial));
+            // 掃描動畫只在使用者按下徽章時放一次;面板每秒的重填不重放
+            radar_sil_scan(id(spec_img), id(spec_scan_cover), id(spec_scan_line));
           }
       - script.execute: atc_panel_sync
 

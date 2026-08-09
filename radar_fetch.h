@@ -1355,6 +1355,11 @@ inline void radar_type_badge(lv_obj_t *lbl, const char *ty) {
 // 沒有把它們的標頭轉出來(9.5 實測),所以在這裡自己宣告。
 extern "C" void lv_image_cache_drop(const void *src);
 extern "C" void lv_image_header_cache_drop(const void *src);
+#define RADAR_ANIM_TIME(a, ms) lv_anim_set_duration((a), (ms))
+#define RADAR_ANIM_DEL(var, cb) lv_anim_delete((var), (cb))
+#else
+#define RADAR_ANIM_TIME(a, ms) lv_anim_set_time((a), (ms))
+#define RADAR_ANIM_DEL(var, cb) lv_anim_del((var), (cb))
 #endif
 
 inline constexpr int RADAR_SIL_MIN_PX = 32;   // 太小會糊成一團,翼展數字仍照實印
@@ -1380,6 +1385,13 @@ inline void radar_sil_set(lv_obj_t *img, int idx, uint16_t span_dm) {
   }
   const uint8_t *src = AC_SIL_A8 + (size_t) idx * AC_SIL_W * AC_SIL_H;
   const int px = radar_sil_px(span_dm);
+
+  // 面板每秒會重填一次(機型碼可能後補、單位可能被改),圖沒變就不要重算重畫:
+  // 省掉每秒一次的縮放與 invalidate,也不會打斷正在跑的掃描動畫。
+  static int last_idx = -1, last_px = -1;
+  if (idx == last_idx && px == last_px && !lv_obj_has_flag(img, LV_OBJ_FLAG_HIDDEN)) return;
+  last_idx = idx;
+  last_px = px;
 
   // 盒式平均(px == AC_SIL_W 時每格只有一個來源像素,等於直接複製)
   for (int y = 0; y < px; y++) {
@@ -1412,6 +1424,53 @@ inline void radar_sil_set(lv_obj_t *img, int idx, uint16_t span_dm) {
   lv_img_set_src(img, &dsc);
   lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
   lv_obj_invalidate(img);
+}
+
+
+// ---- 輪廓的掃描式出現 ----
+// 一條亮黃掃描線由上而下掠過,線走過的地方才露出輪廓。遮罩與掃描線是 spec_img_box 裡
+// 的兩個 obj(宣告在 image 之後,所以疊在圖上面),動畫只驅動它們的 y / height。
+// 只在按下徽章時放一次;面板每秒的重填不會重放,否則會一直閃。
+inline lv_obj_t *g_scan_cover = nullptr;
+inline lv_obj_t *g_scan_line = nullptr;
+inline int32_t g_scan_h = 0;
+
+inline void radar_scan_exec(void *, int32_t v) {
+  if (g_scan_cover == nullptr) return;
+  lv_obj_set_y(g_scan_cover, v);              // 遮罩上緣往下退 = 由上而下露出
+  lv_obj_set_height(g_scan_cover, g_scan_h - v);
+  lv_obj_set_y(g_scan_line, v);               // 掃描線停在露出邊界上
+}
+
+inline void radar_scan_done(lv_anim_t *) {
+  if (g_scan_cover == nullptr) return;
+  lv_obj_add_flag(g_scan_cover, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(g_scan_line, LV_OBJ_FLAG_HIDDEN);
+}
+
+inline void radar_sil_scan(lv_obj_t *img, lv_obj_t *cover, lv_obj_t *line) {
+  if (lv_obj_has_flag(img, LV_OBJ_FLAG_HIDDEN)) return;   // 這個機型沒有圖,不用掃
+  g_scan_cover = cover;
+  g_scan_line = line;
+  // 高度取自外框 spec_img_box:800x480 是 96,1024x600 被 scale_layout 放成 120
+  g_scan_h = lv_obj_get_height(lv_obj_get_parent(cover));
+  if (g_scan_h <= 0) return;
+
+  RADAR_ANIM_DEL(cover, radar_scan_exec);   // 連點時重來,不要兩個動畫疊著跑
+  lv_obj_clear_flag(cover, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_y(cover, 0);
+  lv_obj_set_height(cover, g_scan_h);
+  lv_obj_set_y(line, 0);
+
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, cover);
+  lv_anim_set_exec_cb(&a, radar_scan_exec);
+  lv_anim_set_values(&a, 0, g_scan_h);
+  RADAR_ANIM_TIME(&a, 420);
+  lv_anim_set_ready_cb(&a, radar_scan_done);
+  lv_anim_start(&a);
 }
 
 // 七個 label + 一個 image。分兩層:
@@ -1487,8 +1546,10 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
   // ---- 營運者:呼號前三碼查 ICAO Doc 8585 三字代碼 ----
   const AcOperator *op = ac_operator_find(cs);
   if (op) {
-    if (*op->radio) snprintf(b, sizeof(b), "%s  -  %s", op->name, op->radio);
-    else            snprintf(b, sizeof(b), "%s", op->name);
+    // 電台呼號常常就等於公司名(EMIRATES / RYANAIR),那就只印一次
+    const bool same = strcasecmp(op->name, op->radio) == 0;
+    if (*op->radio && !same) snprintf(b, sizeof(b), "%s  -  %s", op->name, op->radio);
+    else                     snprintf(b, sizeof(b), "%s", op->name);
     lv_label_set_text(l6, b);
   } else {
     lv_label_set_text(l6, " ");
