@@ -53,6 +53,39 @@ and set `radar_canvas`/font sizes to match. **`ui/ui_800x480.yaml` is the source
 truth** — the other layouts are generated, so edit the 800×480 file and re-run the
 script instead of touching the generated one.
 
+### Gotcha: flashing the wrong board's image
+
+All four entry files use the same ESPHome `name: flight-radar`, and ESPHome caches the
+build's file paths in **`.esphome/idedata/flight-radar.json`, keyed on that name alone**.
+So after you compile one board, an `esphome run` for a *different* board compiles into the
+right directory but then reads the **previous board's** firmware path out of that cache and
+tries to flash it. The cache is only refreshed when the current build's `platformio.ini` is
+newer than it, which is not the case when you switch back and forth.
+
+The symptom is unmistakable — esptool refuses the image rather than bricking anything:
+
+```
+Warning: Unexpected chip ID in image. Expected 18 but value was 9.
+ERROR ... firmware.bin' is not an an ESP32-P4 image.
+```
+
+(chip id 18 = ESP32-P4, 9 = ESP32-S3). The fix is to drop the stale cache; it is rebuilt
+automatically on the next run:
+
+```bash
+rm .esphome/idedata/flight-radar.json
+```
+
+Giving each board its own build directory (`ESPHOME_BUILD_PATH=build9 esphome run
+radar-p4-7b.yaml`) keeps the *object files* separate and is still worth doing, but it does
+not avoid this — the idedata cache sits above the build path. If you would rather bypass
+ESPHome entirely, flash a factory image straight from `dist/` with esptool:
+
+```bash
+esptool --chip esp32p4 --port /dev/ttyACM0 --baud 460800 \
+  write-flash -z --flash-size detect 0x0 dist/flight-radar-<board>-<version>.factory.bin
+```
+
 ### Local component overrides
 
 The two Waveshare board files pull in `components/` via `external_components`. Each is a
@@ -136,6 +169,36 @@ JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.ya
 換新解析度時用 `python3 tools/scale_layout.py ui/ui_800x480.yaml ui/ui_<w>x<h>.yaml <倍率>`
 生成版面,並把 `radar_canvas`/字型大小對應調整。**`ui/ui_800x480.yaml` 是唯一來源** ——
 其他解析度的版面都是生成檔,要改請改 800×480 那份再重跑腳本,不要動生成檔。
+
+### 陷阱:燒到另一塊板的映像
+
+四個入口檔的 ESPHome `name:` 都是 `flight-radar`,而 ESPHome 會把建置產物的路徑快取在
+**`.esphome/idedata/flight-radar.json`,而且 key 只用這個 name**。所以你編過一塊板之後,
+再對*另一塊*板下 `esphome run`,編譯會進到正確的目錄,但上傳階段會從那份快取讀出
+**前一塊板的** firmware 路徑並試圖燒進去。快取只在「當前建置的 `platformio.ini` 比它新」
+時才更新,而來回切換板子時通常不會。
+
+症狀很好認 —— esptool 會擋下來,不會真的燒壞:
+
+```
+Warning: Unexpected chip ID in image. Expected 18 but value was 9.
+ERROR ... firmware.bin' is not an an ESP32-P4 image.
+```
+
+(chip id 18 = ESP32-P4、9 = ESP32-S3)。解法是把過期快取刪掉,下次執行會自動重建:
+
+```bash
+rm .esphome/idedata/flight-radar.json
+```
+
+給每塊板各自的建置目錄(`ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml`)可以
+讓*目的檔*不互相覆蓋,仍然值得做,但**擋不住這個問題** —— idedata 快取在 build path 之上。
+想完全繞開 ESPHome 的話,直接用 esptool 燒 `dist/` 裡的 factory 映像:
+
+```bash
+esptool --chip esp32p4 --port /dev/ttyACM0 --baud 460800 \
+  write-flash -z --flash-size detect 0x0 dist/flight-radar-<板子>-<版本>.factory.bin
+```
 
 ### 本地元件覆寫
 
