@@ -173,7 +173,7 @@ def load_airlines():
             name = (row.get("Company") or "").strip()
             if len(code) != 3 or not code.isalpha() or not name or code in out:
                 continue
-            out[code] = (name[:38], (row.get("Telephony") or "").strip()[:20])
+            out[code] = (clean_name(name)[:38], (row.get("Telephony") or "").strip()[:20])
     print(f"  {len(out)} operators")
     return out
 
@@ -192,12 +192,27 @@ def load_hex_ranges():
             except ValueError:
                 continue
             name = row[2].strip()
-            if name.startswith("("):        # "(unallocated)" / "(reserved)"
+            if name.startswith("("):        # "(unallocated)" / "(reserved, AFI)"
+                continue
+            name = clean_name(name)         # "Taiwan (unofficial)" -> "Taiwan"
+            if not name:
                 continue
             out.append((lo, hi, name[:28]))
     out.sort()
     print(f"  {len(out)} address blocks")
     return out
+
+
+def clean_name(name):
+    """Drop a trailing parenthetical annotation.
+
+    The ICAO24 table carries administrative notes ("Taiwan (unofficial)",
+    "ICAO (1)") and the airline list carries the operator's home town or trade
+    name ("ABX AIR, INC. (WILMINGTON, OH)").  Neither earns its width on a
+    300 px panel - and we already show the three-letter code separately.
+    Rows whose name is *only* a note ("(reserved, AFI)") are dropped earlier.
+    """
+    return re.sub(r"\s*\([^()]*\)\s*$", "", name).strip()
 
 
 def engine_family(name):

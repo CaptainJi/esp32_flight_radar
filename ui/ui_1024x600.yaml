@@ -5213,7 +5213,7 @@ lvgl:
               - label:
                   id: spec_l0
                   x: 8
-                  y: 3
+                  y: 0
                   width: 363
                   long_mode: SCROLL      # "AIRBUS HELICOPTERS AS350 Ecureuil" 之類會超寬
                   text: " "
@@ -5224,8 +5224,8 @@ lvgl:
               # 留在同一個位置置中,不會縮向左上角。外框透明、不吃觸控。
               - obj:
                   id: spec_img_box
-                  x: 10
-                  y: 40
+                  x: 8
+                  y: 35
                   width: 120
                   height: 120
                   bg_opa: TRANSP
@@ -5240,13 +5240,51 @@ lvgl:
                         image_recolor: 0xFFEE00
                         image_recolor_opa: COVER
                         hidden: true
-              - label: { id: spec_l1, x: 145, y: 40, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-              - label: { id: spec_l2, x: 145, y: 73, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-              - label: { id: spec_l3, x: 145, y: 105, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-              - label: { id: spec_l4, x: 145, y: 138, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+                    # 掃描式出現:遮罩由上而下退開、亮線跟在露出邊界上(radar_sil_scan())。
+                    # 必須宣告在 image 之後才會疊在圖上面;遮罩顏色要與面板底色一致。
+                    - obj:
+                        id: spec_scan_cover
+                        x: 0
+                        y: 0
+                        width: 120
+                        height: 120
+                        bg_color: 0x040C08
+                        bg_opa: COVER
+                        border_width: 0
+                        pad_all: 0
+                        hidden: true
+                        scrollbar_mode: "OFF"
+                    - obj:
+                        id: spec_scan_line
+                        x: 0
+                        y: 0
+                        width: 120
+                        height: 3
+                        bg_color: 0xFFEE00
+                        bg_opa: COVER
+                        border_width: 0
+                        pad_all: 0
+                        hidden: true
+                        scrollbar_mode: "OFF"
+              - label: { id: spec_l1, x: 143, y: 38, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              - label: { id: spec_l2, x: 143, y: 65, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              - label: { id: spec_l3, x: 143, y: 93, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              - label: { id: spec_l4, x: 143, y: 120, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+              # 一條細線把「這個機型」與「這一台」分開,下面兩行才不會黏在規格數字上
+              - obj:
+                  id: spec_sep
+                  x: 8
+                  y: 158
+                  width: 363
+                  height: 1
+                  bg_color: 0x0E4A2C
+                  bg_opa: COVER
+                  border_width: 0
+                  pad_all: 0
+                  scrollbar_mode: "OFF"
               # 下面兩行是「這一台」而不是「這個機型」:註冊號/註冊國/發動機、營運者
-              - label: { id: spec_l5, x: 8, y: 165, width: 363, text: " ", text_font: font_tiny, text_color: 0x8FA894 }
-              - label: { id: spec_l6, x: 8, y: 186, width: 363, text: " ", text_font: font_tiny, text_color: 0x6E8273 }
+              - label: { id: spec_l5, x: 8, y: 165, width: 363, text: " ", text_font: font_tiny, text_color: 0xB6C9BB }
+              - label: { id: spec_l6, x: 8, y: 186, width: 363, text: " ", text_font: font_tiny, text_color: 0x7E9284 }
 
         # ===== ATC 圖層設定面板(ATC 模式且未選機時取代右下天氣;不透明,直接蓋住底下文字)=====
         - obj:
