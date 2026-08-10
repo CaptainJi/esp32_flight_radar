@@ -11,7 +11,7 @@ Home Assistant 面板与闹钟。
 
 **[English](#english) · [繁體中文](#繁體中文) · [简体中文](#简体中文)**
 
-![ESP32 Flight Radar demo](docs/demo.gif)
+![ESP32 Flight Radar — radar sweep, ATC mode and the alarm page](docs/ATC_clock.gif)
 
 ▶ **[Demo video / 示範影片 / 示范影片](docs/demo.mp4)**
 
