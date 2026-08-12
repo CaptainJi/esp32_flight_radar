@@ -4820,12 +4820,13 @@ lvgl:
             line_width: 2
 
         # ===== 右:資訊欄 =====
-        # MAP / ECHO 文字切換鈕(啟用=反白)
+        # MAP / ECHO / FADE / ATC / PWR / SYS 文字切換鈕(啟用=反白)
+        # 六顆並排:寬 48、間距 3,末端 798 剛好貼齊 800 右緣
         - button:
             id: map_btn
             x: 495
             y: 154
-            width: 56
+            width: 48
             height: 32
             radius: 4
             checkable: true
@@ -4851,9 +4852,9 @@ lvgl:
                   id(rebuild_base).execute();
         - button:
             id: echo_btn
-            x: 554
+            x: 546
             y: 154
-            width: 56
+            width: 48
             height: 32
             radius: 4
             checkable: true
@@ -4878,11 +4879,42 @@ lvgl:
                       lv_color_hex(on ? 0x04180C : 0x00C060), 0);
                   id(rebuild_base).execute();   // 有舊回波幀就立即疊回顯示
                   if (on) id(echo_refresh).execute();   // 並排一次新抓取
+        # FADE:真實雷達餘暉(慢速掃描 + 掃過顯影/淡出);關閉則常亮快掃
+        - button:
+            id: persist_btn
+            x: 597
+            y: 154
+            width: 48
+            height: 32
+            radius: 4
+            checkable: true
+            bg_color: 0x040C08
+            border_width: 1
+            border_color: 0x00A050
+            checked:
+              bg_color: 0x00C060
+              border_color: 0x00C060
+            widgets:
+              - label:
+                  id: persist_btn_l
+                  align: CENTER
+                  text: "FADE"
+                  text_font: font_small
+                  text_color: 0x00C060
+            on_click:
+              - lambda: |-
+                  bool on = lv_obj_has_state((lv_obj_t *) id(persist_btn), LV_STATE_CHECKED);
+                  id(persist_on) = on;
+                  lv_obj_set_style_text_color(id(persist_btn_l),
+                      lv_color_hex(on ? 0x04180C : 0x00C060), 0);
+                  // 切換時重置餘暉:開→等下次掃過再顯影;關→立刻常亮
+                  if (id(slot_glow).size() != AC_SLOTS) id(slot_glow).assign(AC_SLOTS, 0.0f);
+                  for (int i = 0; i < AC_SLOTS; i++) id(slot_glow)[i] = on ? 0.0f : 1.0f;
         - button:
             id: pwr_btn
-            x: 672
+            x: 699
             y: 154
-            width: 56
+            width: 48
             height: 32
             radius: 4
             checkable: true
@@ -5067,9 +5099,9 @@ lvgl:
         # ATC 鈕:切換雷達顯示為 ATC 模式(方塊目標點/速度向量線/歷史軌跡/STCA 衝突告警)
         - button:
             id: atc_btn
-            x: 613
+            x: 648
             y: 154
-            width: 56
+            width: 48
             height: 32
             radius: 4
             checkable: true
@@ -5097,9 +5129,9 @@ lvgl:
         # SYS 鈕:右下面板切換顯示系統資訊(CPU/RAM/PSRAM/FLASH)
         - button:
             id: info_btn
-            x: 731
+            x: 750
             y: 154
-            width: 56
+            width: 48
             height: 32
             radius: 4
             checkable: true

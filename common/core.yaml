@@ -79,6 +79,10 @@ esphome:
             lv_obj_add_state((lv_obj_t *) id(echo_btn), LV_STATE_CHECKED);
             lv_obj_set_style_text_color(id(echo_btn_l), lv_color_hex(0x04180C), 0);
           }
+          if (id(persist_on)) {
+            lv_obj_add_state((lv_obj_t *) id(persist_btn), LV_STATE_CHECKED);
+            lv_obj_set_style_text_color(id(persist_btn_l), lv_color_hex(0x04180C), 0);
+          }
           if (id(atc_on)) {
             lv_obj_add_state((lv_obj_t *) id(atc_btn), LV_STATE_CHECKED);
             lv_obj_set_style_text_color(id(atc_btn_l), lv_color_hex(0x04180C), 0);
@@ -389,6 +393,11 @@ globals:
     type: bool
     restore_value: true
     initial_value: 'false'
+  # 真實雷達餘暉:慢速掃描 + 掃過才顯影、隨時間淡出(FADE 鈕)
+  - id: persist_on
+    type: bool
+    restore_value: true
+    initial_value: 'true'
   - { id: info_on, type: bool, initial_value: 'false' }   # i 鈕:右下面板顯示系統資訊
   - id: atc_on
     type: bool
@@ -1145,8 +1154,12 @@ interval:
             lv_obj_set_pos(marks[shown], lside ? px - RS(108) : px - RS(14), py - RS(20));
             lv_img_set_angle(imgs[shown], ((int16_t)(id(ac_trk)[i] * 10.0f)) % 3600);
             bool selg = (!id(sel_cs_g).empty() && id(ac_cs)[i] == id(sel_cs_g));
-            lv_obj_set_style_img_recolor(imgs[shown], lv_color_hex(selg ? 0xFFD24A : 0x40FF9A), 0);
-            lv_obj_set_style_img_recolor_opa(imgs[shown], LV_OPA_COVER, 0);
+            // persist 開啟時顏色/透明度由掃描餘暉迴圈負責,這裡只在關閉時寫死常亮色
+            if (!id(persist_on)) {
+              lv_obj_set_style_img_recolor(imgs[shown], lv_color_hex(selg ? 0xFFD24A : 0x40FF9A), 0);
+              lv_obj_set_style_img_recolor_opa(imgs[shown], LV_OPA_COVER, 0);
+              lv_obj_set_style_opa(marks[shown], LV_OPA_COVER, 0);
+            }
             earr[shown] = e; noarr[shown] = no; selarr[shown] = selg;
             // 訊號延遲:last_contact 超過 60 秒沒更新
             bool stale = false;
@@ -1229,7 +1242,12 @@ interval:
             if (bearing < 0) bearing += 360.0f;
             id(slot_angle)[shown] = bearing;
             id(slot_map)[shown] = i;
-            lv_obj_clear_flag(marks[shown], LV_OBJ_FLAG_HIDDEN);
+            // 餘暉模式:尚未被掃描線掃過(glow≈0)的目標先藏起來;選取中例外以便點選後仍看得到
+            float gshow = id(slot_glow)[shown];
+            if (!id(persist_on) || gshow > 0.02f || selg)
+              lv_obj_clear_flag(marks[shown], LV_OBJ_FLAG_HIDDEN);
+            else
+              lv_obj_add_flag(marks[shown], LV_OBJ_FLAG_HIDDEN);
             shown++;
           }
           // STCA:兩兩比對水平距離 < 5.5km 且高度差 < 300m → 衝突告警(紅色,選取中則紅白交替)
@@ -1264,14 +1282,24 @@ interval:
             id(slot_map)[i] = -1;
             if (id(slot_angle).size() == AC_SLOTS) id(slot_angle)[i] = -1.0f;
           }
-  # 掃描線動畫(對齊 LVGL 30ms 刷新節拍,避免拍頻頓挫;6 秒轉一圈,角度用時間基準→不受幀率漂移)
-  - interval: 30ms
+  # 掃描線動畫
+  # EK79007(P4 7B)為無 GRAM 的 MIPI-DSI 面板,硬體以約 50–60Hz 持續刷 framebuffer;
+  # 這裡用 16ms(~62.5Hz)對齊,避免與面板掃描拍頻造成頓挫。
+  # persist_on:12 秒一圈(更像真實一次旋轉)+ 掃過才顯影、隨角度線性淡出;
+  # 關閉時:恢復原本 6 秒一圈、目標常亮。
+  - interval: 16ms
     then:
       - lambda: |-
-          const float PERIOD = 6000.0f;            // 一圈毫秒數
+          const bool persist = id(persist_on);
+          const float PERIOD = persist ? 12000.0f : 6000.0f;   // 一圈毫秒數
+          // 用累加角而非 millis/PERIOD:切換快慢時不會跳格
+          static uint32_t last_ms = 0;
           uint32_t now = millis();
+          float dt = (last_ms == 0) ? 0.0f : (float) (now - last_ms);
+          last_ms = now;
+          if (dt > 100.0f) dt = 16.0f;   // 卡住恢復時避免一次跨太大
           float prev = id(sweep_angle);
-          float cur = fmodf((float) now / PERIOD * 360.0f, 360.0f);
+          float cur = fmodf(prev + dt / PERIOD * 360.0f, 360.0f);
           id(sweep_angle) = cur;
           // 背光關著時面板雖然是暗的,LVGL 卻照常重繪(這個專案從來沒有呼叫
           // lvgl.pause)。掃描線每幀 invalidate 的是「圓心到端點」的軸對齊
@@ -1299,8 +1327,16 @@ interval:
               lv_line_set_points(lines[k], lp[k], 2);
             }
           }
-          // 航班點:被掃描線掃過→高亮,之後依時間漸暗(不受幀率影響)
-          if (id(slot_glow).size() != 10) return;
+          // 航班點餘暉:掃過→滿亮,之後依掃描角線性淡出(一圈剛好熄滅;與幀率無關)
+          if (id(slot_glow).size() != AC_SLOTS) id(slot_glow).assign(AC_SLOTS, 0.0f);
+          if (id(slot_angle).size() != AC_SLOTS) return;
+          lv_obj_t *marks[AC_SLOTS] = {
+            id(ac0), id(ac1), id(ac2), id(ac3), id(ac4), id(ac5), id(ac6), id(ac7),
+            id(ac8), id(ac9), id(ac10), id(ac11), id(ac12), id(ac13), id(ac14), id(ac15),
+            id(ac16), id(ac17), id(ac18), id(ac19), id(ac20), id(ac21), id(ac22), id(ac23),
+            id(ac24), id(ac25), id(ac26), id(ac27), id(ac28), id(ac29), id(ac30), id(ac31),
+            id(ac32), id(ac33), id(ac34), id(ac35), id(ac36), id(ac37), id(ac38), id(ac39)
+          };
           lv_obj_t *imgs[AC_SLOTS] = {
             (lv_obj_t *) id(ai0), (lv_obj_t *) id(ai1), (lv_obj_t *) id(ai2), (lv_obj_t *) id(ai3), (lv_obj_t *) id(ai4), (lv_obj_t *) id(ai5), (lv_obj_t *) id(ai6), (lv_obj_t *) id(ai7),
             (lv_obj_t *) id(ai8), (lv_obj_t *) id(ai9), (lv_obj_t *) id(ai10), (lv_obj_t *) id(ai11), (lv_obj_t *) id(ai12), (lv_obj_t *) id(ai13), (lv_obj_t *) id(ai14), (lv_obj_t *) id(ai15),
@@ -1308,7 +1344,8 @@ interval:
             (lv_obj_t *) id(ai24), (lv_obj_t *) id(ai25), (lv_obj_t *) id(ai26), (lv_obj_t *) id(ai27), (lv_obj_t *) id(ai28), (lv_obj_t *) id(ai29), (lv_obj_t *) id(ai30), (lv_obj_t *) id(ai31),
             (lv_obj_t *) id(ai32), (lv_obj_t *) id(ai33), (lv_obj_t *) id(ai34), (lv_obj_t *) id(ai35), (lv_obj_t *) id(ai36), (lv_obj_t *) id(ai37), (lv_obj_t *) id(ai38), (lv_obj_t *) id(ai39)
           };
-          const float DECAY = 0.932f;              // 每幀衰減(30ms,約 0.5s 半衰,同 20fps 時的 0.89)
+          // 本幀掃過的角度跨度(處理跨 360°)
+          float dang = (cur >= prev) ? (cur - prev) : (360.0f - prev + cur);
           for (int i = 0; i < AC_SLOTS; i++) {
             float ang = id(slot_angle)[i];
             if (ang < 0) continue;
@@ -1316,19 +1353,48 @@ interval:
             if (cur >= prev) crossed = (ang > prev && ang <= cur);
             else             crossed = (ang > prev || ang <= cur);   // 跨 360
             float g0 = id(slot_glow)[i];
-            float g = crossed ? 1.0f : g0 * DECAY;
+            float g;
+            if (!persist) {
+              // 關閉餘暉:常亮;掃過短暫加亮,約 30°(~0.5s@6s/圈)回到底色
+              g = crossed ? 1.0f : g0 - dang / 30.0f;
+              if (g < 0.0f) g = 0.0f;
+            } else {
+              // 開啟:掃過滿亮,之後依掃過角度線性淡到 0(剛好一圈)
+              g = crossed ? 1.0f : g0 - dang / 360.0f;
+              if (g < 0.0f) g = 0.0f;
+            }
             id(slot_glow)[i] = g;
-            // 已回到基底且上一幀也是基底 → 略過 recolor(省重繪)
-            if (g < 0.02f && g0 < 0.02f) continue;
-            if (dark) continue;   // 螢幕是暗的:輝度值照算,但不要 invalidate 圖示
             int idx = (i < (int) id(slot_map).size()) ? id(slot_map)[i] : -1;
             bool selg = (idx >= 0 && !id(sel_cs_g).empty() &&
                          idx < (int) id(ac_cs).size() && id(ac_cs)[idx] == id(sel_cs_g));
+            // 已到底且上一幀也到底、且非選取 → 略過重繪
+            if (g < 0.02f && g0 < 0.02f && !selg) {
+              if (persist && !dark)
+                lv_obj_add_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+              continue;
+            }
+            if (dark) continue;   // 螢幕是暗的:輝度值照算,但不要 invalidate
+            if (persist) {
+              float go = selg ? (g < 0.25f ? 0.25f : g) : g;   // 選取中保底可見
+              if (go < 0.02f) {
+                lv_obj_add_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+                continue;
+              }
+              lv_obj_clear_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+              lv_obj_set_style_opa(marks[i], (lv_opa_t) (go * 255.0f), 0);
+            } else {
+              lv_obj_clear_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+              lv_obj_set_style_opa(marks[i], LV_OPA_COVER, 0);
+            }
+            // 掃過瞬間偏白,之後回到底色(選取=琥珀,一般=青綠)
             uint8_t br = selg ? 0xFF : 0x40, bg = selg ? 0xD2 : 0xFF, bb = selg ? 0x4A : 0x9A;
-            uint8_t r = br + (uint8_t)((255 - br) * g);
-            uint8_t gg = bg + (uint8_t)((255 - bg) * g);
-            uint8_t b = bb + (uint8_t)((255 - bb) * g);
+            float gh = persist ? g : g;   // 高亮混合係數
+            // 非 persist 時基底已是常亮色,g 只做短暫加亮;persist 時 g 同時驅動亮度感
+            uint8_t r = br + (uint8_t) ((255 - br) * gh);
+            uint8_t gg = bg + (uint8_t) ((255 - bg) * gh);
+            uint8_t b = bb + (uint8_t) ((255 - bb) * gh);
             lv_obj_set_style_img_recolor(imgs[i], lv_color_make(r, gg, b), 0);
+            lv_obj_set_style_img_recolor_opa(imgs[i], LV_OPA_COVER, 0);
           }
   # 回波每 10 分鐘更新(開啟時)
   - interval: 600s
