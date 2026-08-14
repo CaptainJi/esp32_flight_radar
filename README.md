@@ -56,8 +56,9 @@ All need **≥8 MB octal PSRAM**, a **GT911** touch controller and **16 MB flash
 - **Tap the type badge** for the airframe itself: a bright-yellow top-down silhouette drawn
   to scale by real wingspan, revealed under a scan line, plus manufacturer, model, wingspan,
   length, MTOW, cruise speed, registration, country of registry, engine series and operator.
-  318 type designators, 105 drawings and 6004 operators, all compiled into the firmware —
-  no lookup, no network, works offline.
+  318 type designators, 107 drawings and 6004 operators, all compiled into the firmware —
+  no lookup, no network, works offline (on the OpenSky source the type code itself is
+  fetched once per selected aircraft, since OpenSky does not report it).
 - **ATC mode** — target squares, 2-minute velocity vectors, fading history trails and a local
   conflict alert.
 - **Weather echo** — rain radar from [RainViewer](https://www.rainviewer.com/), decoded on a
@@ -119,8 +120,8 @@ No account or API key is needed unless you specifically choose the OpenSky sourc
   升降率、距離與 ICAO 機型代碼。
 - **點機型徽章** 看這台飛機本身:亮黃色俯視輪廓(依真實翼展等比縮放、以掃描線方式現形),
   加上製造商、機型全名、翼展、機身長度、最大起飛重量、巡航速度、註冊號、註冊國、
-  發動機系列與營運者。318 個機型代碼、105 張輪廓、6004 家營運者全部編進韌體 ——
-  不查詢、不連網,離線可用。
+  發動機系列與營運者。318 個機型代碼、107 張輪廓、6004 家營運者全部編進韌體 ——
+  不查詢、不連網,離線可用(OpenSky 不給機型代碼,選中的那一架會另外查一次)。
 - **ATC 模式** —— 目標方塊、2 分鐘速度向量、漸淡歷史軌跡,以及本地衝突警示。
 - **氣象回波** —— 來自 [RainViewer](https://www.rainviewer.com/) 的雨區雷達,在背景核心
   解碼合成,UI 完全不卡。
@@ -177,8 +178,8 @@ ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
   升降率、距离与 ICAO 机型代码。
 - **点机型徽章** 看这台飞机本身:亮黄色俯视轮廓(依真实翼展等比缩放、以扫描线方式现形),
   加上制造商、机型全名、翼展、机身长度、最大起飞重量、巡航速度、注册号、注册国、
-  发动机系列与营运者。318 个机型代码、105 张轮廓、6004 家营运者全部编进固件 ——
-  不查询、不连网,离线可用。
+  发动机系列与营运者。318 个机型代码、107 张轮廓、6004 家营运者全部编进固件 ——
+  不查询、不连网,离线可用(OpenSky 不给机型代码,选中的那一架会另外查一次)。
 - **ATC 模式** —— 目标方块、2 分钟速度向量、渐淡历史轨迹,以及本地冲突警示。
 - **气象回波** —— 来自 [RainViewer](https://www.rainviewer.com/) 的雨区雷达,在后台核心
   解码合成,UI 完全不卡。
@@ -227,8 +228,8 @@ ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
 ## Data sources & credits / 資料來源與致謝 / 数据来源与致谢
 
 - Aircraft states — [OpenSky Network](https://opensky-network.org/), [airplanes.live](https://airplanes.live/), [adsb.lol](https://adsb.lol/)
-- Route lookup — [adsbdb.com](https://www.adsbdb.com/)
-- Aircraft silhouettes — [plane-watch/pw-silhouettes](https://github.com/plane-watch/pw-silhouettes) (CC BY-NC-SA 4.0)
+- Route and aircraft-type lookup — [adsbdb.com](https://www.adsbdb.com/)
+- Aircraft silhouettes — [plane-watch/pw-silhouettes](https://github.com/plane-watch/pw-silhouettes) (CC BY-NC-SA 4.0); airframes it does not cover (the 747 family) are drawn from published dimensions by `tools/make_local_silhouettes.py`
 - Type designators, operators, ICAO24 allocations — ICAO Doc 8643 / Doc 8585 / Annex 10 via [rikgale/ICAOList](https://github.com/rikgale/ICAOList)
 - Aircraft performance — [openap](https://github.com/TUDelft-CNS-ATM/openap) (TU Delft)
 - Weather radar — [RainViewer](https://www.rainviewer.com/)

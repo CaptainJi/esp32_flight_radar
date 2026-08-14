@@ -66,14 +66,14 @@ Tap an aircraft and, if the data source reports its type, a green **type badge**
 Press it again to go back; selecting another aircraft, opening **SYS** or losing the target also returns to the flight view.
 
 - Everything is **compiled into the firmware** — no lookup, no network round-trip, works offline. About 1.3 MB of the ~5.8 MB free app partition.
-- 318 type designators, 105 drawings, 6004 operators and the full ICAO24 address allocation table.
+- 318 type designators, 107 drawings, 6004 operators and the full ICAO24 address allocation table.
 - The country comes from the aircraft's **ICAO24 (Mode S) address**, the operator from the **first three letters of the callsign** (ICAO Doc 8585) — both are offline table lookups.
-- A type the database does not know still shows its registration, country and operator, falls back to the type name the API sends, and gets a **generic silhouette chosen by ADS-B emitter category** (large / heavy / rotorcraft / …), so a 747 is at least drawn as a big four-engine jet.
-- **OpenSky does not report aircraft types at all**, so the badge (and therefore the button) only exists when the data source is airplanes.live or adsb.lol.
+- A type the database does not know still shows its registration, country and operator, falls back to the type name the API sends, and gets a **generic silhouette chosen by ADS-B emitter category** (large / heavy / rotorcraft / …). That fallback is only a size class — the "heavy" one is a twinjet — so airframes the sprite sheet omits are drawn by `tools/make_local_silhouettes.py` instead (the whole 747 family, which pw-silhouettes does not cover).
+- **OpenSky does not report aircraft types**, so for that source the type is looked up **once per selected aircraft** from its ICAO24 address via [adsbdb.com](https://www.adsbdb.com/) (the same API as the route lookup) and cached. The badge appears a second or two after you tap the aircraft; airframes adsbdb does not know show no badge.
 - For helicopters the first line reads **ROTOR** — it is the main rotor diameter, not a wingspan.
 - Engines are the **series only** (`CFM56`, `PT6A`, `Trent 700`), not the exact variant.
 - Units follow the **UNIT** setting: metres/tonnes/km-h or feet/pounds/mph.
-- To refresh or extend the database, edit the files in `tools/data/` — `aircraft_specs.csv` (dimensions), `engines.csv`, `common_types.txt` (which types to include), `silhouette_alias.csv` (borrow a look-alike's drawing) — then run `python3 tools/make_aircraft_db.py`.
+- To refresh or extend the database, edit the files in `tools/data/` — `aircraft_specs.csv` (dimensions), `engines.csv`, `common_types.txt` (which types to include), `silhouette_alias.csv` (borrow a look-alike's drawing), `silhouettes/<ICAO>.png` (a drawing of our own, written by `tools/make_local_silhouettes.py`) — then run `python3 tools/make_aircraft_db.py`.
 
 ## ATC mode
 
@@ -206,14 +206,14 @@ python tools/make_map.py --lat 23.8 --lon 121.0 --radius 320 --countries TW --no
 再按一次回到航班資訊;換選別台飛機、開啟 **SYS**、或目標飛出範圍也都會自動回到航班資訊。
 
 - 所有資料**預先編進韌體**——不查詢、不連網,離線可用。約佔 1.3 MB(app 分割區還有約 5.8 MB 可用)。
-- 收錄 318 個機型代碼、105 張輪廓、6004 家營運者,以及完整的 ICAO24 位址分配表。
+- 收錄 318 個機型代碼、107 張輪廓、6004 家營運者,以及完整的 ICAO24 位址分配表。
 - 國籍是由該機的 **ICAO24(Mode S)位址**反查,營運者是由**呼號前三碼**(ICAO Doc 8585)反查,兩者都是離線查表。
-- 資料庫沒收錄的機型,一樣會顯示註冊號、國籍與營運者,機型名稱退用 API 傳來的字串,並依 **ADS-B 發射器類別**給一張通用輪廓(大型/重型/旋翼…),所以 747 至少會畫成一架大型四發噴射機。
-- **OpenSky 完全不提供機型**,所以徽章(以及這個按鈕)只有在資料來源是 airplanes.live 或 adsb.lol 時才會出現。
+- 資料庫沒收錄的機型,一樣會顯示註冊號、國籍與營運者,機型名稱退用 API 傳來的字串,並依 **ADS-B 發射器類別**給一張通用輪廓(大型/重型/旋翼…)。但這種退路只分得出大小級距(「重型」那張是雙發),所以官方圖庫沒畫的機型改用 `tools/make_local_silhouettes.py` 自繪——747 全系列就是這樣補的。
+- **OpenSky 不提供機型**,所以這個來源改用該機的 ICAO24 位址向 [adsbdb.com](https://www.adsbdb.com/) 查(與起訖站同一個 API),**只查你選中的那一架**並快取。點選後一兩秒徽章才會浮現;adsbdb 查無資料的機身就不顯示徽章。
 - 直升機的第一行標示為 **ROTOR**,那是主旋翼直徑,不是翼展。
 - 發動機只列**主系列**(`CFM56`、`PT6A`、`Trent 700`),不列到變體。
 - 單位跟隨 **UNIT** 設定:公尺/公噸/km-h 或英尺/磅/mph。
-- 要更新或擴充資料庫,編輯 `tools/data/` 底下的檔案——`aircraft_specs.csv`(尺寸)、`engines.csv`(發動機)、`common_types.txt`(收錄哪些機型)、`silhouette_alias.csv`(借用外型相近機型的圖)——再執行 `python3 tools/make_aircraft_db.py`。
+- 要更新或擴充資料庫,編輯 `tools/data/` 底下的檔案——`aircraft_specs.csv`(尺寸)、`engines.csv`(發動機)、`common_types.txt`(收錄哪些機型)、`silhouette_alias.csv`(借用外型相近機型的圖)、`silhouettes/<ICAO>.png`(自繪的圖,由 `tools/make_local_silhouettes.py` 產生)——再執行 `python3 tools/make_aircraft_db.py`。
 
 ## ATC 模式
 

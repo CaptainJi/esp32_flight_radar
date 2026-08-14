@@ -71,6 +71,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cctype>
 #include <cmath>
 #include <map>
 #include "freertos/FreeRTOS.h"
@@ -130,7 +131,8 @@ struct AcInfo {
 };
 
 struct Job {
-  int type;  // 1 = states, 2 = route, 3 = echo, 4 = weather, 5 = speakers, 6 = route cache
+  int type;  // 1 = states, 2 = route, 3 = echo, 4 = weather, 5 = speakers,
+             // 6 = route cache, 7 = 機型查詢(callsign 欄放 ICAO24 十六進位字串)
   std::string cid, sec, callsign;
   float lat, lon, range;
   int src;   // states 資料來源:0=OpenSky 1=airplanes.live 2=adsb.lol
@@ -287,7 +289,8 @@ inline bool do_states_opensky(const Job &j) {
       ac.trk = a[10] | 0.0f;
       ac.vr  = a[11] | 0.0f;
       ac.lc  = a[4] | 0u;
-      ac.sq  = a[14] | "";     // squawk;OpenSky 不提供機型,ty 留空
+      ac.sq  = a[14] | "";     // squawk;OpenSky 不提供機型,ty 由 hex 事後查 adsbdb 補
+      ac.hex = (uint32_t) strtoul(a[0] | "0", nullptr, 16);   // states[0] = ICAO24
       const char *c = a[1] | "";
       ac.cs = c;
       while (!ac.cs.empty() && ac.cs.back() == ' ') ac.cs.pop_back();
@@ -435,6 +438,43 @@ inline void do_route_cache(const Job &j) {
   }
   xSemaphoreTake(mtx(), portMAX_DELAY);
   g_rcache[j.callsign] = rt;
+  xSemaphoreGive(mtx());
+}
+
+// ---- 機型快取(OpenSky 用;ICAO24 → 機型代碼 / 註冊號 / 全名)----
+// readsb 來源(airplanes.live / adsb.lol)本來就給 t/r/desc,這條路只給 OpenSky 走:
+// OpenSky 的 states 只有 ICAO24,機型要另外查 adsbdb(查航線用的同一個免金鑰 API)。
+// done=false 表示「查詢中」,用來去重;done=true 而 ty 空 = 查無資料,不再重查。
+struct AcMeta { std::string ty, reg, desc; bool done = false; };
+inline std::map<uint32_t, AcMeta> g_tcache;
+
+inline void do_type_cache(const Job &j) {
+  int st = 0;
+  std::string r = http_req("https://api.adsbdb.com/v0/aircraft/" + j.callsign,
+                           false, "", nullptr, "", st);
+  AcMeta m;
+  m.done = true;
+  if (st == 200 && !r.empty()) {
+    esphome::json::parse_json(r, [&](JsonObject root) -> bool {
+      JsonObject a = root["response"]["aircraft"];
+      if (a.isNull()) return true;
+      m.ty  = a["icao_type"] | "";      // 4 碼 ICAO 代碼,正是 ac_spec_find() 要的
+      m.reg = a["registration"] | "";
+      std::string mfr = a["manufacturer"] | "";
+      std::string mdl = a["type"] | "";
+      m.desc = mfr.empty() ? mdl : (mdl.empty() ? mfr : mfr + " " + mdl);
+      for (char &c : m.desc) c = toupper((unsigned char) c);   // 面板其餘欄位都是大寫
+      return true;
+    });
+  } else if (st != 200 && st != 404) {
+    // 非 404 的失敗(網路/限流)不寫入快取,之後重試
+    xSemaphoreTake(mtx(), portMAX_DELAY);
+    g_tcache.erase((uint32_t) strtoul(j.callsign.c_str(), nullptr, 16));
+    xSemaphoreGive(mtx());
+    return;
+  }
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  g_tcache[(uint32_t) strtoul(j.callsign.c_str(), nullptr, 16)] = m;
   xSemaphoreGive(mtx());
 }
 
@@ -630,6 +670,7 @@ inline void task_fn(void *arg) {
       if (j->type == 1) do_states(*j);
       else if (j->type == 2) do_route(*j);
       else if (j->type == 6) do_route_cache(*j);
+      else if (j->type == 7) do_type_cache(*j);
       else if (j->type == 3) do_echo(*j);
       else if (j->type == 4) do_weather(*j);
       else if (j->type == 5) do_speakers(*j);
@@ -701,6 +742,48 @@ inline std::string route_cache_get(const std::string &cs) {
     xSemaphoreGive(mtx());
   }
   return "";
+}
+
+// 查機型快取;未知就排一次背景查詢(只給 OpenSky 用,見 g_tcache)。
+// 回傳 true 表示 ty/reg/desc 已填(可能是空字串 = 查無此機),false = 還不知道。
+// 只在「使用者選中的那一架」呼叫,不要整個機隊掃 —— adsbdb 是免費 API,
+// 一輪十幾架會撞上限流,而規格面板本來也只看得到一架。
+inline bool type_cache_get(uint32_t hex, std::string &ty, std::string &reg,
+                           std::string &desc) {
+  if (hex == 0) return false;
+  ensure_task();
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  auto it = g_tcache.find(hex);
+  if (it != g_tcache.end()) {
+    bool done = it->second.done;
+    if (done) { ty = it->second.ty; reg = it->second.reg; desc = it->second.desc; }
+    xSemaphoreGive(mtx());
+    return done;
+  }
+  if (g_tcache.size() > 120) g_tcache.clear();   // 同 g_rcache:防長時間累積吃 PSRAM
+  g_tcache[hex] = AcMeta{};                      // 標記查詢中(去重)
+  xSemaphoreGive(mtx());
+  char h[8];
+  snprintf(h, sizeof(h), "%06X", (unsigned) hex);
+  Job *j = new Job{7, "", "", h, 0, 0, 0};
+  if (xQueueSend(queue(), &j, 0) != pdTRUE) {
+    delete j;
+    xSemaphoreTake(mtx(), portMAX_DELAY);
+    g_tcache.erase(hex);   // 佇列滿:下一幀重試
+    xSemaphoreGive(mtx());
+  }
+  return false;
+}
+
+// 選中那一架若沒有機型(= OpenSky 來源),用 ICAO24 補查並寫回這一輪的向量。
+// 第一次呼叫只是排隊,回來前 ty 維持空字串(徽章仍隱藏),下一次刷新才補上。
+inline void type_fill(std::string &ty, std::string &reg, std::string &desc, uint32_t hex) {
+  if (!ty.empty() || hex == 0) return;
+  std::string t, r, d;
+  if (!type_cache_get(hex, t, r, d)) return;
+  ty = t;
+  if (reg.empty()) reg = r;
+  if (desc.empty()) desc = d;
 }
 
 // ---- 時區:下拉選單 index → POSIX TZ 字串(供 time.set_timezone 執行期切換)----

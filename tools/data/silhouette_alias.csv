@@ -15,6 +15,14 @@ B37M,B38M
 B39M,B38M
 B3XM,B38M
 P8,B738
+# --- 747 (drawing comes from make_local_silhouettes.py, pw has none) ---
+B741,B744
+B742,B744
+B743,B744
+B74D,B744
+B74R,B744
+B74S,B744
+BLCF,B744
 # --- 757 / 777 / 787 ---
 B753,B752
 B773,B772
