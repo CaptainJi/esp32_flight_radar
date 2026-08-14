@@ -851,6 +851,69 @@ inline void radar_install_ac_clip(lv_obj_t *page, lv_obj_t *marks[], lv_obj_t *v
   done = true;
 }
 
+// ---- 掃描線/尾巴 ----
+// ARGB 自繪在 MIPI 合成下易殘影、外觀差;改回 LVGL line(原扇形餘暉)。
+// 角度用牆鐘錨點:斜線幀變貴時跳格跟上,避免「半圈明顯變慢」。
+inline lv_obj_t *g_sweep_cv = nullptr;
+inline uint32_t *g_sweep_px = nullptr;
+
+inline float radar_sweep_tick(float period_ms, bool lit, float hold_angle,
+                              lv_obj_t *page, lv_obj_t *base, lv_obj_t *lv_lines[5]) {
+  static float a0 = 0.0f;
+  static uint32_t t0 = 0;
+  static float per = -1.0f;
+  static bool anchored = false;
+  uint32_t now = millis();
+  if (!anchored) {
+    a0 = hold_angle;
+    t0 = now;
+    per = period_ms;
+    anchored = true;
+  } else if (fabsf(period_ms - per) > 0.5f) {
+    a0 = fmodf(a0 + (float) (now - t0) / per * 360.0f, 360.0f);
+    if (a0 < 0.0f) a0 += 360.0f;
+    t0 = now;
+    per = period_ms;
+  }
+  float cur = fmodf(a0 + (float) (now - t0) / per * 360.0f, 360.0f);
+  if (cur < 0.0f) cur += 360.0f;
+
+  // 清掉舊版自繪 canvas(若還在),恢復 LVGL 線
+  static bool cleaned = false;
+  if (!cleaned) {
+    if (g_sweep_cv) {
+      lv_obj_del(g_sweep_cv);
+      g_sweep_cv = nullptr;
+    }
+    if (g_sweep_px) {
+      heap_caps_free(g_sweep_px);
+      g_sweep_px = nullptr;
+    }
+    cleaned = true;
+  }
+  (void) page;
+  (void) base;
+
+  if (!lit || !lv_lines) return cur;
+
+  const float DEG = 3.14159265f / 180.0f;
+  static const float TAIL_DEG[5] = { 0.0f, 1.75f, 3.75f, 5.75f, 7.75f };
+  static lv_point_precise_t lp[5][2];
+  static bool lines_shown = false;
+  for (int k = 0; k < 5; k++) {
+    if (!lv_lines[k]) continue;
+    if (!lines_shown) lv_obj_clear_flag(lv_lines[k], LV_OBJ_FLAG_HIDDEN);
+    float a = (cur - TAIL_DEG[k]) * DEG;
+    lp[k][0].x = RS(240);
+    lp[k][0].y = RS(240);
+    lp[k][1].x = RS(240) + (lv_coord_t) ((float) RADAR_R * sinf(a));
+    lp[k][1].y = RS(240) - (lv_coord_t) ((float) RADAR_R * cosf(a));
+    lv_line_set_points(lv_lines[k], lp[k], 2);
+  }
+  lines_shown = true;
+  return cur;
+}
+
 namespace radar_bg {
 
 // LVGL 9 把 canvas 的 lv_canvas_draw_* 全砍掉,改成「開一個 layer → 送 lv_draw_*
