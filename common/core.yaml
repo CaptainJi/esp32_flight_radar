@@ -467,6 +467,9 @@ script:
           lv_label_set_text(id(sel_l4), b);
           radar_sq_line(id(sel_l5),
               i < (int) id(ac_sq).size() ? id(ac_sq)[i].c_str() : "");
+          // OpenSky 不給機型:選中這一架就用 ICAO24 向 adsbdb 補查(背景+快取)
+          if (i < (int) id(ac_ty).size())
+            radar_bg::type_fill(id(ac_ty)[i], id(ac_reg)[i], id(ac_desc)[i], id(ac_hex)[i]);
           radar_type_badge(id(sel_type_l),
               i < (int) id(ac_ty).size() ? id(ac_ty)[i].c_str() : "");
       - script.execute: fetch_route
@@ -962,6 +965,8 @@ interval:
                        sqrtf(e2 * e2 + n2 * n2) * (id(units_imperial) ? 0.6214f : 1.0f), brg);
               lv_label_set_text(id(sel_l4), b2);
               radar_sq_line(id(sel_l5), id(ac_sq)[si].c_str());
+              // 機型每輪都要重補:向量剛才被新的 states 重建過(OpenSky 來源為空)
+              radar_bg::type_fill(id(ac_ty)[si], id(ac_reg)[si], id(ac_desc)[si], id(ac_hex)[si]);
               radar_type_badge(id(sel_type_l), id(ac_ty)[si].c_str());
               // 規格面板開著就一併刷新:機型碼可能後補上來,單位也可能在設定頁被改過
               if (id(spec_on))
