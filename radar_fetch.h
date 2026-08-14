@@ -133,7 +133,7 @@ struct Job {
   int type;  // 1 = states, 2 = route, 3 = echo, 4 = weather, 5 = speakers, 6 = route cache
   std::string cid, sec, callsign;
   float lat, lon, range;
-  int src;   // states 資料來源:0=OpenSky 1=airplanes.live 2=adsb.lol
+  int src;   // 0=OpenSky 1=A.LIVE 2=ADSB.LOL 3=ADSB.FI 4=MERGE(多源合併)
 };
 
 // ---- task → main 的結果(g_states_ready/g_route_ready 當柵欄)----
@@ -166,7 +166,18 @@ inline int g_spk_status = 0;               // HTTP 狀態:200 成功 / 401 token
 inline volatile int g_os_remaining = -1;   // OpenSky X-Rate-Limit-Remaining(-1=未知)
 inline bool g_want_rl = false;             // 只在 states 請求期間擷取(bg task 序列執行,無競態)
 inline volatile uint32_t g_os_cooldown_until = 0;  // OpenSky 失敗冷卻期限(millis 秒),期間走免費來源
-inline volatile int g_last_src = -1;       // 最近一次成功抓取的來源(0/1/2,-1=尚未成功)
+inline volatile int g_last_src = -1;       // 最近成功來源:0..4,-1=尚未;MERGE 時為 4
+
+inline const char *src_name(int src) {
+  switch (src) {
+    case 1: return "A.LIVE";
+    case 2: return "ADSB.LOL";
+    case 3: return "ADSB.FI";
+    case 4: return "MERGE";
+    case 0: return "OPENSKY";
+    default: return "----";
+  }
+}
 
 inline esp_err_t http_evt_cb(esp_http_client_event_t *evt) {
   if (evt->event_id == HTTP_EVENT_ON_HEADER && g_want_rl &&
@@ -251,8 +262,48 @@ inline bool ensure_token(const Job &j) {
   return true;
 }
 
-inline bool do_states_opensky(const Job &j) {
-  if (!ensure_token(j)) return false;
+inline void publish_states(std::vector<AcInfo> &&acs, int src) {
+  std::sort(acs.begin(), acs.end(),
+            [](const AcInfo &a, const AcInfo &b) { return a.dist < b.dist; });
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  g_result = std::move(acs);
+  g_states_ready = true;
+  g_last_src = src;
+  xSemaphoreGive(mtx());
+}
+
+// 依 ICAO24(hex)優先、否則呼號+近距離 合併;較新/較完整的欄位覆蓋空欄
+inline void merge_into(std::vector<AcInfo> &dst, std::vector<AcInfo> &&src) {
+  for (auto &a : src) {
+    int found = -1;
+    for (size_t i = 0; i < dst.size(); i++) {
+      if (a.hex != 0 && dst[i].hex != 0 && a.hex == dst[i].hex) { found = (int) i; break; }
+      if (!a.cs.empty() && a.cs != "?" && a.cs == dst[i].cs) {
+        float dlat = a.lat - dst[i].lat, dlon = a.lon - dst[i].lon;
+        if (dlat * dlat + dlon * dlon < 0.02f * 0.02f) { found = (int) i; break; }
+      }
+    }
+    if (found < 0) { dst.push_back(std::move(a)); continue; }
+    AcInfo &t = dst[(size_t) found];
+    bool newer = a.lc >= t.lc;
+    if (newer) {
+      t.lat = a.lat; t.lon = a.lon; t.trk = a.trk; t.vel = a.vel;
+      t.alt = a.alt; t.vr = a.vr; t.dist = a.dist; t.lc = a.lc;
+    }
+    if (t.hex == 0 && a.hex != 0) t.hex = a.hex;
+    if (t.sq.empty() && !a.sq.empty()) t.sq = std::move(a.sq);
+    if (t.ty.empty() && !a.ty.empty()) t.ty = std::move(a.ty);
+    if (t.reg.empty() && !a.reg.empty()) t.reg = std::move(a.reg);
+    if (t.desc.empty() && !a.desc.empty()) t.desc = std::move(a.desc);
+    if (t.cat.empty() && !a.cat.empty()) t.cat = std::move(a.cat);
+    if ((t.cs.empty() || t.cs == "?") && !a.cs.empty()) t.cs = std::move(a.cs);
+  }
+}
+
+inline bool fetch_opensky(const Job &j, std::vector<AcInfo> &out) {
+  // 有憑證走 OAuth;無憑證改匿名 bbox(額度更緊,但青島一帶常比免費聚合密)
+  const bool want_auth = !j.cid.empty() && !j.sec.empty();
+  if (want_auth && !ensure_token(j)) return false;
   float coslat = cosf(j.lat * 3.14159265f / 180.0f);
   float dlat = j.range / 110.574f;
   float dlon = j.range / (111.320f * coslat);
@@ -261,15 +312,14 @@ inline bool do_states_opensky(const Job &j) {
            "https://opensky-network.org/api/states/all?lamin=%.4f&lomin=%.4f&lamax=%.4f&lomax=%.4f",
            j.lat - dlat, j.lon - dlon, j.lat + dlat, j.lon + dlon);
   int st = 0;
-  g_want_rl = true;
-  std::string r = http_req(url, false, "", nullptr, t_token, st, 131072);
+  g_want_rl = want_auth;
+  std::string r = http_req(url, false, "", nullptr, want_auth ? t_token : "", st, 131072);
   g_want_rl = false;
-  if (st == 401) { t_token.clear(); return false; }   // 下一輪重新換發
+  if (st == 401) { t_token.clear(); return false; }
   if (st != 200 || r.empty()) {
-    ESP_LOGW("radar_bg", "states failed: %d (%u bytes)", st, (unsigned) r.size());
+    ESP_LOGW("radar_bg", "opensky states failed: %d (%u bytes)", st, (unsigned) r.size());
     return false;
   }
-  std::vector<AcInfo> acs;
   float lat0 = j.lat, lon0 = j.lon;
   esphome::json::parse_json(r, [&](JsonObject root) -> bool {
     JsonArray sts = root["states"].as<JsonArray>();
@@ -287,7 +337,8 @@ inline bool do_states_opensky(const Job &j) {
       ac.trk = a[10] | 0.0f;
       ac.vr  = a[11] | 0.0f;
       ac.lc  = a[4] | 0u;
-      ac.sq  = a[14] | "";     // squawk;OpenSky 不提供機型,ty 留空
+      ac.sq  = a[14] | "";
+      ac.hex = (uint32_t) strtoul(a[0] | "0", nullptr, 16);
       const char *c = a[1] | "";
       ac.cs = c;
       while (!ac.cs.empty() && ac.cs.back() == ' ') ac.cs.pop_back();
@@ -295,58 +346,45 @@ inline bool do_states_opensky(const Job &j) {
       float e = (alon - lon0) * 111.320f * coslat;
       float n = (alat - lat0) * 110.574f;
       ac.dist = sqrtf(e * e + n * n);
-      acs.push_back(ac);
+      out.push_back(std::move(ac));
     }
     return true;
   });
-  std::sort(acs.begin(), acs.end(),
-            [](const AcInfo &a, const AcInfo &b) { return a.dist < b.dist; });
-  xSemaphoreTake(mtx(), portMAX_DELAY);
-  g_result = std::move(acs);
-  g_states_ready = true;
-  g_last_src = 0;
-  xSemaphoreGive(mtx());
   return true;
 }
 
-// airplanes.live / adsb.lol(readsb /v2/point,免金鑰):回傳英制,這裡換算回公制
-// 使 UI/ATC 端與 OpenSky 完全同構;lc 由 now(epoch ms)- seen 還原成 last_contact
-inline bool do_states_v2(const Job &j, int src) {
-  float r_nm = j.range / 1.852f;
-  if (r_nm > 250.0f) r_nm = 250.0f;   // v2 API 半徑上限 250 nm(463 km)
-  char url[160];
-  snprintf(url, sizeof(url), "https://%s/v2/point/%.4f/%.4f/%.0f",
-           src == 2 ? "api.adsb.lol" : "api.airplanes.live", j.lat, j.lon, r_nm);
+// readsb 相容 /v2/point 或 adsb.fi /v3/lat/.../dist/...
+inline bool fetch_readsb_json(const std::string &url, float lat0, float lon0, float /*range*/,
+                              std::vector<AcInfo> &out) {
   int st = 0;
   std::string r = http_req(url, false, "", nullptr, "", st, 131072);
   if (st != 200 || r.empty()) {
-    ESP_LOGW("radar_bg", "v2 states(src %d) failed: %d (%u bytes)", src, st, (unsigned) r.size());
+    ESP_LOGW("radar_bg", "readsb failed %d (%u) %s", st, (unsigned) r.size(), url.c_str());
     return false;
   }
-  std::vector<AcInfo> acs;
-  float lat0 = j.lat, lon0 = j.lon;
-  float coslat = cosf(j.lat * 3.14159265f / 180.0f);
+  float coslat = cosf(lat0 * 3.14159265f / 180.0f);
   esphome::json::parse_json(r, [&](JsonObject root) -> bool {
     uint32_t now_s = (uint32_t) ((root["now"] | 0.0) / 1000.0);
+    if (now_s == 0) now_s = (uint32_t) (millis() / 1000);  // 部分源 now 單位不同時的後備
     JsonArray arr = root["ac"].as<JsonArray>();
     if (arr.isNull()) return true;
     for (JsonVariant v : arr) {
       JsonObject a = v.as<JsonObject>();
       if (a.isNull()) continue;
-      if (a["alt_baro"].is<const char *>()) continue;   // "ground" = 地面,跳過
+      if (a["alt_baro"].is<const char *>()) continue;   // "ground"
       float alat = a["lat"] | NAN, alon = a["lon"] | NAN;
       if (isnan(alat) || isnan(alon)) continue;
       AcInfo ac;
       ac.lat = alat; ac.lon = alon;
-      ac.alt = (a["alt_baro"] | 0.0f) * 0.3048f;    // ft → m
-      ac.vel = (a["gs"] | 0.0f) * 0.514444f;        // kt → m/s
+      ac.alt = (a["alt_baro"] | 0.0f) * 0.3048f;
+      ac.vel = (a["gs"] | 0.0f) * 0.514444f;
       ac.trk = a["track"] | 0.0f;
-      ac.vr  = (a["baro_rate"] | 0.0f) * 0.00508f;  // ft/min → m/s
+      ac.vr  = (a["baro_rate"] | 0.0f) * 0.00508f;
       float seen = a["seen"] | 0.0f;
       ac.lc = now_s > (uint32_t) seen ? now_s - (uint32_t) seen : 0;
       ac.sq = a["squawk"] | "";
-      ac.ty = a["t"] | "";     // ICAO 機型代碼
-      ac.reg = a["r"] | "";    // 註冊號
+      ac.ty = a["t"] | "";
+      ac.reg = a["r"] | "";
       ac.desc = a["desc"] | "";
       ac.cat = a["category"] | "";
       ac.hex = (uint32_t) strtoul(a["hex"] | "0", nullptr, 16);
@@ -357,30 +395,81 @@ inline bool do_states_v2(const Job &j, int src) {
       float e = (alon - lon0) * 111.320f * coslat;
       float n = (alat - lat0) * 110.574f;
       ac.dist = sqrtf(e * e + n * n);
-      acs.push_back(ac);
+      out.push_back(std::move(ac));
     }
     return true;
   });
-  std::sort(acs.begin(), acs.end(),
-            [](const AcInfo &a, const AcInfo &b) { return a.dist < b.dist; });
-  xSemaphoreTake(mtx(), portMAX_DELAY);
-  g_result = std::move(acs);
-  g_states_ready = true;
-  g_last_src = src;
-  xSemaphoreGive(mtx());
   return true;
 }
 
+inline bool fetch_v2_host(const Job &j, const char *host, std::vector<AcInfo> &out) {
+  float r_nm = j.range / 1.852f;
+  if (r_nm > 250.0f) r_nm = 250.0f;
+  char url[160];
+  snprintf(url, sizeof(url), "https://%s/v2/point/%.4f/%.4f/%.0f", host, j.lat, j.lon, r_nm);
+  return fetch_readsb_json(url, j.lat, j.lon, j.range, out);
+}
+
+inline bool fetch_adsb_fi(const Job &j, std::vector<AcInfo> &out) {
+  float r_nm = j.range / 1.852f;
+  if (r_nm > 250.0f) r_nm = 250.0f;
+  char url[192];
+  snprintf(url, sizeof(url),
+           "https://opendata.adsb.fi/api/v3/lat/%.4f/lon/%.4f/dist/%.0f",
+           j.lat, j.lon, r_nm);
+  return fetch_readsb_json(url, j.lat, j.lon, j.range, out);
+}
+
+inline bool do_states_opensky(const Job &j) {
+  std::vector<AcInfo> acs;
+  if (!fetch_opensky(j, acs)) return false;
+  publish_states(std::move(acs), 0);
+  return true;
+}
+
+inline bool do_states_v2(const Job &j, int src) {
+  std::vector<AcInfo> acs;
+  bool ok = false;
+  if (src == 3) ok = fetch_adsb_fi(j, acs);
+  else if (src == 2) ok = fetch_v2_host(j, "api.adsb.lol", acs);
+  else ok = fetch_v2_host(j, "api.airplanes.live", acs);
+  if (!ok) return false;
+  publish_states(std::move(acs), src);
+  return true;
+}
+
+// 多源合併:OpenSky(可匿名)+ADSB.LOL+ADSB.FI+A.LIVE,按 hex 去重補欄
+inline void do_states_merge(const Job &j) {
+  std::vector<AcInfo> all;
+  std::vector<AcInfo> part;
+  int ok_n = 0;
+  part.clear();
+  if (fetch_opensky(j, part)) { merge_into(all, std::move(part)); ok_n++; }
+  part.clear();
+  if (fetch_v2_host(j, "api.adsb.lol", part)) { merge_into(all, std::move(part)); ok_n++; }
+  part.clear();
+  if (fetch_adsb_fi(j, part)) { merge_into(all, std::move(part)); ok_n++; }
+  part.clear();
+  if (fetch_v2_host(j, "api.airplanes.live", part)) { merge_into(all, std::move(part)); ok_n++; }
+  if (ok_n == 0) {
+    ESP_LOGW("radar_bg", "merge: all sources failed");
+    return;
+  }
+  ESP_LOGI("radar_bg", "merge: %d sources ok, %u aircraft", ok_n, (unsigned) all.size());
+  publish_states(std::move(all), 4);
+}
+
 inline void do_states(const Job &j) {
-  if (j.src == 1 || j.src == 2) { do_states_v2(j, j.src); return; }
-  // OpenSky 主線:冷卻中直接走免費來源;失敗設 10 分鐘冷卻,到期自動回試
+  if (j.src == 4) { do_states_merge(j); return; }
+  if (j.src == 1 || j.src == 2 || j.src == 3) { do_states_v2(j, j.src); return; }
+  // OpenSky 主線:冷卻中直接走合併免費源;失敗設 10 分鐘冷卻
   uint32_t now = millis() / 1000;
   if (now >= g_os_cooldown_until) {
     if (do_states_opensky(j)) { g_os_cooldown_until = 0; return; }
     g_os_cooldown_until = now + 600;
-    ESP_LOGW("radar_bg", "opensky failed, fallback to free sources for 600s");
+    ESP_LOGW("radar_bg", "opensky failed, fallback merge for 600s");
   }
-  if (!do_states_v2(j, 1)) do_states_v2(j, 2);   // airplanes.live → adsb.lol
+  do_states_merge(j);
 }
 
 inline void do_route(const Job &j) {
@@ -734,6 +823,32 @@ inline const char *tz_posix(int i) {
 // ATC 圖層 bitmask:bit0 空域 / bit1 跑道 / bit2 機場 / bit3 導航點;ATC 模式關閉 = 0
 inline uint8_t atc_layer_mask(bool atc, bool asp, bool rwy, bool apt, bool fix) {
   return atc ? (uint8_t) ((asp ? 1 : 0) | (rwy ? 2 : 0) | (apt ? 4 : 0) | (fix ? 8 : 0)) : 0;
+}
+
+// 航班標記/向量/軌跡本來掛在整頁上,標籤會畫出雷達圓溢到下方控制列。
+// 建一個與底圖對齊的圓形裁剪層,把它們掛進去;座標改用 RADAR_CX(層内原點)。
+inline void radar_install_ac_clip(lv_obj_t *page, lv_obj_t *marks[], lv_obj_t *vecs[],
+                                  lv_obj_t *trs[][6]) {
+  static bool done = false;
+  if (done || !page) return;
+  lv_obj_t *clip = lv_obj_create(page);
+  lv_obj_remove_style_all(clip);
+  lv_obj_set_pos(clip, RS(12), RS(12));
+  lv_obj_set_size(clip, RADAR_CANVAS, RADAR_CANVAS);
+  lv_obj_set_style_bg_opa(clip, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(clip, 0, 0);
+  lv_obj_set_style_pad_all(clip, 0, 0);
+  lv_obj_set_style_radius(clip, RADAR_CANVAS / 2, 0);
+  lv_obj_set_style_clip_corner(clip, true, 0);
+  lv_obj_clear_flag(clip, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(clip, LV_OBJ_FLAG_CLICKABLE);
+  for (int i = 0; i < AC_SLOTS; i++) {
+    if (marks[i]) lv_obj_set_parent(marks[i], clip);
+    if (vecs[i]) lv_obj_set_parent(vecs[i], clip);
+    for (int k = 0; k < 6; k++)
+      if (trs[i][k]) lv_obj_set_parent(trs[i][k], clip);
+  }
+  done = true;
 }
 
 namespace radar_bg {
@@ -1566,8 +1681,17 @@ inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,
                                lv_obj_t *l2, lv_obj_t *l3, lv_obj_t *l4, int rssi) {
   char b[48];
   lv_label_set_text(cs, "SYSTEM");
-  snprintf(b, sizeof(b), "ESP32-S3 %uMHz   RSSI %d",
-           (unsigned) esp_rom_get_cpu_ticks_per_us(), rssi);
+#if defined(USE_ESP32_VARIANT_ESP32P4)
+  const char *chip = "ESP32-P4";
+#elif defined(USE_ESP32_VARIANT_ESP32S3)
+  const char *chip = "ESP32-S3";
+#elif defined(USE_ESP32_VARIANT_ESP32)
+  const char *chip = "ESP32";
+#else
+  const char *chip = "ESP32";
+#endif
+  snprintf(b, sizeof(b), "%s %uMHz   RSSI %d",
+           chip, (unsigned) esp_rom_get_cpu_ticks_per_us(), rssi);
   lv_label_set_text(route, b);
   snprintf(b, sizeof(b), "RAM   %4u / %4u KB",
            (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
@@ -1584,10 +1708,10 @@ inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,
            ap ? ap->size / 1048576.0f : 0.0f);
   lv_label_set_text(l3, b);
   uint32_t up = (uint32_t) (esp_timer_get_time() / 1000000LL);
-  if (radar_bg::g_last_src > 0)   // 免費來源(手選或 fallback):無額度,顯示來源名
+  if (radar_bg::g_last_src > 0)   // 免費/合併來源:無額度,顯示來源名
     snprintf(b, sizeof(b), "UP %ud %02u:%02u   SRC %s", (unsigned) (up / 86400),
              (unsigned) (up / 3600 % 24), (unsigned) (up / 60 % 60),
-             radar_bg::g_last_src == 2 ? "ADSB.LOL" : "A.LIVE");
+             radar_bg::src_name(radar_bg::g_last_src));
   else if (radar_bg::g_os_remaining >= 0)
     snprintf(b, sizeof(b), "UP %ud %02u:%02u   API %d", (unsigned) (up / 86400),
              (unsigned) (up / 3600 % 24), (unsigned) (up / 60 % 60),

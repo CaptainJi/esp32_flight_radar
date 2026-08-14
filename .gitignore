@@ -20,3 +20,5 @@ __pycache__/
 
 # 發佈用的韌體產物(tools/build_release.sh),不進版控
 dist/
+
+credentials.json

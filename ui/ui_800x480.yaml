@@ -4821,13 +4821,13 @@ lvgl:
 
         # ===== 右:資訊欄 =====
         # MAP / ECHO / FADE / ATC / PWR / SYS 文字切換鈕(啟用=反白)
-        # 六顆並排:寬 48、間距 3,末端 798 剛好貼齊 800 右緣
+        # 六顆並排:寬 48、高 36、font_tiny,避免字被裁切;末端約 798 貼齊 800 右緣
         - button:
             id: map_btn
             x: 495
             y: 154
             width: 48
-            height: 32
+            height: 36
             radius: 4
             checkable: true
             bg_color: 0x040C08
@@ -4841,7 +4841,7 @@ lvgl:
                   id: map_btn_l
                   align: CENTER
                   text: "MAP"
-                  text_font: font_small
+                  text_font: font_tiny
                   text_color: 0x00C060
             on_click:
               - lambda: |-
@@ -4855,7 +4855,7 @@ lvgl:
             x: 546
             y: 154
             width: 48
-            height: 32
+            height: 36
             radius: 4
             checkable: true
             bg_color: 0x040C08
@@ -4869,7 +4869,7 @@ lvgl:
                   id: echo_btn_l
                   align: CENTER
                   text: "ECHO"
-                  text_font: font_small
+                  text_font: font_tiny
                   text_color: 0x00C060
             on_click:
               - lambda: |-
@@ -4885,7 +4885,7 @@ lvgl:
             x: 597
             y: 154
             width: 48
-            height: 32
+            height: 36
             radius: 4
             checkable: true
             bg_color: 0x040C08
@@ -4899,7 +4899,7 @@ lvgl:
                   id: persist_btn_l
                   align: CENTER
                   text: "FADE"
-                  text_font: font_small
+                  text_font: font_tiny
                   text_color: 0x00C060
             on_click:
               - lambda: |-
@@ -4915,7 +4915,7 @@ lvgl:
             x: 699
             y: 154
             width: 48
-            height: 32
+            height: 36
             radius: 4
             checkable: true
             bg_color: 0x040C08
@@ -4929,7 +4929,7 @@ lvgl:
                   id: pwr_btn_l
                   align: CENTER
                   text: "PWR"
-                  text_font: font_small
+                  text_font: font_tiny
                   text_color: 0x00C060
             on_click:
               - lambda: |-
@@ -5102,7 +5102,7 @@ lvgl:
             x: 648
             y: 154
             width: 48
-            height: 32
+            height: 36
             radius: 4
             checkable: true
             bg_color: 0x040C08
@@ -5116,7 +5116,7 @@ lvgl:
                   id: atc_btn_l
                   align: CENTER
                   text: "ATC"
-                  text_font: font_small
+                  text_font: font_tiny
                   text_color: 0x00C060
             on_click:
               - lambda: |-
@@ -5132,7 +5132,7 @@ lvgl:
             x: 750
             y: 154
             width: 48
-            height: 32
+            height: 36
             radius: 4
             checkable: true
             bg_color: 0x040C08
@@ -5146,7 +5146,7 @@ lvgl:
                   id: info_btn_l
                   align: CENTER
                   text: "SYS"
-                  text_font: font_small
+                  text_font: font_tiny
                   text_color: 0x00C060
             on_click:
               - lambda: |-
@@ -5718,14 +5718,14 @@ lvgl:
                            id(radar_range).state * (imp ? 0.6214f : 1.0f));
                   lv_textarea_set_text((lv_obj_t *) id(ta_rng), rb);
                   lv_label_set_text(id(rng_unit_l), imp ? "mi" : "km");
-        # 航班資料來源(下拉三選一;OpenSky 失敗自動 fallback 到免費來源 10 分鐘)
-        # options 的 index 必須對齊 data_src:0=OpenSky 1=airplanes.live 2=adsb.lol
+        # 航班資料來源(下拉;index=data_src)
+        # 0=OpenSky 1=A.LIVE 2=ADSB.LOL 3=ADSB.FI 4=MERGE(多源合併,預設)
         - label: { x: 30, y: 252, text: "ADS-B SRC", text_font: font_small, text_color: 0x9AE6B4 }
         - dropdown:
             id: src_dd
             x: 148
             y: 244
-            width: 160
+            width: 180
             height: 38
             text_font: font_small
             text_color: 0x9AE6B4
@@ -5746,6 +5746,8 @@ lvgl:
               - "OPENSKY"
               - "A.LIVE"
               - "ADSB.LOL"
+              - "ADSB.FI"
+              - "MERGE"
             on_value:
               - lambda: |-
                   int i = (int) x;
