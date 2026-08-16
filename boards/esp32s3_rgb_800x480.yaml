@@ -1,7 +1,9 @@
 # =====================================================================
 #  Board: ESP32-S3 + 800x480 parallel-RGB (ST7262) + GT911 touch
-#  (generic "esp32-s3-5inch-rgb-001"; also Waveshare ESP32-S3-Touch-LCD-5,
-#   Sunton ESP32-8048S050, Guition JC8048W550 after matching the pins).
+#  (generic "esp32-s3-5inch-rgb-001"; other white-label 800x480 RGB+GT911
+#   boards work too, but only after matching the pins below — the Guition
+#   JC8048W550 / Sunton ESP32-8048S050 wiring differs on every one of them,
+#   so that board has its own file: boards/guition_jc8048w550.yaml).
 #  Resolution / radar geometry come from the substitutions in the entry
 #  file (radar.yaml); the C++ helpers read them via the build flags below.
 # =====================================================================

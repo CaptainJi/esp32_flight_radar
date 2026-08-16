@@ -60,11 +60,18 @@
 
 <h2>1. Pick your board</h2>
 <select id="board">
-  <option value="flight-radar-s3-800x480-generic">ESP32-S3 800×480 parallel-RGB (generic / Sunton / Guition)</option>
+  <option value="flight-radar-s3-800x480-generic">ESP32-S3 800×480 parallel-RGB (generic, esp32-s3-5inch-rgb-001)</option>
+  <option value="flight-radar-s3-jc8048w550">Guition JC8048W550C / Sunton ESP32-8048S050 (800×480) — alpha-test</option>
   <option value="flight-radar-s3-touch-lcd-5">Waveshare ESP32-S3-Touch-LCD-5 (800×480)</option>
   <option value="flight-radar-s3-touch-lcd-5b" selected>Waveshare ESP32-S3-Touch-LCD-5B (1024×600)</option>
   <option value="flight-radar-p4-touch-lcd-7b">Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600)</option>
 </select>
+
+<p class="note"><strong>alpha-test</strong> = built and pin-checked against the vendor
+datasheet, but never flashed on that board here. It should work; if the colours look
+inverted, the touch is offset or the image is shifted sideways, please
+<a href="https://github.com/delphicchen/esp32_flight_radar/issues">open an issue</a> —
+that is exactly the feedback needed to promote it out of alpha.</p>
 
 <h2>2. Connect over USB and flash</h2>
 <div class="row">

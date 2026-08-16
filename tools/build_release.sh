@@ -14,7 +14,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # ---- 版本:git tag,沒有 tag 就退回 commit ----
-VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo unknown)"
+# 可用 VERSION=... 覆寫,發 alpha 韌體時用得到:
+#   VERSION=v1.2.0-alpha ONLY=s3-jc8048w550 tools/build_release.sh
+VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo unknown)}"
+
+# ---- 只編某一塊板(選用)----
+# 給定 slug 就只編那一個入口,其餘跳過。單獨補發某塊板的韌體時免得整批重編。
+ONLY="${ONLY:-}"
 
 # ---- manifest 裡韌體的位址 ----
 # 韌體約 2MB 一個,不該進 repo,所以正式發佈時放 GitHub Releases,網頁只放
@@ -32,6 +38,7 @@ case "$BRANCH" in
     # 入口:輸出檔名:晶片族(ESP Web Tools 的 chipFamily)
     ENTRIES=(
       "radar.yaml:s3-800x480-generic:ESP32-S3"
+      "radar-jc8048w550.yaml:s3-jc8048w550:ESP32-S3"
       "radar-s3-5.yaml:s3-touch-lcd-5:ESP32-S3"
       "radar-s3-5b.yaml:s3-touch-lcd-5b:ESP32-S3"
     ) ;;
@@ -65,6 +72,8 @@ mkdir -p dist
 
 for spec in "${ENTRIES[@]}"; do
   IFS=: read -r ENTRY SLUG CHIP <<< "$spec"
+  # 注意要用 if,不能寫 `[ ... ] && continue` —— set -e 下條件不成立就會中止整個腳本
+  if [ -n "$ONLY" ] && [ "$ONLY" != "$SLUG" ]; then continue; fi
   OUT="flight-radar-${SLUG}-${VERSION}"
   echo
   echo "==== $ENTRY  →  $OUT ===="

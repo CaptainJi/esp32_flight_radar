@@ -23,7 +23,8 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 
 | Entry | Board | Panel | Branch |
 |-------|-------|-------|--------|
-| `radar.yaml` | generic ESP32-S3 5" (Sunton / Guition / …) | 800×480 RGB | `main` |
+| `radar.yaml` | generic ESP32-S3 5" (esp32-s3-5inch-rgb-001) | 800×480 RGB | `main` |
+| `radar-jc8048w550.yaml` | Guition JC8048W550**C** = Sunton ESP32-8048S050 *(alpha-test)* | 800×480 RGB | `main` |
 | `radar-s3-5.yaml` | Waveshare ESP32-S3-Touch-LCD-5 | 800×480 RGB | `main` |
 | `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | 1024×600 RGB | `main` |
 | `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | 1024×600 MIPI-DSI | `lvgl9` |
@@ -84,7 +85,7 @@ git clone https://github.com/delphicchen/esp32_flight_radar
 cd esp32_flight_radar
 # S3 boards -> main branch:
 pip install 'esphome==2026.3.*'
-esphome run radar-s3-5b.yaml       # or radar.yaml / radar-s3-5.yaml
+esphome run radar-s3-5b.yaml       # or radar.yaml / radar-s3-5.yaml / radar-jc8048w550.yaml
 # P4 board -> lvgl9 branch:
 git checkout lvgl9 && pip install 'esphome==2026.6.*'
 ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
@@ -144,7 +145,7 @@ git clone https://github.com/delphicchen/esp32_flight_radar
 cd esp32_flight_radar
 # S3 板 → main 分支:
 pip install 'esphome==2026.3.*'
-esphome run radar-s3-5b.yaml       # 或 radar.yaml / radar-s3-5.yaml
+esphome run radar-s3-5b.yaml       # 或 radar.yaml / radar-s3-5.yaml / radar-jc8048w550.yaml
 # P4 板 → lvgl9 分支:
 git checkout lvgl9 && pip install 'esphome==2026.6.*'
 ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
@@ -202,7 +203,7 @@ git clone https://github.com/delphicchen/esp32_flight_radar
 cd esp32_flight_radar
 # S3 板 → main 分支:
 pip install 'esphome==2026.3.*'
-esphome run radar-s3-5b.yaml       # 或 radar.yaml / radar-s3-5.yaml
+esphome run radar-s3-5b.yaml       # 或 radar.yaml / radar-s3-5.yaml / radar-jc8048w550.yaml
 # P4 板 → lvgl9 分支:
 git checkout lvgl9 && pip install 'esphome==2026.6.*'
 ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml

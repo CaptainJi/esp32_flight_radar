@@ -1,0 +1,27 @@
+# =============================================================
+# Flight Radar — Guition JC8048W550 (= Sunton ESP32-8048S050)
+#   ESP32-S3 N16R8 + 800x480 parallel-RGB (ST7262) 面板 + GT911 觸控。
+#
+# 與 radar.yaml 同一份 800x480 版面,只有 board 套件不同 —— 這片板子
+# 雖然也是 ST7262 + GT911,但腳位與原始的 esp32-s3-5inch-rgb-001 完全
+# 不一樣(背光 GPIO2、I2C 19/20、RGB 資料腳整組不同、面板要
+# invert_colors),詳見 boards/guition_jc8048w550.yaml。
+#
+# 觸控版本請買 SKU 尾碼 C(電容式 GT911);N 無觸控、R 是電阻式。
+# =============================================================
+
+substitutions:
+  disp_w: "800"          # panel width  (px)
+  disp_h: "480"          # panel height (px)
+  radar_canvas: "456"    # square radar canvas side (px) — matches ui/ui_800x480.yaml
+  # font sizes (scaled per resolution)
+  f_small: "22"
+  f_mid: "28"
+  f_clock: "64"
+  f_mono: "18"
+  f_tiny: "14"
+
+packages:
+  core:  !include common/core.yaml
+  board: !include boards/guition_jc8048w550.yaml
+  ui:    !include ui/ui_800x480.yaml

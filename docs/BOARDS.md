@@ -17,6 +17,7 @@ new board file plus a matching layout — the shared logic never changes:
 
 ```
 radar.yaml            entry: ESP32-S3 + 800×480 RGB   (the original board)
+radar-jc8048w550.yaml entry: Guition JC8048W550C = Sunton ESP32-8048S050 (800×480 RGB)
 radar-s3-5.yaml       entry: Waveshare ESP32-S3-Touch-LCD-5   (800×480 RGB)
 radar-s3-5b.yaml      entry: Waveshare ESP32-S3-Touch-LCD-5B  (1024×600 RGB)
 radar-p4-7b.yaml      entry: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600 MIPI-DSI)
@@ -36,14 +37,17 @@ dimensions left to chase.
 | Entry | Board | MCU | Panel | Wi-Fi | Status |
 |-------|-------|-----|-------|-------|--------|
 | `radar.yaml` | esp32-s3-5inch-rgb-001 (generic) | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | **verified on hardware** |
+| `radar-jc8048w550.yaml` | Guition JC8048W550**C** (= Sunton ESP32-8048S050) | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | config + build verified, **not yet flashed** |
 | `radar-s3-5.yaml` | Waveshare ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | config + build verified, **not yet flashed** |
 | `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | native | **verified on hardware** |
 | `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | **verified on hardware** (panel, colours, touch) |
 
 Common requirements for the RGB boards: **≥8 MB octal PSRAM** (quad-PSRAM can't feed
 the RGB panel), a **GT911** I²C touch controller, and 16 MB flash (`flash_size` is set
-per board). Other generic 800×480 RGB+GT911 boards (Sunton ESP32-8048S050, Guition
-JC8048W550, …) work with `radar.yaml` after matching the pins in
+per board). The Guition JC8048W550 (sold as Sunton ESP32-8048S050) has its own entry —
+same panel controller and touch chip as the generic board, but a completely different
+pinout, so it needs `radar-jc8048w550.yaml`, not `radar.yaml`. Other white-label 800×480
+RGB+GT911 boards work with `radar.yaml` after matching the pins in
 `boards/esp32s3_rgb_800x480.yaml`.
 
 **Adding a board:** drop a new file in `boards/`, set its pins/driver, then copy an
@@ -141,6 +145,7 @@ matching `external_components` block to fall back to the built-in components.
 
 ```
 radar.yaml            入口:ESP32-S3 + 800×480 RGB(原始板)
+radar-jc8048w550.yaml 入口:Guition JC8048W550C = Sunton ESP32-8048S050(800×480 RGB)
 radar-s3-5.yaml       入口:微雪 ESP32-S3-Touch-LCD-5(800×480 RGB)
 radar-s3-5b.yaml      入口:微雪 ESP32-S3-Touch-LCD-5B(1024×600 RGB)
 radar-p4-7b.yaml      入口:微雪 ESP32-P4-WIFI6-Touch-LCD-7B(1024×600 MIPI-DSI)
@@ -157,13 +162,16 @@ display 驅動與 C++ 巨集(透過 `build_flags` → `radar_fetch.h`),不再有
 | 入口 | 板子 | 主晶片 | 螢幕 | Wi-Fi | 狀態 |
 |------|------|--------|------|-------|------|
 | `radar.yaml` | esp32-s3-5inch-rgb-001(通用) | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | **實機驗證過** |
+| `radar-jc8048w550.yaml` | Guition JC8048W550**C**(= Sunton ESP32-8048S050) | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | config + 編譯驗證,**尚未實機燒錄** |
 | `radar-s3-5.yaml` | 微雪 ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | config + 編譯驗證,**尚未實機燒錄** |
 | `radar-s3-5b.yaml` | 微雪 ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | 原生 | **實機驗證過** |
 | `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI(EK79007) | ESP32-C6(esp-hosted/SDIO) | **實機驗證過**(面板、顏色、觸控) |
 
 RGB 板共同需求:**≥8 MB octal PSRAM**(quad 餵不動 RGB 屏)、**GT911** I²C 觸控、16 MB flash
-(`flash_size` 各板自訂)。其他白牌 800×480 RGB+GT911 板(Sunton ESP32-8048S050、Guition
-JC8048W550…)照 `boards/esp32s3_rgb_800x480.yaml` 對腳位即可用 `radar.yaml`。
+(`flash_size` 各板自訂)。Guition JC8048W550(另一個賣法叫 Sunton ESP32-8048S050)有自己的
+入口檔:面板驅動與觸控晶片和通用板一樣,但腳位整組不同,要用 `radar-jc8048w550.yaml`,
+不是 `radar.yaml`。其他白牌 800×480 RGB+GT911 板則照 `boards/esp32s3_rgb_800x480.yaml`
+對腳位後即可用 `radar.yaml`。
 
 **新增板子:**在 `boards/` 放一個新檔設定腳位/驅動,再複製一個入口檔把 `board:`/`ui:` 指過去。
 換新解析度時用 `python3 tools/scale_layout.py ui/ui_800x480.yaml ui/ui_<w>x<h>.yaml <倍率>`
