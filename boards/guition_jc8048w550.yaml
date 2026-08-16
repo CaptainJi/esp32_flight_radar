@@ -43,17 +43,37 @@ esp32:
   cpu_frequency: 240MHz
   framework:
     type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true   # 120MHz octal PSRAM 需要
     sdkconfig_options:
       CONFIG_SPIRAM_USE_MALLOC: "y"   # >16KB 的 malloc 走 PSRAM,避免內部 RAM 耗盡
       CONFIG_LWIP_MAX_SOCKETS: "17"   # 依實際元件算出的需求(11 TCP + 3 UDP + 3 TCP_LISTEN)
 
-# 廠商 sdkconfig 用 80MHz,這裡照抄不超頻:800x480 @16MHz pclk 的掃描頻寬只有
-# ~30 MB/s,80MHz octal 綽綽有餘。順帶避開 120MHz + IDF>=5.4 那條
-# psram_adjust_timing_point_via_tsens() 的地雷(flash 廠商 ID 不在白名單就
-# 開機 0x106 無限重開),所以本板不需要 components/psram 覆寫。
+# ---- 本地覆寫的元件(components/,各檔內有「本地覆寫」註解標明唯一改動點)----
+# psram:拿掉上游在 octal + 120MHz + IDF>=5.4 時無條件開啟的
+#        CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR。IDF 的
+#        psram_adjust_timing_point_via_tsens() 只認 flash 廠商 ID 0xC8/0x20,
+#        其餘一律 0x106 開機失敗無限重開 —— Guition 板正是常見的受害者
+#        (issue #7)。該選項無法用 sdkconfig_options 壓回 n。
+# lvgl :繪圖緩衝改配內部 SRAM,渲染不再與面板掃描搶 PSRAM 匯流排。
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [psram, lvgl]
+
+# 一開始照 agillis 的設定走 80MHz,但那是錯的:同解析度、同 ST7262 的通用板
+# (boards/esp32s3_rgb_800x480.yaml)早就實測「80MHz 頻寬不足會撕裂/雜訊」,
+# 專案裡四塊 S3 板也全都跑 120MHz。alpha1 的使用者回報畫面閃爍,對得上這個
+# 症狀,所以改回 120MHz。
+#
+# issue #7 有人回報這片板子在 120MHz 開不起來 —— 那是上面 psram 覆寫要解的
+# flash 廠商 ID 問題,不是 PSRAM 本身的速度極限。萬一覆寫之後仍然開不了機
+# (serial 會印 "The flash model has not been verified" + 0x106 無限重開),
+# 那才是真的硬體限制,退回 speed: 80MHz 即可。
 psram:
   mode: octal
-  speed: 80MHz
+  speed: 120MHz
 
 # ---- 背光 Backlight (LEDC PWM) ----
 output:
@@ -148,6 +168,16 @@ display:
       red: [45, 48, 47, 21, 14]
       green: [5, 6, 7, 15, 16, 4]
       blue: [8, 3, 46, 9, 1]
+
+# ---- LVGL 繪圖緩衝(板子專屬,合併進 ui 套件的 lvgl: 區塊)----
+# 不設時預設 0 → LVGL 把整螢幕緩衝配到 PSRAM,渲染流量與面板掃描 DMA 搶同一
+# 條匯流排。components/lvgl 覆寫改用 heap_caps_malloc(MALLOC_CAP_INTERNAL):
+# buffer_size: 12% → frac=8,覆寫內再減半 → 1/16 螢幕 = 800*480*2/16 = 48KB。
+# 渲染全程在內部 SRAM,只有 flush 寫 PSRAM framebuffer。
+# 開機 log 會印 "draw buffer ... in internal SRAM (1/16 screen)";若印
+# "falling back" 表示內部 RAM 不足,退回 PSRAM(不會開不了機)。
+lvgl:
+  buffer_size: 12%
 
 # ---- 尚未啟用:microSD(TF)插槽 ----
 # 板上有 TF 卡座與一個標著 SP1 的排線座(GPIO10/11/12/13),依 Sunton
