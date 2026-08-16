@@ -6,7 +6,7 @@
     {
       "chipFamily": "ESP32-S3",
       "parts": [
-        { "path": "https://github.com/delphicchen/esp32_flight_radar/releases/download/v1.2.0/flight-radar-s3-800x480-generic-v1.2.0.factory.bin", "offset": 0 }
+        { "path": "firmware/flight-radar-s3-800x480-generic-v1.2.0.factory.bin", "offset": 0 }
       ]
     }
   ]

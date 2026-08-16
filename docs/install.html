@@ -8,17 +8,21 @@
   Browser flashing page for the pre-built firmware.
 
   Serve this with GitHub Pages (Settings > Pages > deploy from `main`, /docs).
-  The .factory.bin files live in a GitHub Release, not in the repo -- they are
-  ~2 MB each. Build them with the manifests pointing at that release:
 
-      RELEASE_BASE_URL=https://github.com/<user>/<repo>/releases/download/<tag> \
-        tools/build_release.sh
+  The .factory.bin files are served from docs/firmware/ -- same origin as this
+  page and as the manifests. That is deliberate and must stay that way:
 
-  then copy dist/*.manifest.json next to this file and upload the .bin files
-  as release assets. Without RELEASE_BASE_URL the manifests use bare
-  filenames, which is handy for testing locally with the bins alongside:
+      esp-web-tools fetch()es the firmware from the browser. GitHub Releases
+      serves assets from release-assets.githubusercontent.com, which sends no
+      Access-Control-Allow-Origin header, so a cross-origin fetch is blocked
+      and the page fails with nothing but "Failed to fetch". GitHub Pages does
+      send `*`, and same-origin needs no CORS at all.
 
-      cd dist && python3 -m http.server
+  tools/build_release.sh does the whole thing: it compiles each board, drops the
+  bin in docs/firmware/ (deleting that board's previous one, so only the current
+  version is in version control) and writes the manifests next to this file with
+  a relative `firmware/...` path. Releases still get the bins as assets for
+  manual download / esptool, they are just not what this page fetches.
 -->
 <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
 <style>
