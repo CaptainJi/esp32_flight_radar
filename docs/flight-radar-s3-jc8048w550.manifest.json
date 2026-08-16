@@ -1,5 +1,5 @@
 {
-  "name": "ESP32 Flight Radar (s3-jc8048w550, alpha-test)",
+  "name": "ESP32 Flight Radar (s3-jc8048w550)",
   "version": "v1.2.0-alpha",
   "new_install_prompt_erase": true,
   "builds": [
