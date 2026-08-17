@@ -92,7 +92,7 @@ extern "C" {
 #elif RADAR_DISPLAY_RGB == 2
 #include "esphome/components/mipi_rgb/mipi_rgb.h"
 #endif
-#include "map_data.h"
+#include "map_tiles.h"   // 地圖改為執行期從 maps 分割區載入(原 map_data.h)
 
 namespace radar_bg {
 
@@ -801,12 +801,33 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
                                bool map_show, bool echo_show, uint8_t atc_layers) {
   lv_img_dsc_t *img = lv_canvas_get_img(cv);
   if (!img || !img->data) return;
+
+  // 地圖資料以前是 map_data.h 裡的編譯期陣列,現在是 maptiles 從 maps 分割區
+  // 載入的 vector。這幾個別名讓底下的繪製迴圈完全不用改寫 —— 那些迴圈很細膩
+  // (逐段的範圍裁切、虛線切段),能不動就不動。
+  // 取 .data() 是安全的:圖磚只在載入時 append,繪製期間不會再動到 vector。
+  const float *const MAP_OUTLINE = maptiles::OUTLINE.data();
+  const int MAP_OUTLINE_LEN = (int) maptiles::OUTLINE.size();
+  const MapAirport *const AIRPORTS = maptiles::AIRPORTS.data();
+  const int AIRPORTS_LEN = (int) maptiles::AIRPORTS.size();
+  const MapRunway *const RUNWAYS = maptiles::RUNWAYS.data();
+  const int RUNWAYS_LEN = (int) maptiles::RUNWAYS.size();
+  const MapFix *const FIXES = maptiles::FIXES.data();
+  const int FIXES_LEN = (int) maptiles::FIXES.size();
+  const MapAirspace *const AIRSPACES = maptiles::AIRSPACES.data();
+  const int AIRSPACES_LEN = (int) maptiles::AIRSPACES.size();
+  const float *const AIRSPACE_PTS = maptiles::AIRSPACE_PTS.data();
+
   const size_t BYTES = (size_t) RADAR_CANVAS * RADAR_CANVAS * sizeof(lv_color_t);
   static uint8_t *cache = nullptr;   // 底色+輪廓快取(PSRAM,416KB)
   if (!cache) cache = (uint8_t *) heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
   static float c_lat = NAN, c_lon = NAN, c_rng = NAN;
   static bool c_map = false;
-  bool fresh = cache && c_lat == lat0 && c_lon == lon0 && c_rng == rng && c_map == map_show;
+  static uint32_t c_gen = 0;
+  // c_gen 不能省:座標/半徑/開關都沒變,但地圖下載完成時資料換了一整套,
+  // 沒有它畫面會停在舊的(或空的)底圖,直到使用者剛好去動座標才更新。
+  bool fresh = cache && c_lat == lat0 && c_lon == lon0 && c_rng == rng &&
+               c_map == map_show && c_gen == maptiles::generation;
   if (fresh) {
     memcpy((void *) img->data, cache, BYTES);
   } else {
@@ -860,6 +881,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     if (cache) {
       memcpy(cache, img->data, BYTES);
       c_lat = lat0; c_lon = lon0; c_rng = rng; c_map = map_show;
+      c_gen = maptiles::generation;
     }
   }
   // 回波預混合:g_echo_buf 為 [color_lo][color_hi][alpha],逐像素混進底圖。

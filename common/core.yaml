@@ -17,7 +17,7 @@ esphome:
     lib_deps:
       - kikuchan98/pngle@^1.0.0
   includes:
-    - map_data.h
+    - map_tiles.h          # 取代 map_data.h:地圖改成執行期從 maps 分割區載入
     - aircraft_db.h        # 產生器:tools/make_aircraft_db.py(機型輪廓 + 規格表)
     - radar_fetch.h
     - alarm.h
@@ -25,6 +25,10 @@ esphome:
     priority: -100
     then:
       - lambda: |-
+          // 先把地圖從 maps 分割區載進來,再重建底圖 —— 順序不能反,否則第一張
+          // 底圖會是空的,要等下一次座標/半徑變動才補上。沒有地圖(還沒下載過、
+          // 或分割區是舊表)時陣列是空的,繪製迴圈自然不畫,不需要額外判斷。
+          maptiles::load_from_partition();
           // 開機重建底圖(map_on/echo_on 已自 NVS 還原),同時蓋掉 PSRAM 未初始化雜訊
           // 喇叭下拉選單:字型無 FontAwesome 箭頭字形(U+F078),移除符號免警告
           LvDropdownType *dds[8] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd), id(tz_dd),
@@ -130,6 +134,11 @@ web_server:
 
 api:
   reboot_timeout: 0s
+  # 沒有 encryption: 的裝置,新版 Home Assistant 的 ESPHome 整合會拒絕加入
+  # (issue #7)。**不要**填 key: —— 留空由裝置自己產生、HA 加入時協商,
+  # 這樣預編韌體裡不含任何金鑰,每台機器的金鑰也各不相同。
+  # (作法出自 ESPHome 維護者 jesserockz 的回覆。)
+  encryption:
 
 ota:
   - platform: esphome
