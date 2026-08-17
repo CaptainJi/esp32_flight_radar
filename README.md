@@ -120,6 +120,7 @@ No account or API key is needed unless you specifically choose the OpenSky sourc
   outside Taiwan
 - **[Boards & internals](docs/BOARDS.md)** — per-board pins and timings, local component
   overrides, how to add a board
+- **[Changelog](CHANGELOG.md)** — what changed per release, and what an upgrade costs you
 
 ---
 
@@ -178,6 +179,7 @@ ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
 
 - **[使用指南](docs/USAGE.md)** —— 鬧鐘、ATC 模式、截圖存到 Home Assistant、在台灣以外地區使用
 - **[板子與內部細節](docs/BOARDS.md)** —— 逐板腳位與時序、本地元件覆寫、如何新增板子
+- **[更新紀錄](CHANGELOG.md)** —— 每個版本改了什麼,以及升級要付出什麼代價
 
 ---
 
@@ -236,6 +238,7 @@ ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
 
 - **[使用指南](docs/USAGE.md)** —— 闹钟、ATC 模式、截图存到 Home Assistant、在台湾以外地区使用
 - **[板子与内部细节](docs/BOARDS.md)** —— 逐板引脚与时序、本地组件覆盖、如何新增板子
+- **[更新记录](CHANGELOG.md)** —— 每个版本改了什么,以及升级要付出什么代价
 
 ---
 
