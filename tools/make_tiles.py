@@ -35,10 +35,14 @@ Examples:
     # one cell, to eyeball the output
     python make_tiles.py --out /tmp/tiles --cells N20E120
 
-    # Taiwan detail pack: county outline + eAIP airspace into the cells it touches
-    python make_tiles.py --out /tmp/tiles --cells N20E120 \
-        --geojson tools/twcounty2010.geojson \
-        --airspace-geojson tools/taiwan_airspace.geojson
+    # Taiwan detail pack: county outline + eAIP airspace ON TOP of Natural Earth,
+    # over the two cells Taiwan straddles (Kinmen is west of 120E).
+    # The county file is 9 MB, so it lives in the gitignored cache; fetch it with:
+    #   curl -Lo tools/cache/twcounty2010.geojson \
+    #     https://raw.githubusercontent.com/g0v/twgeojson/master/json/twCounty2010.geo.json
+    python make_tiles.py --out ../flight-radar-maps --cells N20E120,N20E110 \
+        --add-geojson tools/cache/twcounty2010.geojson \
+        --airspace-geojson tools/taiwan_airspace.geojson --min-airport small
 
     # everything, all levels
     python make_tiles.py --out ../flight-radar-maps
@@ -180,6 +184,12 @@ def build_tile(lat0, lon0, level, cache, args):
         else:
             names = ["coastline", "borders"] + (["states"] if args.states else [])
             files = [(mm.fetch(n, cache), mm.OUTLINE_KIND[n]) for n in names]
+        # A detail pack ADDS to Natural Earth, it does not replace it. One cell
+        # is 10 degrees across and holds several countries -- swapping the whole
+        # outline for a national boundary file would erase every neighbour's
+        # coastline in that cell. (--geojson keeps make_map.py's replace
+        # semantics, which is what you want for a single-location build.)
+        files += [(p, 0) for p in (args.add_geojson or [])]
         clipped = []
         for path, kind in files:
             for feat in mm.json.load(open(path, encoding="utf-8"))["features"]:
@@ -252,7 +262,10 @@ def main():
     p.add_argument("--levels", default="1,2,3", help="detail levels to build (default all)")
     p.add_argument("--states", action="store_true", help="include state/province borders")
     p.add_argument("--geojson", action="append",
-                   help="local GeoJSON outline instead of Natural Earth (detail pack)")
+                   help="local GeoJSON outline INSTEAD of Natural Earth")
+    p.add_argument("--add-geojson", action="append",
+                   help="local GeoJSON outline drawn IN ADDITION to Natural Earth "
+                        "(detail pack, e.g. the g0v Taiwan county boundaries)")
     p.add_argument("--airspace-geojson", action="append",
                    help="local GeoJSON with CTR/TMA polygons (name + type properties)")
     p.add_argument("--airspace-types", default="CTR,TMA,CTA",
