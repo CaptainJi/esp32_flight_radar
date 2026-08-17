@@ -111,7 +111,19 @@ You can also just open the URL in a browser. If the colors come out wrong (red/b
 
 ## Using it outside Taiwan
 
-The repo ships with a Taiwan outline in `map_data.h`, but the radar projection itself is fully generic — just regenerate the map for your own location before compiling:
+**You do not need to do anything.** The firmware downloads the map tiles covering your own
+coordinates on first boot, from [flight-radar-maps](https://github.com/delphicchen/flight-radar-maps),
+and stores them in flash. A prebuilt image works anywhere; the screen shows
+`DOWNLOADING MAP` under the callsign while it fetches.
+
+The rest of this section is for **baking a map into your own build** instead — finer detail than
+the hosted tiles, your own boundary file, or airspace for a country the tiles do not cover
+(they carry no airspace outside Taiwan, because openAIP data is CC BY-NC and not ours to
+redistribute). `tools/make_map.py` still produces a `map_data.h`, but nothing includes it now:
+wire it back in yourself, or start from the [`pre-maptiles`](https://github.com/delphicchen/esp32_flight_radar/releases/tag/pre-maptiles)
+tag, which is the last version built around a compiled-in map.
+
+To regenerate hosted tiles instead, see `tools/make_tiles.py` and the tiles repo's README.
 
 ```bash
 # Tokyo, up to 150 km range
@@ -251,7 +263,17 @@ automation:
 
 ## 在台灣以外地區使用
 
-repo 內附的 `map_data.h` 是台灣輪廓,但雷達投影本身完全通用——編譯前為你的位置重新產生地圖即可:
+**你什麼都不用做。** 韌體第一次開機就會依你的座標,從
+[flight-radar-maps](https://github.com/delphicchen/flight-radar-maps) 下載對應的圖磚存進 flash,
+預編韌體在任何地方都能用;抓取期間呼號下方會顯示 `DOWNLOADING MAP`。
+
+以下這節是給**想把地圖烤進自己的編譯版**的人:需要比線上圖磚更細的細節、想用自己的邊界檔,
+或需要圖磚沒有涵蓋的空域(台灣以外沒有空域資料,因為 openAIP 是 CC BY-NC,我們不能代為散布)。
+`tools/make_map.py` 仍然會產生 `map_data.h`,但現在沒有任何地方 include 它 —— 你得自己接回去,
+或直接從 [`pre-maptiles`](https://github.com/delphicchen/esp32_flight_radar/releases/tag/pre-maptiles)
+這個 tag 出發,那是最後一個以編譯期地圖為主的版本。
+
+若是要重新產生線上圖磚,請看 `tools/make_tiles.py` 與圖磚 repo 的 README。
 
 ```bash
 # 東京,最大半徑 150 km

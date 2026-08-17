@@ -22,6 +22,8 @@ radar-s3-5.yaml       entry: Waveshare ESP32-S3-Touch-LCD-5   (800×480 RGB)
 radar-s3-5b.yaml      entry: Waveshare ESP32-S3-Touch-LCD-5B  (1024×600 RGB)
 radar-p4-7b.yaml      entry: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600 MIPI-DSI)
 common/core.yaml      shared logic + UI-independent components (fonts, scripts, …)
+partitions.csv        custom partition table: shrinks app0/app1 to make room for `maps`
+map_tiles.h           parses the downloaded map tiles; the map is no longer compiled in
 boards/*.yaml         per-board hardware: MCU / PSRAM / display / touch / backlight
 components/*          local overrides of two ESPHome components, pulled in by the
                       Waveshare board files (see "Local component overrides")
@@ -150,6 +152,8 @@ radar-s3-5.yaml       入口:微雪 ESP32-S3-Touch-LCD-5(800×480 RGB)
 radar-s3-5b.yaml      入口:微雪 ESP32-S3-Touch-LCD-5B(1024×600 RGB)
 radar-p4-7b.yaml      入口:微雪 ESP32-P4-WIFI6-Touch-LCD-7B(1024×600 MIPI-DSI)
 common/core.yaml      共用邏輯 + 與版面無關的元件(字型、腳本…)
+partitions.csv        自訂分割表:縮小 app0/app1 空出 `maps` 分割區
+map_tiles.h           解析下載回來的地圖圖磚;地圖不再編譯進韌體
 boards/*.yaml         各板硬體:MCU / PSRAM / 螢幕 / 觸控 / 背光
 components/*          兩個 ESPHome 元件的本地覆寫,由微雪板檔載入(見「本地元件覆寫」)
 ui/ui_800x480.yaml    800×480 的 LVGL 版面 ← 改這一份
