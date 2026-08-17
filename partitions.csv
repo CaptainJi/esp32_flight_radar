@@ -1,0 +1,19 @@
+# Flight Radar 分割表 —— 為下載式地圖切出 `maps` 分割區。
+#
+# ESPHome 預設在 16MB flash 上給 app0/app1 各 0x7C0000(7.75MB),兩塊 app 加上
+# nvs 幾乎把 16MB 用滿(只剩約 28KB),放不下任何新分割區。但韌體實際只用 3.2MB,
+# 每塊 app 有 4.5MB 是空的 —— 縮到 6MB 仍有近一倍餘裕,空出來的位置給地圖。
+#
+# ⚠️ 改分割表無法透過 OTA 生效,既有裝置必須接 USB 重燒一次(已確認接受)。
+#    重燒之後照樣能繼續 OTA。
+#
+# maps:自訂 data 子型別 0x82,不是檔案系統 —— 單一 blob、整份重寫、循序讀取,
+#      用 esp_partition_* 直接存取即可(見 map_tiles.h)。512KB,實測需求約 120KB。
+#
+# Name,     Type, SubType, Offset,  Size,
+nvs,        data, nvs,     ,        0x6D000,
+otadata,    data, ota,     ,        0x2000,
+phy_init,   data, phy,     ,        0x1000,
+maps,       data, 0x82,    ,        0x80000,
+app0,       app,  ota_0,   ,        0x600000,
+app1,       app,  ota_1,   ,        0x600000,

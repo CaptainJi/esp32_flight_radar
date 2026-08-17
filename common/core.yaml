@@ -120,6 +120,11 @@ wifi:
 
 captive_portal:
 
+# 自訂分割表:為下載式地圖切出 `maps` 分割區(見 partitions.csv 與 PLAN_MAPTILES.md)。
+# 放在 core 而不是各 board —— 這與板子無關,四塊 S3 板一致。
+esp32:
+  partitions: partitions.csv
+
 web_server:
   port: 80
 
