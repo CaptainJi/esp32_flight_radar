@@ -70,10 +70,17 @@ inline std::vector<char> STRTAB;          // airspace names; MapAirspace.name po
 
 inline bool loaded = false;               // false = no map yet (nothing drawn)
 
+// Bumped whenever the arrays change. radar_rebuild_base() caches the rendered
+// base image keyed on lat/lon/range/map_show; without this in the key a map
+// that finishes downloading would not appear until the user happened to move
+// the coordinates or change the range.
+inline uint32_t generation = 0;
+
 inline void clear() {
   OUTLINE.clear(); AIRPORTS.clear(); RUNWAYS.clear();
   FIXES.clear(); AIRSPACES.clear(); AIRSPACE_PTS.clear(); STRTAB.clear();
   loaded = false;
+  generation++;
 }
 
 // ---- little-endian readers ---------------------------------------------
@@ -206,6 +213,7 @@ inline void finish() {
   for (auto &as : AIRSPACES)
     as.name = STRTAB.data() + (uintptr_t) as.name;
   loaded = !OUTLINE.empty() || !AIRPORTS.empty() || !AIRSPACES.empty();
+  generation++;
 }
 
 #ifndef MAPTILES_HOST_TEST
