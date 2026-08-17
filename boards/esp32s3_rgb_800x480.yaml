@@ -29,7 +29,11 @@ esp32:
       enable_idf_experimental_features: true   # 120MHz octal PSRAM 需要
     sdkconfig_options:
       CONFIG_SPIRAM_USE_MALLOC: "y"   # >16KB 的 malloc 走 PSRAM,避免內部 RAM 耗盡
-      CONFIG_LWIP_MAX_SOCKETS: "16"   # 預設 10 會被 API/web/mDNS/TLS 佔滿,截圖 httpd 起不來(errno 23)
+      # 預設 10 會被 API/web/mDNS/TLS 佔滿,截圖 httpd 起不來(errno 23)。
+      # 17 是 ESPHome 依實際元件算出的需求(11 TCP + 3 UDP + 3 TCP_LISTEN);
+      # 原本設 16 會在建置時被警告,執行期表現為連線隨機失敗(esp-tls
+      # "Connection reset by peer")—— 地圖下載又多了一個 HTTPS 連線來源,更容易撞到。
+      CONFIG_LWIP_MAX_SOCKETS: "17"
 
 psram:
   mode: octal     # this project needs octal PSRAM; quad boards can't feed the RGB panel

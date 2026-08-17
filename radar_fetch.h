@@ -363,7 +363,11 @@ inline void do_states(const Job &j) {
     g_os_cooldown_until = now + 600;
     ESP_LOGW("radar_bg", "opensky failed, fallback to free sources for 600s");
   }
-  if (!do_states_v2(j, 1)) do_states_v2(j, 2);   // airplanes.live → adsb.lol
+  // adsb.lol 先試,airplanes.live 當第二順位:後者自 2026-08-13 起關閉公開 API,
+  // 對所有人一律 403(不是我們被封)。原本的順序等於每一輪都先浪費一次必定失敗
+  // 的 TLS 連線,才輪到真正能用的來源 —— 也讓 adsb.lol 更容易撞到它的速率限制。
+  // 保留它當第二順位:如果哪天恢復開放,不必改碼就會自己回來。
+  if (!do_states_v2(j, 2)) do_states_v2(j, 1);   // adsb.lol → airplanes.live
 }
 
 inline void do_route(const Job &j) {
