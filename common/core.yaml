@@ -883,6 +883,22 @@ interval:
                                      id(radar_range).state);
             }
           }
+          // 下載中在 INITIALIZING 下面那行顯示進度。分母是格數不是位元組(見
+          // radar_fetch.h 的說明);沒選航班時才寫,否則會蓋掉航線顯示。
+          {
+            static bool was_busy = false;
+            const bool busy = radar_bg::g_maps_busy;
+            if (busy && id(sel_cs_g).empty()) {
+              char m[48];
+              snprintf(m, sizeof(m), "DOWNLOADING MAP %d/%d  %u KB",
+                       radar_bg::g_maps_progress, radar_bg::g_maps_total,
+                       (unsigned) (radar_bg::g_maps_bytes / 1024));
+              lv_label_set_text(id(sel_route_l), m);
+            } else if (was_busy && !busy && id(sel_cs_g).empty()) {
+              lv_label_set_text(id(sel_route_l), "");   // 抓完就清掉
+            }
+            was_busy = busy;
+          }
           if (radar_bg::g_maps_ready) {
             xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
             radar_bg::g_maps_ready = false;

@@ -648,8 +648,13 @@ inline void do_echo(const Job &j) {
 inline const char MAPS_BASE[] = "https://delphicchen.github.io/flight-radar-maps/v1";
 
 inline volatile bool g_maps_ready = false;   // true=分割區有新地圖待主迴圈載入
-inline volatile int g_maps_progress = 0;     // 已成功寫入的圖磚數(給 UI 顯示)
 inline volatile bool g_maps_busy = false;
+// 給 UI 顯示進度用。分母只用「格數」而不是位元組總量 —— 每格大小不一、海上的格
+// 子甚至不存在(404),總量要全部抓完才知道。先發 HEAD 問大小會讓請求數翻倍,
+// 為了一個進度條不划算。格數則是一開始就算得出來的,不會出現假進度。
+inline volatile int g_maps_progress = 0;     // 已成功寫入的圖磚數
+inline volatile int g_maps_total = 0;        // 這一輪要抓的格數
+inline volatile uint32_t g_maps_bytes = 0;   // 累計已寫入的位元組
 
 // 半徑決定細節層:容差是照「約一個雷達像素」算的,所以半徑越小要越細的那一層。
 inline int maps_level_for(float range_km) {
@@ -673,6 +678,8 @@ inline int floor10(float v) {
 inline void do_maps(const Job &j) {
   g_maps_busy = true;
   g_maps_progress = 0;
+  g_maps_total = 0;
+  g_maps_bytes = 0;
   const int level = maps_level_for(j.range);
   const esp_partition_t *part = maptiles::partition();
   if (!part) {
@@ -697,6 +704,7 @@ inline void do_maps(const Job &j) {
       if (cells.size() >= 12) break;                       // 保險上限
     }
 
+  g_maps_total = (int) cells.size();
   if (!maptiles::store_begin(part, j.lat, j.lon, (uint16_t) j.range, (uint8_t) level,
                              part->size - sizeof(maptiles::StoreHeader))) {
     ESP_LOGE("radar_bg", "maps: erase/begin failed");
@@ -729,6 +737,7 @@ inline void do_maps(const Job &j) {
     at += blob.size();
     n++;
     g_maps_progress = n;
+    g_maps_bytes = (uint32_t) at;
   }
 
   if (n == 0) {
