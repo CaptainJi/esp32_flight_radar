@@ -72,6 +72,13 @@ inline std::vector<char> STRTAB;          // airspace names; MapAirspace.name po
 
 inline bool loaded = false;               // false = no map yet (nothing drawn)
 
+// What the stored tiles were fetched for, filled in by load_from_partition().
+// The downloader's throttle key lives in a RAM global that resets every boot,
+// so without this the device re-downloads the same tiles on every restart --
+// wasted bandwidth and needless flash wear for a map it already has.
+inline float stored_lat = NAN, stored_lon = NAN;
+inline uint8_t stored_level = 0;
+
 // Bumped whenever the arrays change. radar_rebuild_base() caches the rendered
 // base image keyed on lat/lon/range/map_show; without this in the key a map
 // that finishes downloading would not appear until the user happened to move
@@ -260,7 +267,14 @@ inline bool load_from_partition() {
     ESP_LOGI(TAG, "no stored map yet");
     return false;
   }
-  if (h.total_len == 0 || h.total_len > part->size - sizeof(h)) return false;
+  // Loud, not silent: this returning quietly is what hid the store_begin bug --
+  // the tile downloaded and wrote fine, then the map simply never appeared and
+  // not one line of log said why.
+  if (h.total_len == 0 || h.total_len > part->size - sizeof(h)) {
+    ESP_LOGE(TAG, "stored map header is bad: ntiles=%u total_len=%u (partition %u)",
+             h.ntiles, (unsigned) h.total_len, (unsigned) part->size);
+    return false;
+  }
 
   uint8_t *buf = (uint8_t *) heap_caps_malloc(h.total_len, MALLOC_CAP_SPIRAM);
   if (!buf) {
@@ -284,6 +298,7 @@ inline bool load_from_partition() {
   }
   heap_caps_free(buf);
   finish();
+  stored_lat = h.lat; stored_lon = h.lon; stored_level = h.level;
   ESP_LOGI(TAG, "map: %d/%d tiles, %u outline pts, %u airports, %u airspaces "
                 "(for %.3f,%.3f r=%ukm L%u)",
            good, h.ntiles, (unsigned) (OUTLINE.size() / 2), (unsigned) AIRPORTS.size(),
@@ -317,8 +332,12 @@ inline bool store_begin(const esp_partition_t *part, float lat, float lon,
   h.lat = lat; h.lon = lon;
   h.range_km = range_km;
   h.level = level;
-  h.ntiles = 0;
-  h.total_len = 0;
+  // Leave these at the erased value so finalize() can still write them: NOR
+  // flash only clears bits, so a 0 written here could never become 62692 later.
+  // (Writing 0 here is exactly the bug that made the first hardware run store a
+  // tile correctly and then silently refuse to load it.)
+  h.ntiles = 0xFF;
+  h.total_len = 0xFFFFFFFFu;
   return esp_partition_write(part, 0, &h, sizeof(h)) == ESP_OK;
 }
 
