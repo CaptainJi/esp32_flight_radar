@@ -423,6 +423,7 @@ globals:
   - { id: wake_ms,   type: uint32_t, initial_value: '0' }
   - { id: kb_target, type: int,      initial_value: '0' }   # 0=lat 1=lon 2=rng 3=poll
   - { id: wx_last_ms, type: uint32_t, initial_value: '0' }  # 上次抓天氣的 millis,0=立即抓
+  - { id: maps_key, type: std::string }                     # 上次請求地圖的「座標,層級」;相同就不重抓
   - { id: spk_ids, type: 'std::vector<std::string>' }       # SCAN 到的喇叭 entity id(與下拉選單同序)
   - { id: ring_spk, type: std::string }                      # 響鈴中鬧鐘解析出的喇叭(貪睡重響沿用)
 
@@ -849,6 +850,32 @@ interval:
             xSemaphoreGive(radar_bg::mtx());
             if (id(echo_on))
               id(rebuild_base).execute();   // 新幀預混合進底圖,一次算完
+          }
+          // ---- 地圖圖磚:需要時下載一次,完成後由主迴圈載入 ----
+          // 觸發條件刻意保守,避免變成重試迴圈把流量燒掉(見 PLAN_MAPTILES.md):
+          // 連上網之後,只有「目前沒有地圖」或「座標/半徑已經離存起來的那份太遠」
+          // 才抓。maps_key 記下上次請求的參數,同一組不重複請求。
+          if (millis() > 10000 && wifi::global_wifi_component->is_connected() &&
+              !radar_bg::g_maps_busy) {
+            const int lv = radar_bg::maps_level_for(id(radar_range).state);
+            // 0.5 度約 55 km:小幅移動不必重抓,格子是 10 度寬,綽綽有餘。
+            char key[48];
+            snprintf(key, sizeof(key), "%.1f,%.1f,L%d",
+                     id(home_lat).state, id(home_lon).state, lv);
+            if (id(maps_key) != key) {
+              id(maps_key) = key;
+              radar_bg::request_maps(id(home_lat).state, id(home_lon).state,
+                                     id(radar_range).state);
+            }
+          }
+          if (radar_bg::g_maps_ready) {
+            xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
+            radar_bg::g_maps_ready = false;
+            xSemaphoreGive(radar_bg::mtx());
+            // 載入在主迴圈做,不在背景 task —— 繪製程式碼直接讀 maptiles 的
+            // vector,在 task 裡改會與繪製打架。
+            maptiles::load_from_partition();
+            id(rebuild_base).execute();   // generation 已變,快取自然失效
           }
           if (radar_bg::g_route_ready) {
             xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);

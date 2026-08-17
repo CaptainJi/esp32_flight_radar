@@ -111,7 +111,8 @@ struct AcInfo {
 
 struct Job {
   int type;  // 1 = states, 2 = route, 3 = echo, 4 = weather, 5 = speakers,
-             // 6 = route cache, 7 = 機型查詢(callsign 欄放 ICAO24 十六進位字串)
+             // 6 = route cache, 7 = 機型查詢(callsign 欄放 ICAO24 十六進位字串),
+             // 8 = 下載地圖圖磚
   std::string cid, sec, callsign;
   float lat, lon, range;
   int src;   // states 資料來源:0=OpenSky 1=airplanes.live 2=adsb.lol
@@ -641,6 +642,115 @@ inline void do_echo(const Job &j) {
   ESP_LOGI("radar_bg", "echo frame ready z=%d tile=%.0fkm", zbest, tkm);
 }
 
+// ---- 地圖圖磚下載(job 8)-------------------------------------------------
+// 圖磚在 flight-radar-maps 這個 repo,由 GitHub Pages 供應,10 度一格。
+// 詳見 PLAN_MAPTILES.md 與該 repo 的 README。
+inline const char MAPS_BASE[] = "https://delphicchen.github.io/flight-radar-maps/v1";
+
+inline volatile bool g_maps_ready = false;   // true=分割區有新地圖待主迴圈載入
+inline volatile int g_maps_progress = 0;     // 已成功寫入的圖磚數(給 UI 顯示)
+inline volatile bool g_maps_busy = false;
+
+// 半徑決定細節層:容差是照「約一個雷達像素」算的,所以半徑越小要越細的那一層。
+inline int maps_level_for(float range_km) {
+  if (range_km > 250.0f) return 1;
+  if (range_km > 100.0f) return 2;
+  return 3;
+}
+
+inline std::string maps_cell_name(int lat0, int lon0) {
+  char b[8];
+  snprintf(b, sizeof(b), "%c%02d%c%03d", lat0 >= 0 ? 'N' : 'S', abs(lat0),
+           lon0 >= 0 ? 'E' : 'W', abs(lon0));
+  return std::string(b);
+}
+
+inline int floor10(float v) {
+  int f = (int) floorf(v / 10.0f) * 10;
+  return f;
+}
+
+inline void do_maps(const Job &j) {
+  g_maps_busy = true;
+  g_maps_progress = 0;
+  const int level = maps_level_for(j.range);
+  const esp_partition_t *part = maptiles::partition();
+  if (!part) {
+    ESP_LOGE("radar_bg", "maps: no partition -- reflash over USB for the new table");
+    g_maps_busy = false;
+    return;
+  }
+
+  // 需要涵蓋的格子:以半徑換成度數往外擴,再對齊 10 度網格。
+  // 經度每度的公里數隨緯度縮短,高緯度同樣的半徑會橫跨更多格。
+  const float coslat = fmaxf(cosf(j.lat * 3.14159265f / 180.0f), 0.05f);
+  const float dlat = j.range / 110.574f;
+  const float dlon = j.range / (111.320f * coslat);
+  std::vector<std::pair<int, int>> cells;
+  for (int la = floor10(j.lat - dlat); la <= floor10(j.lat + dlat); la += 10)
+    for (int lo = floor10(j.lon - dlon); lo <= floor10(j.lon + dlon); lo += 10) {
+      if (la < -80 || la >= 80) continue;                  // 產生器不出極區
+      int wlo = lo;
+      while (wlo < -180) wlo += 360;                       // 跨換日線時繞回
+      while (wlo >= 180) wlo -= 360;
+      cells.push_back({la, wlo});
+      if (cells.size() >= 12) break;                       // 保險上限
+    }
+
+  if (!maptiles::store_begin(part, j.lat, j.lon, (uint16_t) j.range, (uint8_t) level,
+                             part->size - sizeof(maptiles::StoreHeader))) {
+    ESP_LOGE("radar_bg", "maps: erase/begin failed");
+    g_maps_busy = false;
+    return;
+  }
+
+  size_t at = 0;
+  int n = 0, http_fail = 0;
+  for (auto &c : cells) {
+    std::string url = std::string(MAPS_BASE) + "/L" + std::to_string(level) + "/" +
+                      maps_cell_name(c.first, c.second) + ".bin";
+    int status = -1;
+    std::string blob = http_req(url, false, "", nullptr, "", status, 40000);
+    if (status == 404) continue;      // 海上的格子沒有檔案,是正常狀況不是錯誤
+    if (status != 200) { http_fail++; continue; }
+    // 三道關卡缺一不可。GitHub Pages 的 404 會回一頁 9KB 的 HTML,只看「有沒有
+    // 拿到位元組」的話就會把網頁當成地圖寫進 flash。
+    if (!maptiles::validate((const uint8_t *) blob.data(), blob.size())) {
+      ESP_LOGW("radar_bg", "maps: %s failed validation (%d bytes)",
+               url.c_str(), (int) blob.size());
+      continue;
+    }
+    if (at + blob.size() + sizeof(maptiles::StoreHeader) > part->size) break;
+    if (!maptiles::store_append(part, at, blob.data(), blob.size())) {
+      ESP_LOGE("radar_bg", "maps: flash write failed");
+      g_maps_busy = false;
+      return;                          // complete 旗標沒補上,開機會當成沒地圖
+    }
+    at += blob.size();
+    n++;
+    g_maps_progress = n;
+  }
+
+  if (n == 0) {
+    // 一格都沒拿到就不要蓋掉舊地圖 —— 分割區已經抹掉了,但不補 complete 旗標,
+    // 讀取端會當成沒有地圖,下次連上網再重試。
+    ESP_LOGW("radar_bg", "maps: nothing downloaded (%d http failures)", http_fail);
+    g_maps_busy = false;
+    return;
+  }
+  if (!maptiles::store_finalize(part, (uint8_t) n, (uint32_t) at)) {
+    ESP_LOGE("radar_bg", "maps: finalize failed");
+    g_maps_busy = false;
+    return;
+  }
+  ESP_LOGI("radar_bg", "maps: stored %d tiles (%u bytes) L%d for %.3f,%.3f r=%.0fkm",
+           n, (unsigned) at, level, j.lat, j.lon, j.range);
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  g_maps_ready = true;
+  xSemaphoreGive(mtx());
+  g_maps_busy = false;
+}
+
 inline void task_fn(void *arg) {
   for (;;) {
     Job *j = nullptr;
@@ -652,6 +762,7 @@ inline void task_fn(void *arg) {
       else if (j->type == 3) do_echo(*j);
       else if (j->type == 4) do_weather(*j);
       else if (j->type == 5) do_speakers(*j);
+      else if (j->type == 8) do_maps(*j);
       delete j;
     }
   }
@@ -675,6 +786,13 @@ inline void request_states(const std::string &cid, const std::string &sec,
 inline void request_echo(float lat, float lon, float range) {
   ensure_task();
   Job *j = new Job{3, "", "", "", lat, lon, range};
+  if (xQueueSend(queue(), &j, 0) != pdTRUE) delete j;
+}
+
+inline void request_maps(float lat, float lon, float range) {
+  if (g_maps_busy) return;            // 一次只跑一輪,避免重複下載
+  ensure_task();
+  Job *j = new Job{8, "", "", "", lat, lon, range};
   if (xQueueSend(queue(), &j, 0) != pdTRUE) delete j;
 }
 

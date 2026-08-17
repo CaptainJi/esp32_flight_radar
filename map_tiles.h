@@ -17,6 +17,7 @@
 // tools/test_map_tiles.cpp does exactly that.
 #pragma once
 #include <math.h>
+#include <stddef.h>      // offsetof
 #include <stdint.h>
 #include <string.h>
 #include <vector>
@@ -25,6 +26,7 @@
 #include "esp_partition.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "spi_flash_mmap.h"   // SPI_FLASH_SEC_SIZE
 #endif
 
 // ---- the structures the drawing code uses (moved here from map_data.h) ----
@@ -108,16 +110,19 @@ inline uint32_t crc32(const uint8_t *data, size_t len) {
 // Returns false and appends nothing on any inconsistency.  Being strict here is
 // what keeps a GitHub Pages 404 -- which is a 9 KB HTML page, not an empty
 // response -- from ever being mistaken for map data.
-inline bool parse(const uint8_t *buf, size_t len) {
+inline bool validate(const uint8_t *buf, size_t len) {
   if (len < HEADER_SIZE) return false;
   if (rd_u32(buf) != MAGIC) return false;
   if (rd_u16(buf + 4) != FORMAT_VERSION) return false;
   if (!(rd_u16(buf + 6) & FLAG_COMPLETE)) return false;   // half-written tile
+  return crc32(buf + HEADER_SIZE, len - HEADER_SIZE) == rd_u32(buf + 8);
+}
 
-  const uint32_t want_crc = rd_u32(buf + 8);
+inline bool parse(const uint8_t *buf, size_t len) {
+  if (!validate(buf, len)) return false;
+
   const uint8_t *pay = buf + HEADER_SIZE;
   const size_t paylen = len - HEADER_SIZE;
-  if (crc32(pay, paylen) != want_crc) return false;
 
   uint32_t off[SEC_COUNT], sec_len[SEC_COUNT];
   for (int i = 0; i < SEC_COUNT; i++) {
@@ -248,7 +253,10 @@ inline bool load_from_partition() {
   }
   StoreHeader h{};
   if (esp_partition_read(part, 0, &h, sizeof(h)) != ESP_OK) return false;
-  if (h.magic != MAGIC || h.version != FORMAT_VERSION || !h.complete) {
+  // complete must be exactly 1. Erased flash reads 0xFFFF, and the downloader
+  // leaves it that way until every tile is written, so `!h.complete` would let
+  // a half-finished store through.
+  if (h.magic != MAGIC || h.version != FORMAT_VERSION || h.complete != FLAG_COMPLETE) {
     ESP_LOGI(TAG, "no stored map yet");
     return false;
   }
@@ -281,6 +289,53 @@ inline bool load_from_partition() {
            good, h.ntiles, (unsigned) (OUTLINE.size() / 2), (unsigned) AIRPORTS.size(),
            (unsigned) AIRSPACES.size(), h.lat, h.lon, h.range_km, h.level);
   return loaded;
+}
+
+// ---- writing (used by the downloader in radar_fetch.h) -----------------
+// Sequence: begin() erases and lays down a header whose `complete` field is
+// left at the erased 0xFFFF, append() writes tiles after it, finalize() clears
+// that field to 1.
+//
+// The ordering relies on NOR flash only being able to turn 1 bits into 0:
+// 0xFFFF -> 0x0001 is a legal write with no erase, while going the other way
+// would need one. So the store cannot read as valid until the last two bytes
+// land, and a download interrupted anywhere -- power cut, lost Wi-Fi, a reboot
+// mid-write -- leaves it reading as "no map" rather than as half a map.
+inline bool store_begin(const esp_partition_t *part, float lat, float lon,
+                        uint16_t range_km, uint8_t level, size_t reserve) {
+  if (!part || reserve + sizeof(StoreHeader) > part->size) return false;
+  // Erase in whole sectors, and only as far as we are going to write.
+  size_t need = sizeof(StoreHeader) + reserve;
+  size_t erase = (need + SPI_FLASH_SEC_SIZE - 1) / SPI_FLASH_SEC_SIZE * SPI_FLASH_SEC_SIZE;
+  if (erase > part->size) erase = part->size;
+  if (esp_partition_erase_range(part, 0, erase) != ESP_OK) return false;
+
+  StoreHeader h{};
+  h.magic = MAGIC;
+  h.version = FORMAT_VERSION;
+  h.complete = 0xFFFF;          // stays erased until finalize()
+  h.lat = lat; h.lon = lon;
+  h.range_km = range_km;
+  h.level = level;
+  h.ntiles = 0;
+  h.total_len = 0;
+  return esp_partition_write(part, 0, &h, sizeof(h)) == ESP_OK;
+}
+
+inline bool store_append(const esp_partition_t *part, size_t at,
+                         const void *data, size_t len) {
+  return esp_partition_write(part, sizeof(StoreHeader) + at, data, len) == ESP_OK;
+}
+
+inline bool store_finalize(const esp_partition_t *part, uint8_t ntiles, uint32_t total_len) {
+  // ntiles/total_len are still 0xFF from the erase, so they can be written now
+  // (all 1 -> 0), and `complete` goes last of all.
+  if (esp_partition_write(part, offsetof(StoreHeader, ntiles), &ntiles, 1) != ESP_OK)
+    return false;
+  if (esp_partition_write(part, offsetof(StoreHeader, total_len), &total_len, 4) != ESP_OK)
+    return false;
+  const uint16_t done = FLAG_COMPLETE;
+  return esp_partition_write(part, offsetof(StoreHeader, complete), &done, 2) == ESP_OK;
 }
 #endif  // MAPTILES_HOST_TEST
 
