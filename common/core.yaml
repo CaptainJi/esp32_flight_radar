@@ -513,6 +513,7 @@ script:
             if (i >= 0)
               radar_fill_spec(id(spec_img), id(spec_l0), id(spec_l1), id(spec_l2),
                               id(spec_l3), id(spec_l4), id(spec_l5), id(spec_l6),
+                              id(spec_l7),
                               id(ac_ty)[i].c_str(), id(ac_reg)[i].c_str(),
                               id(ac_desc)[i].c_str(), id(ac_cat)[i].c_str(),
                               id(ac_hex)[i], id(ac_cs)[i].c_str(),
@@ -1045,6 +1046,7 @@ interval:
               if (id(spec_on))
                 radar_fill_spec(id(spec_img), id(spec_l0), id(spec_l1), id(spec_l2),
                                 id(spec_l3), id(spec_l4), id(spec_l5), id(spec_l6),
+                                id(spec_l7),
                                 id(ac_ty)[si].c_str(), id(ac_reg)[si].c_str(),
                                 id(ac_desc)[si].c_str(), id(ac_cat)[si].c_str(),
                                 id(ac_hex)[si], id(ac_cs)[si].c_str(),

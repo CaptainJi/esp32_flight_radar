@@ -1554,12 +1554,15 @@ inline void radar_sil_scan(lv_obj_t *img, lv_obj_t *cover, lv_obj_t *line) {
   lv_anim_start(&a);
 }
 
-// 七個 label + 一個 image。分兩層:
-//   上半(l0~l4)是「機型」——查 AC_SPECS,查不到就退到 API 給的 desc;
-//   下半(l5/l6)是「這一台」——註冊號、註冊國、營運者,不需要機型資料庫也印得出來。
+// 八個 label + 一個 image。分兩層:
+//   上半(l0~l4 + l7)是「機型」——查 AC_SPECS,查不到就退到 API 給的 desc。
+//     發動機(l7)屬於機型的性能參數,所以跟 SPAN/LEN/MTOW/CRZ 同區同字級。
+//   下半(l5/l6)是「這一台」——註冊號、註冊國、營運者,不需要機型資料庫也印得出來;
+//     字級與上半一致(font_mono),只用顏色分層次。
 // 數值 0 代表資料庫沒這一項 → 印 "--",不要印出 0.0 m 這種假數字。
 inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t *l2,
                             lv_obj_t *l3, lv_obj_t *l4, lv_obj_t *l5, lv_obj_t *l6,
+                            lv_obj_t *l7,
                             const char *ty, const char *reg, const char *desc,
                             const char *cat, uint32_t hex, const char *cs,
                             bool imperial) {
@@ -1606,9 +1609,8 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
     snprintf(b, sizeof(b), "CRZ      --");
   lv_label_set_text(l4, b);
 
-  // ---- 這一台飛機:註冊號 / 註冊國(由 ICAO24 位址反查)/ 發動機 ----
+  // ---- 發動機:型號與數量,屬於機型規格,與上面四行同區 ----
   static const char *const ENG[] = {"", "PISTON", "TURBOPROP", "JET", "ELECTRIC"};
-  const char *country = ac_country_find(hex);
   char eng[32] = "";
   if (s) {
     const char *et = s->eng_t <= 4 ? ENG[s->eng_t] : "";
@@ -1616,12 +1618,17 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
     else if (s->eng_n && *et)     snprintf(eng, sizeof(eng), "%u x %s", (unsigned) s->eng_n, et);
     else if (*s->eng)             snprintf(eng, sizeof(eng), "%s", s->eng);
   }
-  snprintf(b, sizeof(b), "%s%s%s%s%s",
+  // 對齊上面四行的 "TAG   value" 排版;沒資料就跟它們一樣印 "--"
+  if (*eng) snprintf(b, sizeof(b), "ENG   %s", eng);
+  else      snprintf(b, sizeof(b), "ENG      --");
+  lv_label_set_text(l7, b);
+
+  // ---- 這一台飛機:註冊號 / 註冊國(由 ICAO24 位址反查)----
+  const char *country = ac_country_find(hex);
+  snprintf(b, sizeof(b), "%s%s%s",
            reg && *reg ? reg : "",
            (reg && *reg && country) ? "  -  " : "",       // 分隔號用 ASCII;字型的預設 glyph 集沒有 U+00B7
-           country ? country : "",
-           ((reg && *reg) || country) && *eng ? "  -  " : "",
-           eng);
+           country ? country : "");
   lv_label_set_text(l5, *b ? b : " ");
 
   // ---- 營運者:呼號前三碼查 ICAO Doc 8585 三字代碼 ----
