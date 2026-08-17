@@ -43,7 +43,7 @@ esphome:
     #  # 爆堆疊。32768/4 = 實際 8KB/條,兩條共 16KB 內部 RAM。
     #  - "-DLV_DRAW_THREAD_STACK_SIZE=32768"
   includes:
-    - map_data.h
+    - map_tiles.h          # 取代 map_data.h:地圖改成執行期從 maps 分割區載入
     - aircraft_db.h        # 產生器:tools/make_aircraft_db.py(機型輪廓 + 規格表)
     - radar_fetch.h
     - alarm.h
@@ -51,6 +51,17 @@ esphome:
     priority: -100
     then:
       - lambda: |-
+          // 先把地圖從 maps 分割區載進來,再重建底圖 —— 順序不能反,否則第一張
+          // 底圖會是空的,要等下一次座標/半徑變動才補上。沒有地圖(還沒下載過、
+          // 或分割區是舊表)時陣列是空的,繪製迴圈自然不畫,不需要額外判斷。
+          if (maptiles::load_from_partition()) {
+            // 已經有地圖就把節流 key 補起來 —— maps_key 是 RAM global、開機歸零,
+            // 不補的話每次重開機都會把同一份圖磚重抓一遍(實機上實際發生過)。
+            char k[48];
+            snprintf(k, sizeof(k), "%.1f,%.1f,L%d", maptiles::stored_lat,
+                     maptiles::stored_lon, (int) maptiles::stored_level);
+            id(maps_key) = k;
+          }
           // 開機重建底圖(map_on/echo_on 已自 NVS 還原),同時蓋掉 PSRAM 未初始化雜訊
           // 喇叭下拉選單:字型無 FontAwesome 箭頭字形(U+F078),移除符號免警告
           LvDropdownType *dds[8] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd), id(tz_dd),
@@ -146,11 +157,21 @@ wifi:
 
 captive_portal:
 
+# 自訂分割表:為下載式地圖切出 `maps` 分割區(見 partitions.csv 與 PLAN_MAPTILES.md)。
+# 放在 core 而不是各 board —— 這與板子無關,四塊 S3 板一致。
+esp32:
+  partitions: partitions.csv
+
 web_server:
   port: 80
 
 api:
   reboot_timeout: 0s
+  # 沒有 encryption: 的裝置,新版 Home Assistant 的 ESPHome 整合會拒絕加入
+  # (issue #7)。**不要**填 key: —— 留空由裝置自己產生、HA 加入時協商,
+  # 這樣預編韌體裡不含任何金鑰,每台機器的金鑰也各不相同。
+  # (作法出自 ESPHome 維護者 jesserockz 的回覆。)
+  encryption:
 
 ota:
   - platform: esphome
@@ -435,6 +456,9 @@ globals:
   - { id: wake_ms,   type: uint32_t, initial_value: '0' }
   - { id: kb_target, type: int,      initial_value: '0' }   # 0=lat 1=lon 2=rng 3=poll
   - { id: wx_last_ms, type: uint32_t, initial_value: '0' }  # 上次抓天氣的 millis,0=立即抓
+  - { id: maps_key, type: std::string }                     # 上次**成功**下載的「座標,層級」;相同就不重抓
+  - { id: maps_key_try, type: std::string }                 # 進行中那次的 key,成功才寫進 maps_key
+  - { id: maps_try_ms, type: uint32_t, initial_value: '0' } # 上次嘗試的 millis(失敗後 5 分鐘再試)
   - { id: spk_ids, type: 'std::vector<std::string>' }       # SCAN 到的喇叭 entity id(與下拉選單同序)
   - { id: ring_spk, type: std::string }                      # 響鈴中鬧鐘解析出的喇叭(貪睡重響沿用)
 
@@ -515,6 +539,7 @@ script:
             if (i >= 0)
               radar_fill_spec(id(spec_img), id(spec_l0), id(spec_l1), id(spec_l2),
                               id(spec_l3), id(spec_l4), id(spec_l5), id(spec_l6),
+                              id(spec_l7),
                               id(ac_ty)[i].c_str(), id(ac_reg)[i].c_str(),
                               id(ac_desc)[i].c_str(), id(ac_cat)[i].c_str(),
                               id(ac_hex)[i], id(ac_cs)[i].c_str(),
@@ -862,6 +887,55 @@ interval:
             if (id(echo_on))
               id(rebuild_base).execute();   // 新幀預混合進底圖,一次算完
           }
+          // ---- 地圖圖磚:需要時下載一次,完成後由主迴圈載入 ----
+          // 觸發條件刻意保守,避免變成重試迴圈把流量燒掉(見 PLAN_MAPTILES.md):
+          // 連上網之後,只有「目前沒有地圖」或「座標/半徑已經離存起來的那份太遠」
+          // 才抓。maps_key 記下上次請求的參數,同一組不重複請求。
+          if (millis() > 10000 && wifi::global_wifi_component->is_connected() &&
+              !radar_bg::g_maps_busy) {
+            const int lv = radar_bg::maps_level_for(id(radar_range).state);
+            // 0.5 度約 55 km:小幅移動不必重抓,格子是 10 度寬,綽綽有餘。
+            char key[48];
+            snprintf(key, sizeof(key), "%.1f,%.1f,L%d",
+                     id(home_lat).state, id(home_lon).state, lv);
+            // maps_key 只在「成功之後」才記起來。實機上第一次開機還在 captive
+            // portal(is_connected() 在 AP 模式也成立),抓一定失敗;先前是送出
+            // 請求就把 key 寫掉,於是連上網之後再也不會重試,地圖永遠是空的。
+            // 失敗只更新 maps_try_ms,5 分鐘後再試一次 —— 有節流但不會放棄。
+            if (id(maps_key) != key &&
+                (id(maps_try_ms) == 0 || millis() - id(maps_try_ms) > 300000)) {
+              id(maps_try_ms) = millis();
+              id(maps_key_try) = key;
+              radar_bg::request_maps(id(home_lat).state, id(home_lon).state,
+                                     id(radar_range).state);
+            }
+          }
+          // 下載中在 INITIALIZING 下面那行顯示進度。分母是格數不是位元組(見
+          // radar_fetch.h 的說明);沒選航班時才寫,否則會蓋掉航線顯示。
+          {
+            static bool was_busy = false;
+            const bool busy = radar_bg::g_maps_busy;
+            if (busy && id(sel_cs_g).empty()) {
+              char m[48];
+              snprintf(m, sizeof(m), "DOWNLOADING MAP %d/%d  %u KB",
+                       radar_bg::g_maps_progress, radar_bg::g_maps_total,
+                       (unsigned) (radar_bg::g_maps_bytes / 1024));
+              lv_label_set_text(id(sel_route_l), m);
+            } else if (was_busy && !busy && id(sel_cs_g).empty()) {
+              lv_label_set_text(id(sel_route_l), "");   // 抓完就清掉
+            }
+            was_busy = busy;
+          }
+          if (radar_bg::g_maps_ready) {
+            xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
+            radar_bg::g_maps_ready = false;
+            xSemaphoreGive(radar_bg::mtx());
+            id(maps_key) = id(maps_key_try);   // 只有成功才算數
+            // 載入在主迴圈做,不在背景 task —— 繪製程式碼直接讀 maptiles 的
+            // vector,在 task 裡改會與繪製打架。
+            maptiles::load_from_partition();
+            id(rebuild_base).execute();   // generation 已變,快取自然失效
+          }
           if (radar_bg::g_route_ready) {
             xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
             radar_bg::g_route_ready = false;
@@ -998,6 +1072,7 @@ interval:
               if (id(spec_on))
                 radar_fill_spec(id(spec_img), id(spec_l0), id(spec_l1), id(spec_l2),
                                 id(spec_l3), id(spec_l4), id(spec_l5), id(spec_l6),
+                                id(spec_l7),
                                 id(ac_ty)[si].c_str(), id(ac_reg)[si].c_str(),
                                 id(ac_desc)[si].c_str(), id(ac_cat)[si].c_str(),
                                 id(ac_hex)[si], id(ac_cs)[si].c_str(),

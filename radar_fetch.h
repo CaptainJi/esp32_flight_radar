@@ -113,7 +113,7 @@ extern "C" {
 #elif RADAR_DISPLAY_RGB == 3
 #include "esphome/components/mipi_dsi/mipi_dsi.h"
 #endif
-#include "map_data.h"
+#include "map_tiles.h"   // 地圖改為執行期從 maps 分割區載入(原 map_data.h)
 
 namespace radar_bg {
 
@@ -132,7 +132,8 @@ struct AcInfo {
 
 struct Job {
   int type;  // 1 = states, 2 = route, 3 = echo, 4 = weather, 5 = speakers,
-             // 6 = route cache, 7 = 機型查詢(callsign 欄放 ICAO24 十六進位字串)
+             // 6 = route cache, 7 = 機型查詢(callsign 欄放 ICAO24 十六進位字串),
+             // 8 = 下載地圖圖磚
   std::string cid, sec, callsign;
   float lat, lon, range;
   int src;   // states 資料來源:0=OpenSky 1=airplanes.live 2=adsb.lol
@@ -383,7 +384,11 @@ inline void do_states(const Job &j) {
     g_os_cooldown_until = now + 600;
     ESP_LOGW("radar_bg", "opensky failed, fallback to free sources for 600s");
   }
-  if (!do_states_v2(j, 1)) do_states_v2(j, 2);   // airplanes.live → adsb.lol
+  // adsb.lol 先試,airplanes.live 當第二順位:後者自 2026-08-13 起關閉公開 API,
+  // 對所有人一律 403(不是我們被封)。原本的順序等於每一輪都先浪費一次必定失敗
+  // 的 TLS 連線,才輪到真正能用的來源 —— 也讓 adsb.lol 更容易撞到它的速率限制。
+  // 保留它當第二順位:如果哪天恢復開放,不必改碼就會自己回來。
+  if (!do_states_v2(j, 2)) do_states_v2(j, 1);   // adsb.lol → airplanes.live
 }
 
 inline void do_route(const Job &j) {
@@ -663,6 +668,124 @@ inline void do_echo(const Job &j) {
   ESP_LOGI("radar_bg", "echo frame ready z=%d tile=%.0fkm", zbest, tkm);
 }
 
+// ---- 地圖圖磚下載(job 8)-------------------------------------------------
+// 圖磚在 flight-radar-maps 這個 repo,由 GitHub Pages 供應,10 度一格。
+// 詳見 PLAN_MAPTILES.md 與該 repo 的 README。
+inline const char MAPS_BASE[] = "https://delphicchen.github.io/flight-radar-maps/v1";
+
+inline volatile bool g_maps_ready = false;   // true=分割區有新地圖待主迴圈載入
+inline volatile bool g_maps_busy = false;
+// 給 UI 顯示進度用。分母只用「格數」而不是位元組總量 —— 每格大小不一、海上的格
+// 子甚至不存在(404),總量要全部抓完才知道。先發 HEAD 問大小會讓請求數翻倍,
+// 為了一個進度條不划算。格數則是一開始就算得出來的,不會出現假進度。
+inline volatile int g_maps_progress = 0;     // 已成功寫入的圖磚數
+inline volatile int g_maps_total = 0;        // 這一輪要抓的格數
+inline volatile uint32_t g_maps_bytes = 0;   // 累計已寫入的位元組
+
+// 半徑決定細節層:容差是照「約一個雷達像素」算的,所以半徑越小要越細的那一層。
+inline int maps_level_for(float range_km) {
+  if (range_km > 250.0f) return 1;
+  if (range_km > 100.0f) return 2;
+  return 3;
+}
+
+inline std::string maps_cell_name(int lat0, int lon0) {
+  char b[8];
+  snprintf(b, sizeof(b), "%c%02d%c%03d", lat0 >= 0 ? 'N' : 'S', abs(lat0),
+           lon0 >= 0 ? 'E' : 'W', abs(lon0));
+  return std::string(b);
+}
+
+inline int floor10(float v) {
+  int f = (int) floorf(v / 10.0f) * 10;
+  return f;
+}
+
+inline void do_maps(const Job &j) {
+  g_maps_busy = true;
+  g_maps_progress = 0;
+  g_maps_total = 0;
+  g_maps_bytes = 0;
+  const int level = maps_level_for(j.range);
+  const esp_partition_t *part = maptiles::partition();
+  if (!part) {
+    ESP_LOGE("radar_bg", "maps: no partition -- reflash over USB for the new table");
+    g_maps_busy = false;
+    return;
+  }
+
+  // 需要涵蓋的格子:以半徑換成度數往外擴,再對齊 10 度網格。
+  // 經度每度的公里數隨緯度縮短,高緯度同樣的半徑會橫跨更多格。
+  const float coslat = fmaxf(cosf(j.lat * 3.14159265f / 180.0f), 0.05f);
+  const float dlat = j.range / 110.574f;
+  const float dlon = j.range / (111.320f * coslat);
+  std::vector<std::pair<int, int>> cells;
+  for (int la = floor10(j.lat - dlat); la <= floor10(j.lat + dlat); la += 10)
+    for (int lo = floor10(j.lon - dlon); lo <= floor10(j.lon + dlon); lo += 10) {
+      if (la < -80 || la >= 80) continue;                  // 產生器不出極區
+      int wlo = lo;
+      while (wlo < -180) wlo += 360;                       // 跨換日線時繞回
+      while (wlo >= 180) wlo -= 360;
+      cells.push_back({la, wlo});
+      if (cells.size() >= 12) break;                       // 保險上限
+    }
+
+  g_maps_total = (int) cells.size();
+  if (!maptiles::store_begin(part, j.lat, j.lon, (uint16_t) j.range, (uint8_t) level,
+                             part->size - sizeof(maptiles::StoreHeader))) {
+    ESP_LOGE("radar_bg", "maps: erase/begin failed");
+    g_maps_busy = false;
+    return;
+  }
+
+  size_t at = 0;
+  int n = 0, http_fail = 0;
+  for (auto &c : cells) {
+    std::string url = std::string(MAPS_BASE) + "/L" + std::to_string(level) + "/" +
+                      maps_cell_name(c.first, c.second) + ".bin";
+    int status = -1;
+    std::string blob = http_req(url, false, "", nullptr, "", status, 40000);
+    if (status == 404) continue;      // 海上的格子沒有檔案,是正常狀況不是錯誤
+    if (status != 200) { http_fail++; continue; }
+    // 三道關卡缺一不可。GitHub Pages 的 404 會回一頁 9KB 的 HTML,只看「有沒有
+    // 拿到位元組」的話就會把網頁當成地圖寫進 flash。
+    if (!maptiles::validate((const uint8_t *) blob.data(), blob.size())) {
+      ESP_LOGW("radar_bg", "maps: %s failed validation (%d bytes)",
+               url.c_str(), (int) blob.size());
+      continue;
+    }
+    if (at + blob.size() + sizeof(maptiles::StoreHeader) > part->size) break;
+    if (!maptiles::store_append(part, at, blob.data(), blob.size())) {
+      ESP_LOGE("radar_bg", "maps: flash write failed");
+      g_maps_busy = false;
+      return;                          // complete 旗標沒補上,開機會當成沒地圖
+    }
+    at += blob.size();
+    n++;
+    g_maps_progress = n;
+    g_maps_bytes = (uint32_t) at;
+  }
+
+  if (n == 0) {
+    // 一格都沒拿到就不要蓋掉舊地圖 —— 分割區已經抹掉了,但不補 complete 旗標,
+    // 讀取端會當成沒有地圖,下次連上網再重試。
+    ESP_LOGW("radar_bg", "maps: nothing downloaded (%d http failures)", http_fail);
+    g_maps_busy = false;
+    return;
+  }
+  if (!maptiles::store_finalize(part, (uint8_t) n, (uint32_t) at)) {
+    ESP_LOGE("radar_bg", "maps: finalize failed");
+    g_maps_busy = false;
+    return;
+  }
+  ESP_LOGI("radar_bg", "maps: stored %d tiles (%u bytes) L%d for %.3f,%.3f r=%.0fkm",
+           n, (unsigned) at, level, j.lat, j.lon, j.range);
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  g_maps_ready = true;
+  xSemaphoreGive(mtx());
+  g_maps_busy = false;
+}
+
 inline void task_fn(void *arg) {
   for (;;) {
     Job *j = nullptr;
@@ -674,6 +797,7 @@ inline void task_fn(void *arg) {
       else if (j->type == 3) do_echo(*j);
       else if (j->type == 4) do_weather(*j);
       else if (j->type == 5) do_speakers(*j);
+      else if (j->type == 8) do_maps(*j);
       delete j;
     }
   }
@@ -697,6 +821,13 @@ inline void request_states(const std::string &cid, const std::string &sec,
 inline void request_echo(float lat, float lon, float range) {
   ensure_task();
   Job *j = new Job{3, "", "", "", lat, lon, range};
+  if (xQueueSend(queue(), &j, 0) != pdTRUE) delete j;
+}
+
+inline void request_maps(float lat, float lon, float range) {
+  if (g_maps_busy) return;            // 一次只跑一輪,避免重複下載
+  ensure_task();
+  Job *j = new Job{8, "", "", "", lat, lon, range};
   if (xQueueSend(queue(), &j, 0) != pdTRUE) delete j;
 }
 
@@ -938,11 +1069,29 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
   radar_bg::PixCanvas pc(px, RADAR_CANVAS, RADAR_CANVAS);   // 線條走這條路,不進 LVGL 佇列
   const size_t NPX = (size_t) RADAR_CANVAS * RADAR_CANVAS;
   const size_t BYTES = NPX * sizeof(uint16_t);
+  // 地圖資料以前是 map_data.h 裡的編譯期陣列,現在是 maptiles 從 maps 分割區
+  // 載入的 vector。這幾個別名讓底下的繪製迴圈完全不用改寫。
+  // 取 .data() 是安全的:圖磚只在載入時 append,繪製期間不會再動到 vector。
+  const float *const MAP_OUTLINE = maptiles::OUTLINE.data();
+  const int MAP_OUTLINE_LEN = (int) maptiles::OUTLINE.size();
+  const MapAirport *const AIRPORTS = maptiles::AIRPORTS.data();
+  const int AIRPORTS_LEN = (int) maptiles::AIRPORTS.size();
+  const MapRunway *const RUNWAYS = maptiles::RUNWAYS.data();
+  const int RUNWAYS_LEN = (int) maptiles::RUNWAYS.size();
+  const MapFix *const FIXES = maptiles::FIXES.data();
+  const int FIXES_LEN = (int) maptiles::FIXES.size();
+  const MapAirspace *const AIRSPACES = maptiles::AIRSPACES.data();
+  const int AIRSPACES_LEN = (int) maptiles::AIRSPACES.size();
+  const float *const AIRSPACE_PTS = maptiles::AIRSPACE_PTS.data();
   static uint8_t *cache = nullptr;   // 底色+輪廓快取(PSRAM,416KB)
   if (!cache) cache = (uint8_t *) heap_caps_malloc(BYTES, MALLOC_CAP_SPIRAM);
   static float c_lat = NAN, c_lon = NAN, c_rng = NAN;
   static bool c_map = false;
-  bool fresh = cache && c_lat == lat0 && c_lon == lon0 && c_rng == rng && c_map == map_show;
+  static uint32_t c_gen = 0;
+  // c_gen 不能省:座標/半徑/開關都沒變,但地圖下載完成時資料換了一整套,
+  // 沒有它畫面會停在舊的(或空的)底圖,直到使用者剛好去動座標才更新。
+  bool fresh = cache && c_lat == lat0 && c_lon == lon0 && c_rng == rng &&
+               c_map == map_show && c_gen == maptiles::generation;
   if (fresh) {
     memcpy((void *) px, cache, BYTES);
   } else {
@@ -989,6 +1138,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     if (cache) {
       memcpy(cache, px, BYTES);
       c_lat = lat0; c_lon = lon0; c_rng = rng; c_map = map_show;
+      c_gen = maptiles::generation;
     }
   }
   // 回波預混合:g_echo_buf 為 [color_lo][color_hi][alpha],逐像素混進底圖。
@@ -1556,12 +1706,15 @@ inline void radar_sil_scan(lv_obj_t *img, lv_obj_t *cover, lv_obj_t *line) {
   lv_anim_start(&a);
 }
 
-// 七個 label + 一個 image。分兩層:
-//   上半(l0~l4)是「機型」——查 AC_SPECS,查不到就退到 API 給的 desc;
-//   下半(l5/l6)是「這一台」——註冊號、註冊國、營運者,不需要機型資料庫也印得出來。
+// 八個 label + 一個 image。分兩層:
+//   上半(l0~l4 + l7)是「機型」——查 AC_SPECS,查不到就退到 API 給的 desc。
+//     發動機(l7)屬於機型的性能參數,所以跟 SPAN/LEN/MTOW/CRZ 同區同字級。
+//   下半(l5/l6)是「這一台」——註冊號、註冊國、營運者,不需要機型資料庫也印得出來;
+//     字級與上半一致(font_mono),只用顏色分層次。
 // 數值 0 代表資料庫沒這一項 → 印 "--",不要印出 0.0 m 這種假數字。
 inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t *l2,
                             lv_obj_t *l3, lv_obj_t *l4, lv_obj_t *l5, lv_obj_t *l6,
+                            lv_obj_t *l7,
                             const char *ty, const char *reg, const char *desc,
                             const char *cat, uint32_t hex, const char *cs,
                             bool imperial) {
@@ -1608,9 +1761,8 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
     snprintf(b, sizeof(b), "CRZ      --");
   lv_label_set_text(l4, b);
 
-  // ---- 這一台飛機:註冊號 / 註冊國(由 ICAO24 位址反查)/ 發動機 ----
+  // ---- 發動機:型號與數量,屬於機型規格,與上面四行同區 ----
   static const char *const ENG[] = {"", "PISTON", "TURBOPROP", "JET", "ELECTRIC"};
-  const char *country = ac_country_find(hex);
   char eng[32] = "";
   if (s) {
     const char *et = s->eng_t <= 4 ? ENG[s->eng_t] : "";
@@ -1618,12 +1770,17 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
     else if (s->eng_n && *et)     snprintf(eng, sizeof(eng), "%u x %s", (unsigned) s->eng_n, et);
     else if (*s->eng)             snprintf(eng, sizeof(eng), "%s", s->eng);
   }
-  snprintf(b, sizeof(b), "%s%s%s%s%s",
+  // 對齊上面四行的 "TAG   value" 排版;沒資料就跟它們一樣印 "--"
+  if (*eng) snprintf(b, sizeof(b), "ENG   %s", eng);
+  else      snprintf(b, sizeof(b), "ENG      --");
+  lv_label_set_text(l7, b);
+
+  // ---- 這一台飛機:註冊號 / 註冊國(由 ICAO24 位址反查)----
+  const char *country = ac_country_find(hex);
+  snprintf(b, sizeof(b), "%s%s%s",
            reg && *reg ? reg : "",
            (reg && *reg && country) ? "  -  " : "",       // 分隔號用 ASCII;字型的預設 glyph 集沒有 U+00B7
-           country ? country : "",
-           ((reg && *reg) || country) && *eng ? "  -  " : "",
-           eng);
+           country ? country : "");
   lv_label_set_text(l5, *b ? b : " ");
 
   // ---- 營運者:呼號前三碼查 ICAO Doc 8585 三字代碼 ----

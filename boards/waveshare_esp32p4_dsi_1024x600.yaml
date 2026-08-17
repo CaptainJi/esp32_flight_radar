@@ -20,6 +20,14 @@
 #  revision if Wi-Fi does not come up on yours.
 #
 #  Resolution / radar geometry come from radar-p4-7b.yaml.
+#
+#  >>> 這塊板子的維護分支是 `lvgl9`,不是這裡 <<<
+#  本分支(main / ESPHome 2026.3.3 / LVGL 8)編得起來也跑得動,但**沒有 microSD
+#  支援、也沒有截圖**:兩者都依賴 p1ngb4ck fork 的 sd_storage 元件,而它 import 的
+#  VARIANT_ESP32S31 在 2026.3.3 不存在,載不起來。P4 專屬的修正(SD 的 on-chip LDO、
+#  DSI framebuffer 截圖、觸控旋轉抵消)都只在 `lvgl9` 上。
+#  This board is maintained on the `lvgl9` branch; here it works but has no microSD
+#  or screenshot support. See the branch table in README.
 # =====================================================================
 
 # ---- Resolution-driven build flags for the C++ includes ----
