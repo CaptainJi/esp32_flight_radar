@@ -31,6 +31,19 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 
 All need **≥8 MB octal PSRAM**, a **GT911** touch controller and **16 MB flash**.
 
+> **The map is downloaded now, and that needs one USB flash.** The firmware used to
+> compile the map in, so a prebuilt image only had a useful map near Taiwan; it now
+> fetches tiles for your own coordinates, which required a custom partition table — and
+> **a partition table cannot be changed over OTA**. Coming from v1.2.0 or earlier, flash
+> once over USB; OTA works normally again afterwards. To stay on the old behaviour, use
+> the **[`pre-maptiles`](https://github.com/delphicchen/esp32_flight_radar/releases/tag/pre-maptiles)**
+> tag (`git checkout pre-maptiles`) — that is the last commit with the baked-in map and
+> the stock partition table.
+>
+> **地圖改成下載,升級需要接 USB 燒一次。** 以前地圖是編譯進韌體的,預編版只有台灣能用;
+> 現在改成依你的座標抓圖磚,為此換了分割表,而**分割表無法用 OTA 更新**。從 v1.2.0 以前
+> 升上來要接線燒一次,之後照樣能 OTA。想留在舊行為請用 `git checkout pre-maptiles`。
+
 > **Two branches, not old and new.** `main` runs the ESP32-S3 boards on ESPHome 2026.3.3 /
 > LVGL 8. `lvgl9` runs the ESP32-P4 on 2026.6.5 / LVGL 9.5. The P4 has no choice — its
 > microSD support needs a component that will not load on the older ESPHome. The S3 boards
