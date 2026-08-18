@@ -1,10 +1,9 @@
 # Changelog
 
-Notable changes per release. Dates are the tag dates; `Unreleased` is what is on `main`
-right now. Anything that changes how you flash or upgrade is called out first, because
-that is the part that costs you time.
+Notable changes per release. Anything that changes how you flash or upgrade is called
+out first, because that is the part that costs you time.
 
-## Unreleased
+## [v1.3.0] — 2026-08-18
 
 ### ⚠️ Upgrading needs one USB flash
 
