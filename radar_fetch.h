@@ -186,6 +186,22 @@ inline std::string http_req(const std::string &url, bool post, const std::string
     auth = "Bearer " + bearer;
     esp_http_client_set_header(c, "Authorization", auth.c_str());
   }
+  // 記憶體不足時要「這次抓取失敗」,不能變成「整台重開」。
+  // C++ 例外是關閉的(CONFIG_COMPILER_CXX_EXCEPTIONS 未設),所以 std::string
+  // 配置失敗會丟 bad_alloc → __wrap___cxa_allocate_exception → abort()。
+  // 專案裡所有 heap_caps_malloc 都有檢查 null,只有 std::string 這條路徑沒有、
+  // 也無法用 try/catch 擋,只能事前確認要得到才動手。
+  // (P4 v1.3.0 實機就是這樣無限重開的:回波把記憶體推到尖峰,下一個請求的
+  //  128KB reserve 失敗 → abort。)
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+  if (largest < reserve_hint + 16384) {
+    ESP_LOGW("radar_bg", "http: skipping %.60s -- largest free block %uKB < %uKB needed",
+             url.c_str(), (unsigned) (largest / 1024),
+             (unsigned) ((reserve_hint + 16384) / 1024));
+    esp_http_client_cleanup(c);
+    status = -2;              // 呼叫端一律把非 200 視為失敗,會自行退避重試
+    return "";
+  }
   std::string out;
   out.reserve(reserve_hint);   // >16KB 的配置會進 PSRAM(SPIRAM_USE_MALLOC)
   if (esp_http_client_open(c, body.size()) == ESP_OK) {
@@ -195,8 +211,14 @@ inline std::string http_req(const std::string &url, bool post, const std::string
     char buf[2048];
     int n;
     while ((n = esp_http_client_read(c, buf, sizeof(buf))) > 0) {
-      out.append(buf, n);
+      // 成長也會丟例外,所以上限之外再看一次剩餘空間,寧可截斷也不要 abort
       if (out.size() > 150000) break;
+      if (out.size() + n > out.capacity() &&
+          heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) < out.capacity() * 2 + 16384) {
+        ESP_LOGW("radar_bg", "http: truncating at %u bytes -- out of room", (unsigned) out.size());
+        break;
+      }
+      out.append(buf, n);
     }
   }
   esp_http_client_close(c);
