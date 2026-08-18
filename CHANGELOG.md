@@ -3,6 +3,23 @@
 Notable changes per release. Anything that changes how you flash or upgrade is called
 out first, because that is the part that costs you time.
 
+## [v1.3.1] — 2026-08-19
+
+### Fixed
+
+- **ESP32-P4: reboot loop with the weather echo on.** The P4 board file never set
+  `CONFIG_SPIRAM_USE_MALLOC`, which all four S3 boards do, so `malloc()` could only ever
+  use internal RAM — about 768 KB, shared with LVGL 9, the esp-hosted Wi-Fi buffers, TLS
+  and FATFS. Harmless while the map was compiled into flash and cost no RAM; from v1.3.0
+  the tiles are loaded at runtime (~92 KB of outline points on a typical device), so once
+  the echo pushed memory to its peak the next request's buffer failed to allocate. With
+  C++ exceptions disabled a failed allocation aborts, so the device rebooted, forever.
+  **P4 owners on v1.3.0 should reflash.** No S3 board was affected.
+- Running out of memory no longer reboots the device. `http_req()` checks the largest
+  free block before allocating and abandons that one request instead — every
+  `heap_caps_malloc` here already null-checks, but `std::string` growth could neither be
+  checked nor caught.
+
 ## [v1.3.0] — 2026-08-18
 
 ### ⚠️ Upgrading needs one USB flash

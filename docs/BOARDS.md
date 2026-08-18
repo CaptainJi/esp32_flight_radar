@@ -92,6 +92,25 @@ esptool --chip esp32p4 --port /dev/ttyACM0 --baud 460800 \
   write-flash -z --flash-size detect 0x0 dist/flight-radar-<board>-<version>.factory.bin
 ```
 
+### Gotcha: the P4 needs `CONFIG_SPIRAM_USE_MALLOC` too
+
+Every S3 board file sets it; the P4 one did not until v1.3.1. Without it `malloc()` only
+ever uses internal RAM — roughly 768 KB on the P4, shared with LVGL 9, the esp-hosted
+Wi-Fi buffers, TLS and FATFS — and PSRAM is unreachable to every `std::string` and
+`std::vector`.
+
+That was survivable while `map_data.h` was compiled into flash and cost no RAM. Once
+v1.3.0 moved the map to runtime tiles (~92 KB of outline points on a typical device), the
+weather echo would push memory to its peak and the next request's buffer would fail to
+allocate. C++ exceptions are disabled, so a failed allocation is not something you can
+catch — it lands in `__wrap___cxa_allocate_exception` and calls `abort()`. The device
+rebooted on every echo frame, forever.
+
+Decoding that crash is quick if you keep the ELF: the PC from the panic dump goes straight
+through `addr2line`, and `__wrap___cxa_allocate_exception` means "something threw", which
+in this codebase means `bad_alloc`. The core number says where — the main task is pinned
+to CPU0, the `radar_fetch` background task to CPU1.
+
 ### Local component overrides
 
 The two Waveshare board files pull in `components/` via `external_components`. Each is a
