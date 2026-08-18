@@ -150,6 +150,11 @@ inline bool g_want_rl = false;             // 只在 states 請求期間擷取(b
 inline volatile uint32_t g_os_cooldown_until = 0;  // OpenSky 失敗冷卻期限(millis 秒),期間走免費來源
 inline volatile int g_last_src = -1;       // 最近一次成功抓取的來源(0/1/2,-1=尚未成功)
 
+// HTTP body 上限。150KB 太緊:250km 半徑在繁忙空域(英國、日本)的航班清單就會
+// 超過,回應被截斷後解析必定失敗。字串配在 PSRAM,384KB 對 8MB PSRAM 綽綽有餘,
+// 而且每次成長前都會檢查最大可用區塊,不會因為調高而變得容易 abort。
+static const size_t HTTP_MAX_BODY = 384 * 1024;
+
 inline esp_err_t http_evt_cb(esp_http_client_event_t *evt) {
   if (evt->event_id == HTTP_EVENT_ON_HEADER && g_want_rl &&
       strcasecmp(evt->header_key, "X-Rate-Limit-Remaining") == 0)
@@ -210,15 +215,31 @@ inline std::string http_req(const std::string &url, bool post, const std::string
     status = esp_http_client_get_status_code(c);
     char buf[2048];
     int n;
+    bool truncated = false;
     while ((n = esp_http_client_read(c, buf, sizeof(buf))) > 0) {
       // 成長也會丟例外,所以上限之外再看一次剩餘空間,寧可截斷也不要 abort
-      if (out.size() > 150000) break;
+      if (out.size() > HTTP_MAX_BODY) {
+        ESP_LOGW("radar_bg", "http: response over %uKB cap -- %.60s",
+                 (unsigned) (HTTP_MAX_BODY / 1024), url.c_str());
+        truncated = true;
+        break;
+      }
       if (out.size() + n > out.capacity() &&
           heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT) < out.capacity() * 2 + 16384) {
         ESP_LOGW("radar_bg", "http: truncating at %u bytes -- out of room", (unsigned) out.size());
+        truncated = true;
         break;
       }
       out.append(buf, n);
+    }
+    // 截斷過的 body 一定是壞掉的 JSON。以前直接回傳,呼叫端照樣拿去解析,
+    // 結果只看得到一句 `Parse error: IncompleteInput` —— 完全指不出真正的原因
+    // (使用者把半徑調到 250km、空域又密,航班清單就超過上限)。現在當成失敗
+    // 回報,呼叫端本來就會退避重試,而 log 直接說出是哪個網址、超過多少。
+    if (truncated) {
+      status = -3;
+      out.clear();
+      out.shrink_to_fit();
     }
   }
   esp_http_client_close(c);
