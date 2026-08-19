@@ -3,6 +3,18 @@
 Notable changes per release. Anything that changes how you flash or upgrade is called
 out first, because that is the part that costs you time.
 
+## [v1.3.2] — 2026-08-19
+
+### Fixed
+
+- **No aircraft at large scan ranges, with `Parse error: IncompleteInput` filling the
+  log.** The HTTP body cap was 150 KB, which a 250 km range over busy airspace (the UK,
+  Japan) goes straight past. The response was cut off mid-JSON and handed to the parser
+  anyway, so the only clue was a parse error that said nothing about the real cause. The
+  cap is now 384 KB, and a truncated body is reported as a failed request instead of
+  being parsed — the caller already backs off and retries, and the log now names the URL
+  and the limit it exceeded. Reported by @nero0956 in #7.
+
 ## [v1.3.1] — 2026-08-19
 
 ### Fixed
