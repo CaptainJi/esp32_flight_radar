@@ -3,6 +3,20 @@
 Notable changes per release. Anything that changes how you flash or upgrade is called
 out first, because that is the part that costs you time.
 
+## [v1.3.3] — 2026-08-19
+
+### Fixed
+
+- **Guition JC8048W550: the picture jumps, and the radar sweep breaks into several
+  offset bands.** The board file was missing `CONFIG_SPIRAM_XIP_FROM_PSRAM`, which both
+  Waveshare RGB boards already set for exactly this symptom. Writing to flash disables
+  the cache, which blocks the RGB panel's bounce-buffer refill interrupt, and the panel
+  loses scan sync permanently — until the next reboot. Running code and rodata from PSRAM
+  removes the trigger. This only started biting in v1.3.0: the map used to be compiled in
+  as rodata and nothing wrote to flash during normal operation, whereas the map tiles are
+  now downloaded and written at runtime. Reported by @Will-wastelander and @nero0956 in
+  #7. Costs about 2 MB of PSRAM.
+
 ## [v1.3.2] — 2026-08-19
 
 ### Fixed

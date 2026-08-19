@@ -48,6 +48,17 @@ esp32:
     sdkconfig_options:
       CONFIG_SPIRAM_USE_MALLOC: "y"   # >16KB 的 malloc 走 PSRAM,避免內部 RAM 耗盡
       CONFIG_LWIP_MAX_SOCKETS: "17"   # 依實際元件算出的需求(11 TCP + 3 UDP + 3 TCP_LISTEN)
+      # --- 畫面抖動/裂成數段:XIP from PSRAM ---
+      # 兩塊 Waveshare RGB 板都靠這一行解掉同一類症狀(見那兩份板檔的長註解)。
+      # 機制:flash 寫入期間 cache 會被停用,RGB 面板的 bounce buffer 補充 ISR
+      # 被擋住 → 掃描同步跑掉,而且是**永久**的,直到重開機。症狀就是畫面上下
+      # 跳動、掃描線裂成好幾段、轉動一頓一頓(issue #7 兩位 Guition 使用者)。
+      # 把程式碼與 rodata 搬進 PSRAM 執行,flash 寫入時 cache 不再停用,觸發源
+      # 就消失了。代價:韌體佔約 2MB PSRAM、cache miss 改走 PSRAM 匯流排
+      # (繪圖緩衝已在內部 SRAM,騰得出餘裕)。
+      # 這在 v1.3.0 之後特別重要:地圖改成執行期下載,執行中會真的寫 flash,
+      # 以前地圖是 rodata、幾乎不寫,所以同樣的缺陷不會被觸發。
+      CONFIG_SPIRAM_XIP_FROM_PSRAM: "y"
 
 # ---- 本地覆寫的元件(components/,各檔內有「本地覆寫」註解標明唯一改動點)----
 # psram:拿掉上游在 octal + 120MHz + IDF>=5.4 時無條件開啟的
