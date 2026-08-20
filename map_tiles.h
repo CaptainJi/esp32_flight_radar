@@ -78,6 +78,7 @@ inline bool loaded = false;               // false = no map yet (nothing drawn)
 // wasted bandwidth and needless flash wear for a map it already has.
 inline float stored_lat = NAN, stored_lon = NAN;
 inline uint8_t stored_level = 0;
+inline int stored_tiles = 0;   // 成功解析的圖磚數,給設定頁顯示用
 
 // Bumped whenever the arrays change. radar_rebuild_base() caches the rendered
 // base image keyed on lat/lon/range/map_show; without this in the key a map
@@ -299,6 +300,7 @@ inline bool load_from_partition() {
   heap_caps_free(buf);
   finish();
   stored_lat = h.lat; stored_lon = h.lon; stored_level = h.level;
+  stored_tiles = good;
   ESP_LOGI(TAG, "map: %d/%d tiles, %u outline pts, %u airports, %u airspaces "
                 "(for %.3f,%.3f r=%ukm L%u)",
            good, h.ntiles, (unsigned) (OUTLINE.size() / 2), (unsigned) AIRPORTS.size(),

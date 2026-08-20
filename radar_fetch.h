@@ -1711,8 +1711,19 @@ inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,
   uint32_t fsz = 0;
   esp_flash_get_size(nullptr, &fsz);
   const esp_partition_t *ap = esp_ota_get_running_partition();
-  snprintf(b, sizeof(b), "FLASH %u MB   APP %.1f MB", (unsigned) (fsz >> 20),
-           ap ? ap->size / 1048576.0f : 0.0f);
+  // 地圖狀態也放這裡:同樣是儲存相關,而且**這是使用者唯一看得到它的地方**。
+  // Guition 那塊板的 I2C 佔用 GPIO19/20(原生 USB 資料腳),app 一啟動 USB serial
+  // 就死,拿不到開機 log;而地圖在 Wi-Fi 之前就載入,web UI 的 log 也接不到。
+  // 沒有這一行,「地圖不顯示」只能靠猜是下載、儲存還是繪製出問題(issue #7)。
+  //   MAP 2t 3075p = 2 張圖磚、3075 個輪廓點 → 資料在,問題在繪製
+  //   MAP none     = 分割區裡沒有有效地圖 → 問題在下載或儲存
+  if (maptiles::loaded)
+    snprintf(b, sizeof(b), "FLASH %u MB  APP %.1f MB  MAP %dt %up",
+             (unsigned) (fsz >> 20), ap ? ap->size / 1048576.0f : 0.0f,
+             maptiles::stored_tiles, (unsigned) (maptiles::OUTLINE.size() / 2));
+  else
+    snprintf(b, sizeof(b), "FLASH %u MB  APP %.1f MB  MAP none",
+             (unsigned) (fsz >> 20), ap ? ap->size / 1048576.0f : 0.0f);
   lv_label_set_text(l3, b);
   uint32_t up = (uint32_t) (esp_timer_get_time() / 1000000LL);
   if (radar_bg::g_last_src > 0)   // 免費來源(手選或 fallback):無額度,顯示來源名

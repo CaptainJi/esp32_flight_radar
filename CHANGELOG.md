@@ -3,6 +3,19 @@
 Notable changes per release. Anything that changes how you flash or upgrade is called
 out first, because that is the part that costs you time.
 
+## [v1.3.5] — 2026-08-20
+
+### Added
+
+- **Map status on the system info page (the `i` button).** The FLASH line now ends with
+  `MAP 2t 3075p` (tiles loaded, outline points) or `MAP none`. That one line splits "the
+  map isn't showing" into two different problems: `none` means the download or the flash
+  write failed, while a tile count with a blank screen means the data is there and the
+  drawing is at fault. On the Guition JC8048W550 this is the only way to see it at all —
+  its touch I²C sits on GPIO19/20, the native USB data pins, so the app kills USB serial
+  the moment it starts, and the map loads before Wi-Fi is up, so the web UI log misses it
+  too. From #7.
+
 ## [v1.3.4] — 2026-08-20
 
 ### Fixed
