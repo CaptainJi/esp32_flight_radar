@@ -242,12 +242,20 @@ touchscreen:
     id: my_touch
     display: main_display
     update_interval: 20ms
-    # GT911 的 raw 原點就在實體左上,與面板一致。實測(畫面正立時點四角的 raw):
+    # GT911 實測四角 raw(畫面正立):
     #   左上 (27,13)    右上 (1013,12)
     #   左下 (23,593)   右下 (1010,597)
-    # 範圍與方向都正確,所以不需要 calibration。
+    # 合併 map-tiles / 六鍵佈局後,右緣觸控座標會略偏左(點 SYS 落到 PWR)。
+    # 實機命中自檢證明 LVGL 按鈕幾何正確;根因是 GT911 raw→螢幕映射。
+    # x_max 略小於實測右緣(~1012)→往右拉伸。970 時 SYS 穩但 PWR 偏窄
+    # (過度右偏,點 PWR 中心易落到 SYS);985 折中兩者。
+    calibration:
+      x_min: 25
+      x_max: 985
+      y_min: 12
+      y_max: 595
     #
-    # >>> 但這個分支「需要」鏡像,而 main 分支「不需要」,原因在旋轉做在哪一層 <<<
+    # >>> 這個分支「需要」鏡像,而 main 分支「不需要」,原因在旋轉做在哪一層 <<<
     #
     # ESPHome 的觸控基底類別完全不看顯示器旋轉,只套下面 transform: 裡明寫的東西
     # (touchscreen.cpp 的 add_raw_touch_position_,只用 swap_x_y_/invert_x_/invert_y_)。

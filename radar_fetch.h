@@ -1307,10 +1307,14 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
                                bool map_show, bool echo_show, uint8_t atc_layers) {
   lv_draw_buf_t *db = lv_canvas_get_draw_buf(cv);   // LVGL 9:canvas 緩衝改由 draw_buf 描述
   if (!db || !db->data) return;
-  // 重建期間禁止 display 自動刷新:CanvasPainter 的 finish_layer / 直接寫像素
-  // 若邊畫邊送屏,地圖更新會劇烈閃爍。結束後再一次 invalidate。
+  // MIPI-DSI 面板持續掃描 framebuffer:重建時只要改到「正在顯示」的 canvas
+  // 緩衝就會撕裂/全屏閃。作法:
+  //   1) 關掉 display invalidate
+  //   2) 隱藏 canvas(螢幕暫留上一幀合成結果,不露出半成品)
+  //   3) 全部畫完再顯示 + 一次 invalidate
   lv_display_t *disp = lv_obj_get_display(cv);
   if (disp) lv_display_enable_invalidation(disp, false);
+  lv_obj_add_flag(cv, LV_OBJ_FLAG_HIDDEN);
   // canvas 建成 LV_COLOR_FORMAT_NATIVE(= RGB565,2 bytes/px);LVGL 9 的
   // lv_color_t 是 24-bit,不能再拿來當畫布像素型別,直接用 uint16_t。
   // ESPHome 設 LV_DRAW_BUF_STRIDE_ALIGN=1,所以 stride 就是寬 x 2、可平坦定址。
@@ -1371,6 +1375,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
       uint16_t col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[0]));
       float r2 = rng * rng;
       bool have_prev = false;
+      bool skip_kind = false;   // 預設只畫海岸/國界/省界,河/路/鐵太密易亂
       lv_point_t prev{0, 0};
       float pd2 = 1e18f;
       for (int i = 0; i + 1 < MAP_OUTLINE_LEN; i += 2) {
@@ -1379,9 +1384,12 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
           have_prev = false;
           uint8_t kind = isnan(lo) ? 0 : (uint8_t) lo;
           if (kind > 5) kind = 2;
-          col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[kind]));
+          skip_kind = (kind > 2);   // 3 河 4 路 5 鐵 — 略過
+          if (!skip_kind)
+            col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[kind]));
           continue;
         }
+        if (skip_kind) continue;
         float e = (lo - lon0) * 111.320f * coslat;
         float n = (la - lat0) * 110.574f;
         float d2 = e * e + n * n;
@@ -1559,6 +1567,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     }
   }
   if (disp) lv_display_enable_invalidation(disp, true);
+  lv_obj_clear_flag(cv, LV_OBJ_FLAG_HIDDEN);
   lv_obj_invalidate(cv);
 }
 
@@ -2076,8 +2085,12 @@ inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,
 #else
   const char *chip = "ESP32";
 #endif
-  snprintf(b, sizeof(b), "%s %uMHz   RSSI %d",
-           chip, (unsigned) esp_rom_get_cpu_ticks_per_us(), rssi);
+#ifdef CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ
+  const unsigned mhz = (unsigned) CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+#else
+  const unsigned mhz = (unsigned) esp_rom_get_cpu_ticks_per_us();
+#endif
+  snprintf(b, sizeof(b), "%s %uMHz   RSSI %d", chip, mhz, rssi);
   lv_label_set_text(route, b);
   snprintf(b, sizeof(b), "RAM   %4u / %4u KB",
            (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),

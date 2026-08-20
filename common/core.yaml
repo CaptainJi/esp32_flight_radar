@@ -144,6 +144,20 @@ esphome:
             lv_obj_add_state((lv_obj_t *) id(poff_btn), LV_STATE_CHECKED);
             lv_obj_set_style_text_color(id(poff_btn_l), lv_color_hex(0x04180C), 0);
           }
+          // 工具列置頂,避免後期加入的覆蓋層/標籤搶走右上角觸控(尤其 SYS 靠右緣)
+          lv_obj_t *tb[] = {
+            (lv_obj_t *) id(map_btn), (lv_obj_t *) id(echo_btn),
+            (lv_obj_t *) id(persist_btn), (lv_obj_t *) id(atc_btn),
+            (lv_obj_t *) id(pwr_btn), (lv_obj_t *) id(info_btn),
+          };
+          for (auto *b : tb) {
+            if (!b) continue;
+            lv_obj_move_foreground(b);
+            // 子 label 不吃觸控,點擊落到 button 本身
+            uint32_t nc = lv_obj_get_child_cnt(b);
+            for (uint32_t i = 0; i < nc; i++)
+              lv_obj_clear_flag(lv_obj_get_child(b, i), LV_OBJ_FLAG_CLICKABLE);
+          }
           // SRC / UNIT 下拉:同步到 NVS 還原的值(設定頁未開過也要正確)
           lv_dropdown_set_selected(id(src_dd)->obj, id(data_src));
           lv_dropdown_set_selected(id(unit_dd)->obj, id(units_imperial) ? 1 : 0);
@@ -883,6 +897,18 @@ interval:
       - lambda: |-
           // i 鈕開啟中 → 每秒刷新系統資訊(RAM/PSRAM/運行時間會變)
           if (id(info_on)) id(show_sysinfo).execute();
+          // 工具列每秒置頂一次:航班 mark 顯隱/set_pos 後偶發搶到上層,SYS 就點不到
+          {
+            static lv_obj_t *tb[] = {
+              (lv_obj_t *) id(map_btn), (lv_obj_t *) id(echo_btn),
+              (lv_obj_t *) id(persist_btn), (lv_obj_t *) id(atc_btn),
+              (lv_obj_t *) id(pwr_btn), (lv_obj_t *) id(info_btn),
+            };
+            for (auto *b : tb) {
+              if (!b) continue;
+              lv_obj_move_foreground(b);
+            }
+          }
           // 響鈴中 → 每 15 秒重播一次,直到使用者按 DISMISS
           if (id(alarm_ringing) && (millis() - id(ring_last_ms)) >= 15000) {
             id(ring_last_ms) = millis();
@@ -943,9 +969,14 @@ interval:
               !radar_bg::g_maps_busy) {
             const int lv = radar_bg::maps_level_for(id(radar_range).state);
             // 0.5 度約 55 km:小幅移動不必重抓,格子是 10 度寬,綽綽有餘。
-            char key[48];
-            snprintf(key, sizeof(key), "%.1f,%.1f,L%d",
-                     id(home_lat).state, id(home_lon).state, lv);
+            char key[64];
+            // 把 CDN 指紋編進 key:換成自建 Pages 後必須重抓,不能沿用舊分割區內容。
+            uint32_t cdn_h = 2166136261u;
+            for (const char *p = radar_bg::MAPS_BASE; *p; ++p)
+              cdn_h = (cdn_h ^ (uint8_t) *p) * 16777619u;
+            snprintf(key, sizeof(key), "%.1f,%.1f,L%d,%08lx,s2",
+                     id(home_lat).state, id(home_lon).state, lv,
+                     (unsigned long) cdn_h);
             const bool key_changed = (id(maps_key) != key);
             const bool retrying_same = (id(maps_key_try) == key);
             const bool throttle_ok =
@@ -958,18 +989,12 @@ interval:
                                      id(radar_range).state);
             }
           }
-          // 下載進度改寫狀態列,绝不碰右下面板(SYS/天氣/航線共用 sel_route_l,
-          // 以前寫進去會把 SYS 面板蓋成 DOWNLOADING / 空白,看起來像 SYS 失效)。
+          // 下載進度只更新旗標;真正寫入 status_label 在後面與 AC:n 同一處,
+          // 避免被航班刷新立刻蓋掉(看起來像「完全沒進度」)。
           {
             static bool was_busy = false;
             const bool busy = radar_bg::g_maps_busy;
-            if (busy) {
-              char m[48];
-              snprintf(m, sizeof(m), "DOWNLOADING MAP %d/%d  %u KB",
-                       radar_bg::g_maps_progress, radar_bg::g_maps_total,
-                       (unsigned) (radar_bg::g_maps_bytes / 1024));
-              lv_label_set_text(id(status_label), m);
-            } else if (was_busy && !busy) {
+            if (was_busy && !busy) {
               if (id(info_on)) id(show_sysinfo).execute();
               else if (id(sel_cs_g).empty()) id(show_weather).execute();
             }
@@ -1158,6 +1183,13 @@ interval:
             }
           }
           char b[64];
+          // 地圖下載中優先顯示進度(否則下面的 AC:n 每秒覆寫,進度永遠看不見)
+          if (radar_bg::g_maps_busy) {
+            snprintf(b, sizeof(b), "MAP %d/%d %uKB",
+                     radar_bg::g_maps_progress, radar_bg::g_maps_total,
+                     (unsigned) (radar_bg::g_maps_bytes / 1024));
+            lv_label_set_text(id(status_label), b);
+          } else {
           // 狀態列出處標籤(MERGE/FI/LOL/LIVE);OpenSky 不掛後綴省寬度
           char stag_buf[14] = "";
           if (radar_bg::g_last_src > 0)
@@ -1171,6 +1203,7 @@ interval:
           else
             snprintf(b, sizeof(b), "AC:%d%s", n, stag);
           lv_label_set_text(id(status_label), b);
+          }
           static bool first_data = true;
           if (first_data) {
             first_data = false;
@@ -1256,8 +1289,16 @@ interval:
             { id(tr38_0), id(tr38_1), id(tr38_2), id(tr38_3), id(tr38_4), id(tr38_5) },
             { id(tr39_0), id(tr39_1), id(tr39_2), id(tr39_3), id(tr39_4), id(tr39_5) },
           };
-          // 圓形裁剪層:標籤不再溢出到下方 SYSTEM 控制區(座標改為層内 RADAR_CX)
           radar_install_ac_clip(id(main_page)->obj, marks, vecs, trs);
+          // clip 以 create() 掛上後會變成 page 最上層;立刻把工具列抬回
+          {
+            lv_obj_t *tb[] = {
+              (lv_obj_t *) id(map_btn), (lv_obj_t *) id(echo_btn),
+              (lv_obj_t *) id(persist_btn), (lv_obj_t *) id(atc_btn),
+              (lv_obj_t *) id(pwr_btn), (lv_obj_t *) id(info_btn),
+            };
+            for (auto *b : tb) if (b) lv_obj_move_foreground(b);
+          }
           bool atc = id(atc_on);
           if (id(slot_map).size() != AC_SLOTS) id(slot_map).assign(AC_SLOTS, -1);
           float lat0 = id(home_lat).state, lon0 = id(home_lon).state;
@@ -1266,16 +1307,6 @@ interval:
           float dt = (id(fetch_ms) > 0) ? (millis() - id(fetch_ms)) / 1000.0f : 0.0f;
           if (dt > 180.0f) dt = 180.0f;   // 資料太舊就不再外插
           int n = id(ac_lat).size(), shown = 0;
-          // 先數圈內架數:機多時藏標籤(只留圖示/選取),文字重排是卡頓主因之一
-          int in_rng = 0;
-          for (int i = 0; i < n && in_rng < AC_SLOTS; i++) {
-            float rad = id(ac_trk)[i] * 3.14159265f / 180.0f;
-            float vkm = id(ac_vel)[i] * dt / 1000.0f;
-            float e  = (id(ac_lon)[i] - lon0) * 111.320f * coslat + vkm * sinf(rad);
-            float no = (id(ac_lat)[i] - lat0) * 110.574f          + vkm * cosf(rad);
-            if (e * e + no * no <= rng * rng) in_rng++;
-          }
-          const bool dense = in_rng > 14;
           static uint32_t last_trail_fetch = 0;
           const bool upd_trail = (id(fetch_ms) != last_trail_fetch);
           static int16_t last_px[AC_SLOTS], last_py[AC_SLOTS], last_ang[AC_SLOTS];
@@ -1403,8 +1434,8 @@ interval:
               if (slot_ch)
                 lv_obj_set_style_text_color(dbs[shown], lv_color_hex(0x9AE6B4), 0);
             }
-            // 機多:非選取隱藏三行標籤,大幅減少文字重繪與混色面積
-            uint8_t want_lbl = (uint8_t) ((!dense || selg) ? 1 : 0);
+            // 只顯示「選中」航班的呼號/高度標籤,其餘只留機標,避免更新時滿屏呼號
+            uint8_t want_lbl = (uint8_t) (selg ? 1 : 0);
             if (last_lbl[shown] != want_lbl) {
               last_lbl[shown] = want_lbl;
               if (want_lbl) lv_obj_clear_flag(dbs[shown], LV_OBJ_FLAG_HIDDEN);

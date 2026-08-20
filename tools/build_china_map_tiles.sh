@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Build richer map tiles for eastern China (provinces + rivers + major roads + rail).
-# Official CDN tiles usually only have coastline/country borders.
+# Build China map tiles: coastline + country + province borders only.
+# Rivers/roads/rail make the scope too busy at 150–300 km ranges.
 #
 # Usage (from repo root, WSL/Linux):
 #   ./tools/build_china_map_tiles.sh
 #   ./tools/build_china_map_tiles.sh /path/to/flight-radar-maps
 #
-# Then host the output on GitHub Pages and set in radar-*.yaml / common/core.yaml:
+# Then host on GitHub Pages and set:
 #   substitutions:
 #     maps_base_url: "https://<you>.github.io/flight-radar-maps/v1"
-#
-# Force the device to re-download: change range slightly, or erase maps partition
-# by USB reflashing a factory image.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$ROOT/../flight-radar-maps}"
@@ -24,11 +21,8 @@ python3 "$ROOT/tools/make_tiles.py" \
   --cells "$CELLS" \
   --levels 1,2,3 \
   --states \
-  --rivers \
-  --roads \
-  --railroads \
   --min-airport medium
 
 echo
-echo "Tiles written under $OUT/v1/"
+echo "Tiles written under $OUT/v1/ (coast + country + province only)"
 echo "Push that repo to GitHub Pages, then set maps_base_url to its /v1 URL."
