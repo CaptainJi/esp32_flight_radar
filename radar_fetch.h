@@ -166,6 +166,7 @@ inline int g_spk_status = 0;               // HTTP 狀態:200 成功 / 401 token
 inline volatile int g_os_remaining = -1;   // OpenSky X-Rate-Limit-Remaining(-1=未知)
 inline bool g_want_rl = false;             // 只在 states 請求期間擷取(bg task 序列執行,無競態)
 inline volatile uint32_t g_os_cooldown_until = 0;  // OpenSky 失敗冷卻期限(millis 秒),期間走免費來源
+inline volatile uint32_t g_alive_cooldown_until = 0;  // airplanes.live 403/失敗後冷卻(秒)
 inline volatile int g_last_src = -1;       // 最近成功來源:0..4,-1=尚未;MERGE 時為 4
 
 inline const char *src_name(int src) {
@@ -410,6 +411,19 @@ inline bool fetch_v2_host(const Job &j, const char *host, std::vector<AcInfo> &o
   return fetch_readsb_json(url, j.lat, j.lon, j.range, out);
 }
 
+// airplanes.live 常對本機 UA 回 403;失敗後冷卻,避免每輪白打
+inline bool fetch_airplanes_live(const Job &j, std::vector<AcInfo> &out) {
+  uint32_t now = millis() / 1000;
+  if (now < g_alive_cooldown_until) return false;
+  if (fetch_v2_host(j, "api.airplanes.live", out)) {
+    g_alive_cooldown_until = 0;
+    return true;
+  }
+  g_alive_cooldown_until = now + 60;  // 1 分鐘
+  ESP_LOGW("radar_bg", "airplanes.live cooling down 60s");
+  return false;
+}
+
 inline bool fetch_adsb_fi(const Job &j, std::vector<AcInfo> &out) {
   float r_nm = j.range / 1.852f;
   if (r_nm > 250.0f) r_nm = 250.0f;
@@ -432,13 +446,17 @@ inline bool do_states_v2(const Job &j, int src) {
   bool ok = false;
   if (src == 3) ok = fetch_adsb_fi(j, acs);
   else if (src == 2) ok = fetch_v2_host(j, "api.adsb.lol", acs);
-  else ok = fetch_v2_host(j, "api.airplanes.live", acs);
+  else {
+    ok = fetch_airplanes_live(j, acs);
+    if (!ok) ok = fetch_v2_host(j, "api.adsb.lol", acs);  // A.LIVE 冷卻/失敗 → LOL
+    if (ok && src == 1) src = 2;
+  }
   if (!ok) return false;
   publish_states(std::move(acs), src);
   return true;
 }
 
-// 多源合併:OpenSky(可匿名)+ADSB.LOL+ADSB.FI+A.LIVE,按 hex 去重補欄
+// 多源合併:OpenSky(可匿名)+ADSB.LOL+ADSB.FI(+A.LIVE 未冷卻時),按 hex 去重補欄
 inline void do_states_merge(const Job &j) {
   std::vector<AcInfo> all;
   std::vector<AcInfo> part;
@@ -450,7 +468,7 @@ inline void do_states_merge(const Job &j) {
   part.clear();
   if (fetch_adsb_fi(j, part)) { merge_into(all, std::move(part)); ok_n++; }
   part.clear();
-  if (fetch_v2_host(j, "api.airplanes.live", part)) { merge_into(all, std::move(part)); ok_n++; }
+  if (fetch_airplanes_live(j, part)) { merge_into(all, std::move(part)); ok_n++; }
   if (ok_n == 0) {
     ESP_LOGW("radar_bg", "merge: all sources failed");
     return;

@@ -1259,7 +1259,7 @@ interval:
               vp[shown][0].x = px;  vp[shown][0].y = py;
               vp[shown][1].x = px2; vp[shown][1].y = py2;
               lv_line_set_points(vecs[shown], vp[shown], 2);
-              lv_obj_clear_flag(vecs[shown], LV_OBJ_FLAG_HIDDEN);
+              // 向量/尾跡可見性與 mark 一致,見下方 gshow 閘門(餘暉未掃過不顯示)
               // 歷史軌跡:只在新抓取時重算(外插秒級移動不必每秒重佈 6 點)
               if (upd_trail || slot_ch) {
                 int lx = px, ly = py, k = 0, d = 0;
@@ -1324,11 +1324,21 @@ interval:
             id(slot_angle)[shown] = bearing;
             id(slot_map)[shown] = i;
             // 餘暉模式:尚未被掃描線掃過(glow≈0)的目標先藏起來;選取中例外以便點選後仍看得到
+            // ATC 向量/尾跡與 mark 同步,避免「線先出現、機還沒被掃到」
             float gshow = id(slot_glow)[shown];
-            if (!id(persist_on) || gshow > 0.02f || selg)
+            bool visible = !id(persist_on) || gshow > 0.02f || selg;
+            if (visible)
               lv_obj_clear_flag(marks[shown], LV_OBJ_FLAG_HIDDEN);
             else
               lv_obj_add_flag(marks[shown], LV_OBJ_FLAG_HIDDEN);
+            if (atc) {
+              if (visible) {
+                lv_obj_clear_flag(vecs[shown], LV_OBJ_FLAG_HIDDEN);
+              } else {
+                lv_obj_add_flag(vecs[shown], LV_OBJ_FLAG_HIDDEN);
+                for (int k = 0; k < 6; k++) lv_obj_add_flag(trs[shown][k], LV_OBJ_FLAG_HIDDEN);
+              }
+            }
             shown++;
           }
           if (upd_trail) last_trail_fetch = id(fetch_ms);
@@ -1397,6 +1407,7 @@ interval:
           float dang = (cur >= prev) ? (cur - prev) : (360.0f - prev + cur);
           static lv_obj_t *marks[AC_SLOTS] = {};
           static lv_obj_t *imgs[AC_SLOTS] = {};
+          static lv_obj_t *vecs[AC_SLOTS] = {};
           static bool ptrs_ok = false;
           if (!ptrs_ok) {
             marks[0]=id(ac0); marks[1]=id(ac1); marks[2]=id(ac2); marks[3]=id(ac3);
@@ -1419,6 +1430,16 @@ interval:
             imgs[28]=(lv_obj_t*)id(ai28); imgs[29]=(lv_obj_t*)id(ai29); imgs[30]=(lv_obj_t*)id(ai30); imgs[31]=(lv_obj_t*)id(ai31);
             imgs[32]=(lv_obj_t*)id(ai32); imgs[33]=(lv_obj_t*)id(ai33); imgs[34]=(lv_obj_t*)id(ai34); imgs[35]=(lv_obj_t*)id(ai35);
             imgs[36]=(lv_obj_t*)id(ai36); imgs[37]=(lv_obj_t*)id(ai37); imgs[38]=(lv_obj_t*)id(ai38); imgs[39]=(lv_obj_t*)id(ai39);
+            vecs[0]=id(vec0)->obj; vecs[1]=id(vec1)->obj; vecs[2]=id(vec2)->obj; vecs[3]=id(vec3)->obj;
+            vecs[4]=id(vec4)->obj; vecs[5]=id(vec5)->obj; vecs[6]=id(vec6)->obj; vecs[7]=id(vec7)->obj;
+            vecs[8]=id(vec8)->obj; vecs[9]=id(vec9)->obj; vecs[10]=id(vec10)->obj; vecs[11]=id(vec11)->obj;
+            vecs[12]=id(vec12)->obj; vecs[13]=id(vec13)->obj; vecs[14]=id(vec14)->obj; vecs[15]=id(vec15)->obj;
+            vecs[16]=id(vec16)->obj; vecs[17]=id(vec17)->obj; vecs[18]=id(vec18)->obj; vecs[19]=id(vec19)->obj;
+            vecs[20]=id(vec20)->obj; vecs[21]=id(vec21)->obj; vecs[22]=id(vec22)->obj; vecs[23]=id(vec23)->obj;
+            vecs[24]=id(vec24)->obj; vecs[25]=id(vec25)->obj; vecs[26]=id(vec26)->obj; vecs[27]=id(vec27)->obj;
+            vecs[28]=id(vec28)->obj; vecs[29]=id(vec29)->obj; vecs[30]=id(vec30)->obj; vecs[31]=id(vec31)->obj;
+            vecs[32]=id(vec32)->obj; vecs[33]=id(vec33)->obj; vecs[34]=id(vec34)->obj; vecs[35]=id(vec35)->obj;
+            vecs[36]=id(vec36)->obj; vecs[37]=id(vec37)->obj; vecs[38]=id(vec38)->obj; vecs[39]=id(vec39)->obj;
             ptrs_ok = true;
           }
           static uint8_t last_opa[AC_SLOTS];
@@ -1452,6 +1473,7 @@ interval:
             if (g < 0.02f && g0 < 0.02f && !selg) {
               if (persist && !dark && last_opa[i] != 0) {
                 lv_obj_add_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+                if (id(atc_on)) lv_obj_add_flag(vecs[i], LV_OBJ_FLAG_HIDDEN);
                 last_opa[i] = 0;
               }
               continue;
@@ -1462,6 +1484,7 @@ interval:
               if (go < 0.02f) {
                 if (last_opa[i] != 0) {
                   lv_obj_add_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+                  if (id(atc_on)) lv_obj_add_flag(vecs[i], LV_OBJ_FLAG_HIDDEN);
                   last_opa[i] = 0;
                 }
                 continue;
@@ -1473,7 +1496,10 @@ interval:
               bool need_show = (last_opa[i] == 0) || crossed;
               bool opa_ch = (opa != last_opa[i]) || crossed;
               if (!crossed && opa_ch && budget <= 0) continue;  // 數值已寫,樣式下拍再補
-              if (need_show) lv_obj_clear_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+              if (need_show) {
+                lv_obj_clear_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
+                if (id(atc_on)) lv_obj_clear_flag(vecs[i], LV_OBJ_FLAG_HIDDEN);
+              }
               if (opa_ch) {
                 if (!crossed) budget--;
                 last_opa[i] = opa;
