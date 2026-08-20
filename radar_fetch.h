@@ -1307,19 +1307,17 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
                                bool map_show, bool echo_show, uint8_t atc_layers) {
   lv_draw_buf_t *db = lv_canvas_get_draw_buf(cv);   // LVGL 9:canvas 緩衝改由 draw_buf 描述
   if (!db || !db->data) return;
-  // MIPI-DSI 面板持續掃描 framebuffer:重建時只要改到「正在顯示」的 canvas
-  // 緩衝就會撕裂/全屏閃。作法:
-  //   1) 關掉 display invalidate
-  //   2) 隱藏 canvas(螢幕暫留上一幀合成結果,不露出半成品)
-  //   3) 全部畫完再顯示 + 一次 invalidate
+  // MIPI-DSI + LVGL 180°(PPA)下,重建若:
+  //   • 長時間關 invalidation(整 UI 卡住後一次全屏 flush),或
+  //   • 把 canvas HIDDEN 再顯示(髒區變大、PPA 整幀旋轉),
+  // 偶發整屏青/色塊閃一下(PSRAM 與 DSI/PPA 搶頻寬時更明顯)。
+  // 作法:輪廓先畫進離屏 cache(不碰顯示);僅在「拷貝+回波+環/ATC」這段短
+  // 臨界區關 invalidation,且絕不 HIDDEN——面板暫留上一幀已 flush 的畫面。
   lv_display_t *disp = lv_obj_get_display(cv);
-  if (disp) lv_display_enable_invalidation(disp, false);
-  lv_obj_add_flag(cv, LV_OBJ_FLAG_HIDDEN);
   // canvas 建成 LV_COLOR_FORMAT_NATIVE(= RGB565,2 bytes/px);LVGL 9 的
   // lv_color_t 是 24-bit,不能再拿來當畫布像素型別,直接用 uint16_t。
   // ESPHome 設 LV_DRAW_BUF_STRIDE_ALIGN=1,所以 stride 就是寬 x 2、可平坦定址。
   uint16_t *px = (uint16_t *) (void *) db->data;
-  radar_bg::PixCanvas pc(px, RADAR_CANVAS, RADAR_CANVAS);   // 線條走這條路,不進 LVGL 佇列
   const size_t NPX = (size_t) RADAR_CANVAS * RADAR_CANVAS;
   const size_t BYTES = NPX * sizeof(uint16_t);
   // 地圖資料以前是 map_data.h 裡的編譯期陣列,現在是 maptiles 從 maps 分割區
@@ -1345,13 +1343,11 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
   // 沒有它畫面會停在舊的(或空的)底圖,直到使用者剛好去動座標才更新。
   bool fresh = cache && c_lat == lat0 && c_lon == lon0 && c_rng == rng &&
                c_map == map_show && c_gen == maptiles::generation;
-  // 重建時先畫進 cache(離屏),再一次 memcpy 到可見緩衝——避免先填黑/綠底並
-  // invalidate 造成「整屏閃一下再慢慢長出海岸線」。顯示端在拷貝前仍是舊底圖。
-  // 無 cache(PSRAM 配不出)才退回直接畫 px。
-  if (fresh) {
-    memcpy((void *) px, cache, BYTES);
-  } else {
+  // Phase 1:只動離屏 cache。無 cache 時只能直接畫 px,臨界區會變長。
+  if (!fresh) {
     uint16_t *build = cache ? (uint16_t *) (void *) cache : px;
+    // 無離屏緩衝時必須鎖住顯示,否則半成品會被 flush 出去。
+    if (!cache && disp) lv_display_enable_invalidation(disp, false);
     radar_bg::PixCanvas pc_build(build, RADAR_CANVAS, RADAR_CANVAS);
     // 不要用 lv_canvas_fill_bg:它逐像素呼叫 lv_canvas_set_px,每次都重算 offset。
     // 1024x600 的 RGB 面板 GDMA 同時在吃 PSRAM 頻寬,兩者相撞會慢到每像素
@@ -1406,9 +1402,12 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     if (cache) {
       c_lat = lat0; c_lon = lon0; c_rng = rng; c_map = map_show;
       c_gen = maptiles::generation;
-      memcpy((void *) px, cache, BYTES);
     }
   }
+  // Phase 2:短臨界區——一次拷貝可見緩衝,再疊回波/環/ATC,最後一次 invalidate。
+  if (disp) lv_display_enable_invalidation(disp, false);
+  if (cache) memcpy((void *) px, cache, BYTES);
+  radar_bg::PixCanvas pc(px, RADAR_CANVAS, RADAR_CANVAS);   // 線條走這條路,不進 LVGL 佇列
   // 回波預混合:g_echo_buf 為 [color_lo][color_hi][alpha],逐像素混進底圖。
   // 只走 g_echo_x0/x1 記下的逐列範圍——降雨通常只佔畫面一小塊,沒下雨時整張
   // 全空,這樣就從「必掃 324,900 像素、讀 950KB PSRAM」變成只碰真的有資料的
@@ -1567,7 +1566,6 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     }
   }
   if (disp) lv_display_enable_invalidation(disp, true);
-  lv_obj_clear_flag(cv, LV_OBJ_FLAG_HIDDEN);
   lv_obj_invalidate(cv);
 }
 

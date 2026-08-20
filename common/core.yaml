@@ -1316,7 +1316,19 @@ interval:
             for (int k = 0; k < AC_SLOTS; k++) {
               last_px[k] = -9999; last_py[k] = -9999; last_ang[k] = -1;
               last_map[k] = -2; last_sel[k] = 0xFF; last_lbl[k] = 0xFF;
+              // 熱區縮到機標附近(~48px):YAML 原 122×64 會蓋住右側鄰機,
+              // 觸控稍偏或 z 序一變就選到左側那架。標籤溢出繪製、不接點擊。
+              lv_obj_set_size(marks[k], RS(48), RS(48));
+              lv_obj_add_flag(marks[k], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+              lv_obj_clear_flag(imgs[k], LV_OBJ_FLAG_CLICKABLE);
+              lv_obj_clear_flag(sqs[k], LV_OBJ_FLAG_CLICKABLE);
+              lv_obj_clear_flag(dbs[k], LV_OBJ_FLAG_CLICKABLE);
+              lv_obj_set_pos(imgs[k], RS(10), RS(10));
+              lv_obj_set_pos(sqs[k], RS(20), RS(20));
             }
+            // 右緣 SYS/PWR 略擴熱區(取代曾用的全局 x_max 拉伸)
+            lv_obj_set_ext_click_area((lv_obj_t *) id(info_btn), RS(12));
+            lv_obj_set_ext_click_area((lv_obj_t *) id(pwr_btn), RS(8));
             geom_init = 1;
           }
           float earr[AC_SLOTS], noarr[AC_SLOTS];
@@ -1335,25 +1347,26 @@ interval:
             bool lside = atc && sinf(rad) > 0.0f;
             if ((uint8_t) lside != id(lbl_side)[shown]) {
               id(lbl_side)[shown] = lside ? 1 : 0;
-              lv_obj_set_pos(imgs[shown], lside ? RS(94) : 0, RS(6));
-              lv_obj_set_pos(sqs[shown], lside ? RS(105) : RS(11), RS(17));
+              // 機標固定在 48×48 熱區中央;標籤畫在盒外(OVERFLOW_VISIBLE)
+              lv_obj_set_pos(imgs[shown], RS(10), RS(10));
+              lv_obj_set_pos(sqs[shown], RS(20), RS(20));
               if (lside) {
                 lv_obj_set_width(dbs[shown], RS(88));
                 lv_obj_set_style_text_align(dbs[shown], LV_TEXT_ALIGN_RIGHT, 0);
-                lv_obj_set_pos(dbs[shown], 0, RS(4));
+                lv_obj_set_pos(dbs[shown], -RS(90), RS(4));
               } else {
                 lv_obj_set_width(dbs[shown], LV_SIZE_CONTENT);
                 lv_obj_set_style_text_align(dbs[shown], LV_TEXT_ALIGN_LEFT, 0);
-                lv_obj_set_pos(dbs[shown], RS(32), RS(4));
+                lv_obj_set_pos(dbs[shown], RS(50), RS(4));
               }
               last_px[shown] = -9999;   // 佈局變了強制重放位置
             }
             bool selg = (!id(sel_cs_g).empty() && id(ac_cs)[i] == id(sel_cs_g));
             bool slot_ch = (last_map[shown] != i);
             last_map[shown] = i;
-            // 位置未變(±1px)就跳過 set_pos,少一次大面積 invalidate
-            int mx = lside ? px - RS(108) : px - RS(14);
-            int my = py - RS(20);
+            // 小熱區中心對準航跡像素
+            int mx = px - RS(24);
+            int my = py - RS(24);
             if (slot_ch || abs(mx - last_px[shown]) > 1 || abs(my - last_py[shown]) > 1) {
               lv_obj_set_pos(marks[shown], mx, my);
               last_px[shown] = (int16_t) mx;
@@ -1367,15 +1380,15 @@ interval:
               lv_img_set_angle(imgs[shown], ang10);
               last_ang[shown] = ang10;
             }
-            // persist 開啟時顏色/透明度由掃描餘暉迴圈負責;關閉時只在選取變化時寫
-            if (!id(persist_on)) {
-              uint8_t sg = selg ? 1 : 0;
-              if (slot_ch || last_sel[shown] != sg) {
-                last_sel[shown] = sg;
-                lv_obj_set_style_img_recolor(imgs[shown], lv_color_hex(selg ? 0xFFD24A : 0x40FF9A), 0);
-                lv_obj_set_style_img_recolor_opa(imgs[shown], LV_OPA_COVER, 0);
+            // 選取高亮:呼號變黃(0xFFD24A)。餘暉迴圈會再疊掃描亮度,但選取變化
+            // 必須立刻寫色——以前包在 !persist_on 裡,FADE 開時點選完全不變色。
+            uint8_t sg = selg ? 1 : 0;
+            if (slot_ch || last_sel[shown] != sg) {
+              last_sel[shown] = sg;
+              lv_obj_set_style_img_recolor(imgs[shown], lv_color_hex(selg ? 0xFFD24A : 0x40FF9A), 0);
+              lv_obj_set_style_img_recolor_opa(imgs[shown], LV_OPA_COVER, 0);
+              if (!id(persist_on))
                 lv_obj_set_style_opa(marks[shown], LV_OPA_COVER, 0);
-              }
             }
             earr[shown] = e; noarr[shown] = no; selarr[shown] = selg;
             // 訊號延遲:last_contact 超過 60 秒沒更新
@@ -1588,9 +1601,12 @@ interval:
           }
           static uint8_t last_opa[AC_SLOTS];
           static uint8_t last_gq[AC_SLOTS];
+          static uint8_t last_selg[AC_SLOTS];
           static bool last_opa_init = false;
           if (!last_opa_init) {
-            for (int i = 0; i < AC_SLOTS; i++) { last_opa[i] = 255; last_gq[i] = 255; }
+            for (int i = 0; i < AC_SLOTS; i++) {
+              last_opa[i] = 255; last_gq[i] = 255; last_selg[i] = 0xFF;
+            }
             last_opa_init = true;
           }
           // 每拍最多 N 次非「剛掃過」的樣式寫入,其餘只更新數值下拍補
@@ -1614,6 +1630,8 @@ interval:
             int idx = (i < (int) id(slot_map).size()) ? id(slot_map)[i] : -1;
             bool selg = (idx >= 0 && !id(sel_cs_g).empty() &&
                          idx < (int) id(ac_cs).size() && id(ac_cs)[idx] == id(sel_cs_g));
+            bool sel_ch = ((uint8_t) (selg ? 1 : 0) != last_selg[i]);
+            if (sel_ch) last_selg[i] = selg ? 1 : 0;
             if (g < 0.02f && g0 < 0.02f && !selg) {
               if (persist && !dark && last_opa[i] != 0) {
                 lv_obj_add_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
@@ -1637,24 +1655,25 @@ interval:
               uint8_t opa = (uint8_t) (go * 255.0f);
               opa = (uint8_t) ((opa / 32) * 32);
               if (opa < 32) opa = 32;
-              bool need_show = (last_opa[i] == 0) || crossed;
-              bool opa_ch = (opa != last_opa[i]) || crossed;
-              if (!crossed && opa_ch && budget <= 0) continue;  // 數值已寫,樣式下拍再補
+              bool need_show = (last_opa[i] == 0) || crossed || sel_ch;
+              bool opa_ch = (opa != last_opa[i]) || crossed || sel_ch;
+              if (!crossed && !sel_ch && opa_ch && budget <= 0) continue;  // 數值已寫,樣式下拍再補
               if (need_show) {
                 lv_obj_clear_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
                 if (id(atc_on)) lv_obj_clear_flag(vecs[i], LV_OBJ_FLAG_HIDDEN);
               }
               if (opa_ch) {
-                if (!crossed) budget--;
+                if (!crossed && !sel_ch) budget--;
                 last_opa[i] = opa;
                 lv_obj_set_style_opa(marks[i], (lv_opa_t) opa, 0);
               }
               if (crossed) {
                 lv_obj_set_style_img_recolor(imgs[i], lv_color_make(0xFF, 0xFF, 0xFF), 0);
                 lv_obj_set_style_img_recolor_opa(imgs[i], LV_OPA_COVER, 0);
-              } else if (g0 >= 0.98f && g < 0.98f) {
+              } else if (sel_ch || (g0 >= 0.98f && g < 0.98f)) {
                 uint8_t br = selg ? 0xFF : 0x40, bg = selg ? 0xD2 : 0xFF, bb = selg ? 0x4A : 0x9A;
                 lv_obj_set_style_img_recolor(imgs[i], lv_color_make(br, bg, bb), 0);
+                lv_obj_set_style_img_recolor_opa(imgs[i], LV_OPA_COVER, 0);
               }
             } else {
               if (last_opa[i] != 254) {
@@ -1663,9 +1682,9 @@ interval:
                 last_opa[i] = 254;
               }
               uint8_t gq = (uint8_t) (g * 8.0f);   // 更粗的高亮階
-              if (crossed || gq != last_gq[i]) {
-                if (!crossed && budget <= 0) continue;
-                if (!crossed) budget--;
+              if (crossed || gq != last_gq[i] || sel_ch) {
+                if (!crossed && !sel_ch && budget <= 0) continue;
+                if (!crossed && !sel_ch) budget--;
                 last_gq[i] = gq;
                 uint8_t br = selg ? 0xFF : 0x40, bg = selg ? 0xD2 : 0xFF, bb = selg ? 0x4A : 0x9A;
                 uint8_t r = br + (uint8_t) ((255 - br) * g);
