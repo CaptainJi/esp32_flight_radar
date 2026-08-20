@@ -533,9 +533,41 @@ script:
       slot: int
     then:
       - lambda: |-
-          if (slot < 0 || slot >= (int) id(slot_map).size()) return;
-          int i = id(slot_map)[slot];
-          if (i < 0 || i >= (int) id(ac_cs).size()) return;
+          // 點選改「觸點最近航跡」:大號 mark(含呼號)熱區常蓋住鄰機,只信 slot 會選錯;
+          // 圖示錨點也曾因未縮放 28px PNG 而視覺偏上偏左。這裡用觸點在裁剪層內座標,
+          // 對所有圈內航機算到圖示中心的距離,取最近者(上限 ~RS(48))。
+          float lat0 = id(home_lat).state, lon0 = id(home_lon).state;
+          float rng = id(radar_range).state;
+          float coslat = cosf(lat0 * 3.14159265f / 180.0f);
+          float dt = (id(fetch_ms) > 0) ? (millis() - id(fetch_ms)) / 1000.0f : 0.0f;
+          if (dt > 180.0f) dt = 180.0f;
+          lv_point_t pt{0, 0};
+          lv_indev_t *indev = lv_indev_active();
+          if (indev) lv_indev_get_point(indev, &pt);
+          const int tx = (int) pt.x - RS(12);
+          const int ty = (int) pt.y - RS(12);
+          const int max_d2 = RS(48) * RS(48);
+          int best_i = -1, best_d2 = max_d2 + 1;
+          const int n = (int) id(ac_lat).size();
+          for (int i = 0; i < n; i++) {
+            float rad = id(ac_trk)[i] * 3.14159265f / 180.0f;
+            float vkm = id(ac_vel)[i] * dt / 1000.0f;
+            float e  = (id(ac_lon)[i] - lon0) * 111.320f * coslat + vkm * sinf(rad);
+            float no = (id(ac_lat)[i] - lat0) * 110.574f          + vkm * cosf(rad);
+            if (e * e + no * no > rng * rng) continue;
+            int px = RADAR_CX + (int) (e / rng * (float) RADAR_R);
+            int py = RADAR_CX - (int) (no / rng * (float) RADAR_R);
+            int dx = px - tx, dy = py - ty;
+            int d2 = dx * dx + dy * dy;
+            if (d2 < best_d2) { best_d2 = d2; best_i = i; }
+          }
+          int i = best_i;
+          if (i < 0) {
+            // 觸點離所有機都太遠:退回被點到的 slot(例如點呼號遠端)
+            if (slot < 0 || slot >= (int) id(slot_map).size()) return;
+            i = id(slot_map)[slot];
+            if (i < 0 || i >= (int) id(ac_cs).size()) return;
+          }
           id(spec_on) = false;   // 換機/取消選取都回到航班資訊(規格是上一台的)
           if (id(info_on)) {   // 點選飛機 → 退出系統資訊顯示
             id(info_on) = false;
@@ -555,8 +587,6 @@ script:
           id(sel_hold_ms) = millis();
           lv_label_set_text(id(sel_cs_l), id(ac_cs)[i].c_str());
           lv_label_set_text(id(sel_route_l), "ROUTE ...");
-          float lat0 = id(home_lat).state, lon0 = id(home_lon).state;
-          float coslat = cosf(lat0 * 3.14159265f / 180.0f);
           float e = (id(ac_lon)[i] - lon0) * 111.320f * coslat;
           float no = (id(ac_lat)[i] - lat0) * 110.574f;
           float brg = atan2f(e, no) * 57.29578f;
@@ -974,7 +1004,7 @@ interval:
             uint32_t cdn_h = 2166136261u;
             for (const char *p = radar_bg::MAPS_BASE; *p; ++p)
               cdn_h = (cdn_h ^ (uint8_t) *p) * 16777619u;
-            snprintf(key, sizeof(key), "%.1f,%.1f,L%d,%08lx,s2",
+            snprintf(key, sizeof(key), "%.1f,%.1f,L%d,%08lx,s7",
                      id(home_lat).state, id(home_lon).state, lv,
                      (unsigned long) cdn_h);
             const bool key_changed = (id(maps_key) != key);
@@ -1316,15 +1346,16 @@ interval:
             for (int k = 0; k < AC_SLOTS; k++) {
               last_px[k] = -9999; last_py[k] = -9999; last_ang[k] = -1;
               last_map[k] = -2; last_sel[k] = 0xFF; last_lbl[k] = 0xFF;
-              // 熱區縮到機標附近(~48px):YAML 原 122×64 會蓋住右側鄰機,
-              // 觸控稍偏或 z 序一變就選到左側那架。標籤溢出繪製、不接點擊。
-              lv_obj_set_size(marks[k], RS(48), RS(48));
-              lv_obj_add_flag(marks[k], LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+              // 122×64 是 800 基準;RS 後對齊 1024 佈局。plane.png 固定 28×28,
+              // 必須跟著 RADAR_SCALE 放大,否則錨點用 RS(14)/RS(20) 會讓圖示偏上偏左。
+              lv_obj_set_size(marks[k], RS(122), RS(64));
+              lv_image_set_scale(imgs[k], (uint32_t) (256.0f * RADAR_SCALE + 0.5f));
+              lv_image_set_pivot(imgs[k], 14, 14);   // 原圖像素中心;旋轉/縮放繞此點
+              lv_obj_set_pos(imgs[k], 0, 6);
+              lv_obj_set_pos(sqs[k], 11, 17);
               lv_obj_clear_flag(imgs[k], LV_OBJ_FLAG_CLICKABLE);
               lv_obj_clear_flag(sqs[k], LV_OBJ_FLAG_CLICKABLE);
               lv_obj_clear_flag(dbs[k], LV_OBJ_FLAG_CLICKABLE);
-              lv_obj_set_pos(imgs[k], RS(10), RS(10));
-              lv_obj_set_pos(sqs[k], RS(20), RS(20));
             }
             // 右緣 SYS/PWR 略擴熱區(取代曾用的全局 x_max 拉伸)
             lv_obj_set_ext_click_area((lv_obj_t *) id(info_btn), RS(12));
@@ -1345,28 +1376,31 @@ interval:
             // 標籤避讓:ATC 模式且向量線朝右(航向 0~180)時,標籤翻到符號左側
             if (id(lbl_side).size() != AC_SLOTS) id(lbl_side).assign(AC_SLOTS, 0);
             bool lside = atc && sinf(rad) > 0.0f;
+            // 圖示錨點用「原圖像素」(plane 28×28 / 方塊 6×6),不要對 iy/半寬再套 RS,
+            // 否則 1024 上會偏上偏左。標籤文字區仍用 RS 排版。
+            const int ix = lside ? RS(94) : 0;
+            const int iy = 6;
             if ((uint8_t) lside != id(lbl_side)[shown]) {
               id(lbl_side)[shown] = lside ? 1 : 0;
-              // 機標固定在 48×48 熱區中央;標籤畫在盒外(OVERFLOW_VISIBLE)
-              lv_obj_set_pos(imgs[shown], RS(10), RS(10));
-              lv_obj_set_pos(sqs[shown], RS(20), RS(20));
+              lv_obj_set_pos(imgs[shown], ix, iy);
+              lv_obj_set_pos(sqs[shown], ix + 11, 17);
               if (lside) {
                 lv_obj_set_width(dbs[shown], RS(88));
                 lv_obj_set_style_text_align(dbs[shown], LV_TEXT_ALIGN_RIGHT, 0);
-                lv_obj_set_pos(dbs[shown], -RS(90), RS(4));
+                lv_obj_set_pos(dbs[shown], 0, RS(4));
               } else {
                 lv_obj_set_width(dbs[shown], LV_SIZE_CONTENT);
                 lv_obj_set_style_text_align(dbs[shown], LV_TEXT_ALIGN_LEFT, 0);
-                lv_obj_set_pos(dbs[shown], RS(50), RS(4));
+                lv_obj_set_pos(dbs[shown], RS(32), RS(4));
               }
               last_px[shown] = -9999;   // 佈局變了強制重放位置
             }
             bool selg = (!id(sel_cs_g).empty() && id(ac_cs)[i] == id(sel_cs_g));
             bool slot_ch = (last_map[shown] != i);
             last_map[shown] = i;
-            // 小熱區中心對準航跡像素
-            int mx = px - RS(24);
-            int my = py - RS(24);
+            // 圖示中心 = (mx+ix+14, my+iy+14) → 對準航跡 (px,py)
+            int mx = px - (ix + 14);
+            int my = py - (iy + 14);
             if (slot_ch || abs(mx - last_px[shown]) > 1 || abs(my - last_py[shown]) > 1) {
               lv_obj_set_pos(marks[shown], mx, my);
               last_px[shown] = (int16_t) mx;

@@ -185,6 +185,8 @@ def build_tile(lat0, lon0, level, cache, args):
             names = ["coastline", "borders"]
             if args.states:
                 names.append("states")
+            if args.cities:
+                names.append("cities")
             if args.rivers:
                 names.append("rivers")
             if args.roads:
@@ -197,16 +199,24 @@ def build_tile(lat0, lon0, level, cache, args):
         # outline for a national boundary file would erase every neighbour's
         # coastline in that cell. (--geojson keeps make_map.py's replace
         # semantics, which is what you want for a single-location build.)
-        files += [(p, 0) for p in (args.add_geojson or [])]
+        # add-geojson 預設當市界(kind=3),例如縣/市界補充包。
+        files += [(p, mm.OUTLINE_KIND["cities"]) for p in (args.add_geojson or [])]
         clipped = []
         for path, kind in files:
             for feat in mm.json.load(open(path, encoding="utf-8"))["features"]:
                 if kind == mm.OUTLINE_KIND["roads"] and not mm.keep_road_feature(feat):
                     continue
+                if kind == mm.OUTLINE_KIND["cities"] and not mm.keep_city_feature(feat):
+                    continue
                 for pl in mm.iter_polylines(feat.get("geometry") or {}):
                     clipped += [(kind, run)
                                 for run in mm.clip_polyline(pl, clat, clon, dlat, dlon)]
+        clipped = mm.retain_shared_city_segments(clipped)
         lines = mm.build(clipped, clat, clon, tol, coslat)
+        refs = []
+        if args.cities and not args.geojson:
+            refs = mm.load_china_bound_refs(cache, clat, clon, dlat, dlon, tol, coslat)
+        lines = mm.strip_city_border_overlaps(lines, coslat, extra_refs=refs)
         if lines:
             layers |= LAYER_OUTLINE
 
@@ -274,14 +284,16 @@ def main():
                    help="include state/province borders (default on)")
     p.add_argument("--no-states", action="store_false", dest="states",
                    help="omit state/province borders")
+    p.add_argument("--cities", action="store_true",
+                   help="include admin_2 city/county borders (地級市界)")
     p.add_argument("--rivers", action="store_true", help="include river centerlines")
     p.add_argument("--roads", action="store_true", help="include major roads")
     p.add_argument("--railroads", action="store_true", help="include railroads")
     p.add_argument("--geojson", action="append",
                    help="local GeoJSON outline INSTEAD of Natural Earth")
     p.add_argument("--add-geojson", action="append",
-                   help="local GeoJSON outline drawn IN ADDITION to Natural Earth "
-                        "(detail pack, e.g. the g0v Taiwan county boundaries)")
+                   help="local GeoJSON outline drawn IN ADDITION as city borders "
+                        "(kind=3; e.g. county/city boundary pack)")
     p.add_argument("--airspace-geojson", action="append",
                    help="local GeoJSON with CTR/TMA polygons (name + type properties)")
     p.add_argument("--airspace-types", default="CTR,TMA,CTA",

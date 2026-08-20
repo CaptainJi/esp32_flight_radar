@@ -1358,12 +1358,13 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     if (map_show) {
       float coslat = cosf(lat0 * 3.14159265f / 180.0f);
       // 輪廓分層(outline NaN,kind):
-      //   0 海岸線  1 國界  2 省/州界  3 河流  4 公路  5 鐵路
-      // 官方 CDN 舊圖磚通常只有 0/1;省界與路網要重產帶 --states/--rivers/... 的圖磚。
-      static const uint32_t MAP_KIND_COLOR[6] = {
+      //   0 海岸線  1 國界  2 省/州界  3 市界  4 河流  5 公路  6 鐵路
+      // 官方 CDN 舊圖磚通常只有 0/1;省/市界要自建帶 --states/--cities 的圖磚。
+      static const uint32_t MAP_KIND_COLOR[7] = {
           0xD8C878,  // coast
           0x9A8B54,  // country
           0x685E38,  // province / state
+          0x3A3A3A,  // city / admin_2(淡灰,低對比)
           0x3A6E8A,  // river
           0x5A5A5A,  // road
           0x4A3A5A,  // rail
@@ -1371,16 +1372,58 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
       uint16_t col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[0]));
       float r2 = rng * rng;
       bool have_prev = false;
-      bool skip_kind = false;   // 預設只畫海岸/國界/省界,河/路/鐵太密易亂
-      lv_point_t prev{0, 0};
-      float pd2 = 1e18f;
+      bool skip_kind = false;   // 預設畫到市界;河/路/鐵太密略過
+      float pe = 0.f, pn = 0.f;
+      // 線段裁進雷達圓:先前「一端在圓內就整段畫」會讓線條穿出距離環到畫布四角。
+      auto clip_and_draw = [&](float e0, float n0, float e1, float n1) {
+        const float d0 = e0 * e0 + n0 * n0, d1 = e1 * e1 + n1 * n1;
+        const bool in0 = d0 <= r2, in1 = d1 <= r2;
+        float ce0, cn0, ce1, cn1;
+        if (in0 && in1) {
+          ce0 = e0; cn0 = n0; ce1 = e1; cn1 = n1;
+        } else {
+          const float de = e1 - e0, dn = n1 - n0;
+          const float a = de * de + dn * dn;
+          if (a < 1e-12f) return;
+          const float b = 2.f * (e0 * de + n0 * dn);
+          const float c = d0 - r2;
+          const float disc = b * b - 4.f * a * c;
+          if (disc < 0.f) return;
+          const float s = sqrtf(disc);
+          const float inv = 0.5f / a;
+          float u0 = (-b - s) * inv, u1 = (-b + s) * inv;
+          if (u0 > u1) { float t = u0; u0 = u1; u1 = t; }
+          float lo, hi;
+          if (in0 && !in1) {
+            lo = 0.f;
+            hi = (u0 > 0.f && u0 < 1.f) ? u0 : u1;
+            if (hi < 0.f || hi > 1.f) return;
+          } else if (!in0 && in1) {
+            lo = (u0 > 0.f && u0 < 1.f) ? u0 : u1;
+            hi = 1.f;
+            if (lo < 0.f || lo > 1.f) return;
+          } else {
+            lo = u0 > 0.f ? u0 : 0.f;
+            hi = u1 < 1.f ? u1 : 1.f;
+            if (lo >= hi) return;
+            const float tm = 0.5f * (lo + hi);
+            const float em = e0 + tm * de, nm = n0 + tm * dn;
+            if (em * em + nm * nm > r2) return;
+          }
+          ce0 = e0 + lo * de; cn0 = n0 + lo * dn;
+          ce1 = e0 + hi * de; cn1 = n0 + hi * dn;
+        }
+        const float s = (float) RADAR_R / rng;
+        pc_build.line((int) (RADAR_CX + ce0 * s), (int) (RADAR_CX - cn0 * s),
+                      (int) (RADAR_CX + ce1 * s), (int) (RADAR_CX - cn1 * s), col);
+      };
       for (int i = 0; i + 1 < MAP_OUTLINE_LEN; i += 2) {
         float la = MAP_OUTLINE[i], lo = MAP_OUTLINE[i + 1];
         if (isnan(la)) {
           have_prev = false;
           uint8_t kind = isnan(lo) ? 0 : (uint8_t) lo;
-          if (kind > 5) kind = 2;
-          skip_kind = (kind > 2);   // 3 河 4 路 5 鐵 — 略過
+          if (kind > 6) kind = 2;
+          skip_kind = (kind > 3);   // 4 河 5 路 6 鐵 — 略過
           if (!skip_kind)
             col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[kind]));
           continue;
@@ -1388,14 +1431,10 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
         if (skip_kind) continue;
         float e = (lo - lon0) * 111.320f * coslat;
         float n = (la - lat0) * 110.574f;
-        float d2 = e * e + n * n;
-        lv_point_t p;
-        p.x = (lv_coord_t) (RADAR_CX + e / rng * (float) RADAR_R);
-        p.y = (lv_coord_t) (RADAR_CX - n / rng * (float) RADAR_R);
-        if (have_prev && (d2 <= r2 || pd2 <= r2))
-          pc_build.line(prev.x, prev.y, p.x, p.y, col);
-        prev = p;
-        pd2 = d2;
+        if (have_prev)
+          clip_and_draw(pe, pn, e, n);
+        pe = e;
+        pn = n;
         have_prev = true;
       }
     }

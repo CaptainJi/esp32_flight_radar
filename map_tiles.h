@@ -64,7 +64,7 @@ static const size_t WIRE_AIRSPACE_REC = 8;
 inline std::vector<float> OUTLINE;        // lat,lon pairs; NaN lat = separator,
                                           // lon slot carries kind:
                                           // 0 coast 1 country 2 province
-                                          // 3 river 4 road 5 rail
+                                          // 3 city 4 river 5 road 6 rail
 inline std::vector<MapAirport> AIRPORTS;
 inline std::vector<MapRunway> RUNWAYS;
 inline std::vector<MapFix> FIXES;

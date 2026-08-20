@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build China map tiles: coastline + country + province borders only.
+# Build China map tiles: coastline + country + province + city borders.
 # Rivers/roads/rail make the scope too busy at 150–300 km ranges.
 #
 # Usage (from repo root, WSL/Linux):
@@ -21,8 +21,9 @@ python3 "$ROOT/tools/make_tiles.py" \
   --cells "$CELLS" \
   --levels 1,2,3 \
   --states \
+  --cities \
   --min-airport medium
 
 echo
-echo "Tiles written under $OUT/v1/ (coast + country + province only)"
+echo "Tiles written under $OUT/v1/ (coast + country + province + city)"
 echo "Push that repo to GitHub Pages, then set maps_base_url to its /v1 URL."
