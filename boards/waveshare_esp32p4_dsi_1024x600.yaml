@@ -20,6 +20,14 @@
 #  revision if Wi-Fi does not come up on yours.
 #
 #  Resolution / radar geometry come from radar-p4-7b.yaml.
+#
+#  >>> 這塊板子的維護分支是 `lvgl9`,不是這裡 <<<
+#  本分支(main / ESPHome 2026.3.3 / LVGL 8)編得起來也跑得動,但**沒有 microSD
+#  支援、也沒有截圖**:兩者都依賴 p1ngb4ck fork 的 sd_storage 元件,而它 import 的
+#  VARIANT_ESP32S31 在 2026.3.3 不存在,載不起來。P4 專屬的修正(SD 的 on-chip LDO、
+#  DSI framebuffer 截圖、觸控旋轉抵消)都只在 `lvgl9` 上。
+#  This board is maintained on the `lvgl9` branch; here it works but has no microSD
+#  or screenshot support. See the branch table in README.
 # =====================================================================
 
 # ---- Resolution-driven build flags for the C++ includes ----
@@ -71,6 +79,18 @@ esp32:
       CONFIG_FATFS_LFN_NONE: "n"
       CONFIG_FATFS_LFN_HEAP: "y"
       CONFIG_FATFS_MAX_LFN: "255"
+      # 沒有這一行,malloc() 永遠只用內部 RAM(P4 約 768KB),PSRAM 完全碰不到。
+      # 四塊 S3 板檔一直都有設,只有這裡漏了 —— 在地圖還是編譯進 flash 的年代
+      # 看不出來(rodata 不佔 RAM),v1.3.0 把地圖改成執行期載入之後,圖磚的
+      # std::vector(這台實測 11537 個輪廓點 ≈ 92KB)加上 LVGL 9、esp-hosted
+      # 的 WiFi 緩衝、TLS、FATFS,內部 RAM 就見底了。
+      # 症狀:回波跑完(尖峰)之後,下一個要大塊緩衝的工作丟 std::bad_alloc,
+      # 而例外是關閉的 → __wrap___cxa_allocate_exception → abort → 無限重開。
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+      # 把 WiFi/LWIP 與 TLS 握手的緩衝也挪出內部 RAM(沿用 S3 板檔的作法)
+      CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: "y"
+      CONFIG_MBEDTLS_DYNAMIC_BUFFER: "y"
+      CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN: "y"
 
 psram:
   mode: hex        # ESP32-P4 only supports HEX-mode PSRAM

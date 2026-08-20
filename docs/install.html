@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install ESP32 Flight Radar</title>
+<!--
+  Browser flashing page for the pre-built firmware.
+
+  Serve this with GitHub Pages (Settings > Pages > deploy from `main`, /docs).
+
+  The .factory.bin files are served from docs/firmware/ -- same origin as this
+  page and as the manifests. That is deliberate and must stay that way:
+
+      esp-web-tools fetch()es the firmware from the browser. GitHub Releases
+      serves assets from release-assets.githubusercontent.com, which sends no
+      Access-Control-Allow-Origin header, so a cross-origin fetch is blocked
+      and the page fails with nothing but "Failed to fetch". GitHub Pages does
+      send `*`, and same-origin needs no CORS at all.
+
+  tools/build_release.sh does the whole thing: it compiles each board, drops the
+  bin in docs/firmware/ (deleting that board's previous one, so only the current
+  version is in version control) and writes the manifests next to this file with
+  a relative `firmware/...` path. Releases still get the bins as assets for
+  manual download / esptool, they are just not what this page fetches.
+-->
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 2.5rem 1.25rem;
+    font: 16px/1.6 system-ui, -apple-system, "Noto Sans TC", sans-serif;
+    background: #040c08; color: #d8e6dc;
+    display: flex; justify-content: center;
+  }
+  main { width: 100%; max-width: 44rem; }
+  h1 { color: #00e66e; font-size: 1.6rem; margin: 0 0 .25rem; }
+  .sub { color: #7f9a8a; margin: 0 0 2rem; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .6rem; color: #00e66e; }
+  select {
+    width: 100%; padding: .7rem .8rem; font: inherit; margin: .35rem 0 1.1rem;
+    background: #0b1a12; color: #d8e6dc;
+    border: 1px solid #1e4030; border-radius: .4rem;
+  }
+  .row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .note {
+    border-left: 3px solid #1e4030; padding: .1rem 0 .1rem 1rem;
+    color: #9fb6a8; margin: 1rem 0;
+  }
+  .warn { border-left-color: #ff7800; }
+  code { background: #0b1a12; padding: .1em .4em; border-radius: .25rem; font-size: .9em; }
+  a { color: #00e66e; }
+  hr { border: 0; border-top: 1px solid #16261d; margin: 2.5rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #16261d; }
+  th { color: #7f9a8a; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>✈️ ESP32 Flight Radar</h1>
+<p class="sub">Flash the pre-built firmware straight from this page — nothing to install.</p>
+
+<h2>1. Pick your board</h2>
+<!-- No board is pre-selected on purpose. This used to default to the 5B, and a
+     Guition owner reloaded the page, did not notice the picker had reset, and
+     flashed the Waveshare image: it boots and joins Wi-Fi happily but drives
+     completely different RGB pins, so the screen just stays black. Nothing on
+     this page told him which board he was about to flash. Keep the empty
+     placeholder, and keep the confirmation line under the button. -->
+<select id="board">
+  <option value="" selected disabled>— choose your board —</option>
+  <option value="flight-radar-s3-800x480-generic">ESP32-S3 800×480 parallel-RGB (generic, esp32-s3-5inch-rgb-001)</option>
+  <option value="flight-radar-s3-jc8048w550">Guition JC8048W550C / Sunton ESP32-8048S050 (800×480) — alpha-test</option>
+  <option value="flight-radar-s3-touch-lcd-5">Waveshare ESP32-S3-Touch-LCD-5 (800×480)</option>
+  <option value="flight-radar-s3-touch-lcd-5b">Waveshare ESP32-S3-Touch-LCD-5B (1024×600)</option>
+  <option value="flight-radar-p4-touch-lcd-7b">Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600)</option>
+</select>
+
+<p class="note"><strong>alpha-test</strong> = built and pin-checked against the vendor
+datasheet, but never flashed on that board here. It should work; if the colours look
+inverted, the touch is offset or the image is shifted sideways, please
+<a href="https://github.com/delphicchen/esp32_flight_radar/issues">open an issue</a> —
+that is exactly the feedback needed to promote it out of alpha.</p>
+
+<h2>2. Connect over USB and flash</h2>
+<div class="row">
+  <esp-web-install-button id="installer"></esp-web-install-button>
+  <span class="sub" style="margin:0">Chrome or Edge on desktop (WebSerial).</span>
+</div>
+<p id="picked" class="note">Pick a board above first — flashing another board's
+image leaves you with a black screen (it drives different display pins).</p>
+
+<p class="note">If the button stays greyed out, either no board is selected above,
+or the browser has no WebSerial —
+Firefox and Safari do not support it, and neither does any mobile browser.
+Use Chrome/Edge, or flash from a terminal with
+<code>esptool.py write_flash 0x0 &lt;file&gt;.factory.bin</code>.</p>
+
+<p class="note warn">If the upload will not start, put the board in download
+mode: hold <strong>BOOT</strong>, tap <strong>RESET</strong>, release
+<strong>BOOT</strong>.</p>
+
+<h2>3. Set it up on the device</h2>
+<p>After flashing, the panel opens a Wi-Fi hotspot <code>Radar-Setup</code>
+(password <code>12345678</code>). Connect with your phone and choose your home
+Wi-Fi in the captive portal. Everything else — coordinates, scan range, data
+source, alarms — is set on the touch screen. No account or API key is required
+unless you specifically want the OpenSky data source.</p>
+
+<p class="note">These images contain no credentials of any kind. There is no
+Wi-Fi password, API key or encryption key baked in; every one of those is
+entered on your own device and stored there.</p>
+
+<h2>Which firmware is which</h2>
+<table>
+  <tr><th>Board</th><th>Branch</th><th>microSD / screenshots</th></tr>
+  <tr><td>the three ESP32-S3 boards</td><td><code>main</code> (LVGL 8)</td><td>screenshots only</td></tr>
+  <tr><td>ESP32-P4 Touch-LCD-7B</td><td><code>lvgl9</code> (LVGL 9)</td><td>both</td></tr>
+</table>
+<p class="sub">The two branches serve different boards rather than superseding
+one another — see the README for why.</p>
+
+<hr>
+
+<h1>✈️ ESP32 Flight Radar</h1>
+<p class="sub">直接在這一頁燒錄預先編譯好的韌體,不必安裝任何東西。</p>
+
+<h2>1. 選擇你的板子</h2>
+<p class="sub" style="margin:0 0 1rem">用上面那個下拉選單。沒選之前燒錄按鈕不會出現;
+選好之後按鈕下方會顯示「即將燒錄哪一塊板」,按下去之前請再確認一次 ——
+<strong>燒到別塊板的映像會是全黑畫面</strong>(顯示腳位不同),但 Wi-Fi 照樣會通,
+很容易誤判成板子壞了。</p>
+
+<h2>2. 接上 USB 開始燒錄</h2>
+<p>按上面的按鈕。需要桌面版的 <strong>Chrome 或 Edge</strong>(WebSerial)——
+Firefox、Safari 與所有手機瀏覽器都不支援。</p>
+<p class="note">按鈕沒出現就是還沒選板子;按鈕是灰的則是瀏覽器沒有 WebSerial。
+改用 Chrome/Edge,或在終端機用
+<code>esptool.py write_flash 0x0 &lt;檔名&gt;.factory.bin</code>。</p>
+<p class="note warn">燒不進去時讓板子進下載模式:按住 <strong>BOOT</strong>、點一下
+<strong>RESET</strong>、放開 <strong>BOOT</strong>。</p>
+
+<h2>3. 在裝置上完成設定</h2>
+<p>燒錄後面板會開一個 <code>Radar-Setup</code> 熱點(密碼 <code>12345678</code>)。
+用手機連上,在跳出的頁面選你家的 Wi-Fi。其餘設定 —— 座標、掃描半徑、資料來源、鬧鐘 ——
+全部在觸控螢幕上完成。除非你指定要用 OpenSky 當資料來源,否則不需要任何帳號或金鑰。</p>
+
+<p class="note">這些映像裡<strong>沒有任何憑證</strong>:沒有 Wi-Fi 密碼、沒有 API 金鑰、
+沒有加密金鑰。所有憑證都是你在自己的裝置上輸入、也只存在你的裝置裡。</p>
+
+<script>
+  const sel = document.getElementById("board");
+  const btn = document.getElementById("installer");
+  const picked = document.getElementById("picked");
+  const HINT = "Pick a board above first — flashing another board's image leaves " +
+               "you with a black screen (it drives different display pins).";
+
+  // The install button is hidden until a board is chosen, and the line under it
+  // always names the board about to be written. Both exist because the picker
+  // resetting on reload silently sent someone the wrong image (see the comment
+  // on the <select> above): the flash has to state what it is flashing.
+  const apply = async () => {
+    if (!sel.value) {
+      btn.style.display = "none";
+      picked.textContent = HINT;
+      return;
+    }
+    btn.manifest = sel.value + ".manifest.json";
+    btn.style.display = "";
+    const label = sel.options[sel.selectedIndex].textContent.trim();
+    picked.textContent = "About to flash: " + label;
+    try {
+      const m = await fetch(btn.manifest, { cache: "no-cache" }).then(r => r.json());
+      if (m && m.version) picked.textContent += "  ·  " + m.version;
+    } catch (e) {
+      // Manifest unreachable -- leave the board name up; the button will report
+      // the real failure itself rather than us guessing at it here.
+    }
+  };
+  sel.addEventListener("change", apply);
+  // Also on pageshow: a bfcache restore can bring back a previous selection
+  // without firing `change`, which is exactly how the picker went stale before.
+  window.addEventListener("pageshow", apply);
+  apply();
+</script>
+
+</main>
+</body>
+</html>

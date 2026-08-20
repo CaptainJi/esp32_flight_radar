@@ -23,6 +23,8 @@ Local, version-controlled inputs (edit these by hand, they are the point):
                                    does not cover; blanks render as "-"
   tools/data/silhouette_alias.csv  type -> near-identical type whose silhouette
                                    to borrow (B739 -> B738, B788 -> B789, ...)
+  tools/data/silhouettes/*.png     hand-made drawings for airframes the sheet
+                                   does not cover; <ICAO>.png, alpha = shape
 
 Needs Pillow for the spritesheet (host-side only, not a firmware dependency):
     pip install pillow
@@ -42,6 +44,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 CACHE = os.path.join(HERE, "cache")
+LOCAL_SIL = os.path.join(DATA, "silhouettes")   # 自製補圖:<ICAO>.png,蓋過官方 sprite
 
 PW_API = "https://api.github.com/repos/plane-watch/pw-silhouettes/releases/latest"
 PW_DL = "https://github.com/plane-watch/pw-silhouettes/releases/download/{tag}/{name}"
@@ -137,6 +140,36 @@ def load_sprites(tag, size):
           f"{len(by_cat)} emitter categories, "
           f"{size}x{size} A8 = {len(tiles) * size * size / 1e6:.2f} MB")
     return tiles, by_type, by_cat
+
+
+def load_local_sprites(tiles, by_type, size):
+    """tools/data/silhouettes/<ICAO>.png -> extra (or replacement) drawings.
+
+    pw-silhouettes does not draw every airframe - the 20260219 sheet has no 747
+    at all - and a type with no drawing falls back to the generic sprite for its
+    ADS-B emitter category, which for "heavy" is a twin.  A 747 rendered as a
+    twinjet is simply wrong, so this hook lets us drop a hand-made picture in.
+
+    The alpha channel is the silhouette (solid shape on a transparent
+    background, nose up); anything here wins over the spritesheet.
+    """
+    if not os.path.isdir(LOCAL_SIL):
+        return
+    from PIL import Image
+    n = 0
+    for fn in sorted(os.listdir(LOCAL_SIL)):
+        if not fn.lower().endswith(".png"):
+            continue
+        code = os.path.splitext(fn)[0].upper()
+        alpha = Image.open(os.path.join(LOCAL_SIL, fn)).convert("RGBA").split()[3]
+        if not alpha.getbbox():
+            print(f"  skipping {fn}: fully transparent")
+            continue
+        name = "local/" + code
+        tiles[name] = alpha.resize((size, size), Image.LANCZOS).tobytes()
+        by_type[code] = name
+        n += 1
+    print(f"  {n} local silhouettes from data/silhouettes/")
 
 
 # ------------------------------------------------------------------ Doc 8643
@@ -365,6 +398,8 @@ def write_header(path, tag, size, tiles, order, specs, cat_sil, airlines, hexes)
                 " - do not edit by hand\n")
         f.write(f"// silhouettes: plane-watch/pw-silhouettes {tag}, CC BY-NC-SA 4.0\n")
         f.write("//   https://github.com/plane-watch/pw-silhouettes\n")
+        f.write("//   sprites named local/* are drawn by"
+                " tools/make_local_silhouettes.py instead\n")
         f.write("// designators/manufacturers/operators/ICAO24 blocks:"
                 " rikgale/ICAOList (ICAO Doc 8643, Doc 8585, Annex 10)\n")
         f.write("// performance: openap (TU Delft) + tools/data/aircraft_specs.csv\n")
@@ -510,6 +545,7 @@ def main():
     tiles, sil_by_type, sil_by_cat = ({}, {}, {})
     if not args.no_silhouettes:
         tiles, sil_by_type, sil_by_cat = load_sprites(tag, args.size)
+        load_local_sprites(tiles, sil_by_type, args.size)
 
     doc8643 = load_icaolist()
     airlines = load_airlines()

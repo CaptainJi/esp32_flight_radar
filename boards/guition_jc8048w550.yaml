@@ -1,0 +1,209 @@
+# =====================================================================
+#  Board: Guition JC8048W550  (= Sunton ESP32-8048S050)
+#         ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB octal PSRAM)
+#         800x480 parallel-RGB (ST7262) panel + GT911 touch
+#
+#  買的時候注意 SKU 後綴:JC8048W550**C**_I 才是電容式觸控(GT911),
+#  N = 無觸控、R = 電阻式 —— 後兩者這份設定的 touchscreen 區塊不適用。
+#  Only the "C" SKU has the GT911 capacitive panel this config expects.
+#
+#  與 boards/esp32s3_rgb_800x480.yaml(原始那片 esp32-s3-5inch-rgb-001)
+#  同樣是 ST7262 + GT911,但**腳位完全不同**,所以自成一檔:
+#      背光 GPIO2(原始板 GPIO1) / I2C 19,20(原始板 16,15)
+#      DE40 HSYNC39 VSYNC41 PCLK42(原始板 DE40 HSYNC38 VSYNC39 PCLK41)
+#      RGB 資料腳整組不同,且本板面板要 invert_colors: true
+#
+#  Resolution / radar geometry come from the substitutions in the entry
+#  file (radar-jc8048w550.yaml); the C++ helpers read them via the build
+#  flags below.
+#
+#  來源 / sources:
+#    廠商規格書 JC8048W550 Specifications-EN(N16R8、ST7262、TF 卡座、
+#      Speak 座、無 PWM 以外的音訊晶片資訊)
+#    腳位對照 agillis/esphome-modular-lvgl-buttons
+#      hardware/guition-esp32-jc8048w550.yaml
+# =====================================================================
+
+# ---- Resolution-driven build flags for the C++ includes ----
+#  SCREEN_W/H     screenshot framebuffer size (radar_fetch.h)
+#  RADAR_CANVAS   side of the square radar canvas (must equal the LVGL
+#                 base_canvas size in the matching ui/ package)
+#  RADAR_DISPLAY_RGB 預設 1 = rpi_dpi_rgb(本板用的驅動),不必另外設。
+#  RADAR_BL_PWM      預設 1 = 背光是真的 LEDC PWM,亮度滑桿直接調光。
+esphome:
+  platformio_options:
+    build_flags:
+      - "-DSCREEN_W=${disp_w}"
+      - "-DSCREEN_H=${disp_h}"
+      - "-DRADAR_CANVAS=${radar_canvas}"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  cpu_frequency: 240MHz
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true   # 120MHz octal PSRAM 需要
+    sdkconfig_options:
+      CONFIG_SPIRAM_USE_MALLOC: "y"   # >16KB 的 malloc 走 PSRAM,避免內部 RAM 耗盡
+      CONFIG_LWIP_MAX_SOCKETS: "17"   # 依實際元件算出的需求(11 TCP + 3 UDP + 3 TCP_LISTEN)
+
+# ---- 本地覆寫的元件(components/,各檔內有「本地覆寫」註解標明唯一改動點)----
+# psram:拿掉上游在 octal + 120MHz + IDF>=5.4 時無條件開啟的
+#        CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR。IDF 的
+#        psram_adjust_timing_point_via_tsens() 只認 flash 廠商 ID 0xC8/0x20,
+#        其餘一律 0x106 開機失敗無限重開 —— Guition 板正是常見的受害者
+#        (issue #7)。該選項無法用 sdkconfig_options 壓回 n。
+# lvgl :繪圖緩衝改配內部 SRAM,渲染不再與面板掃描搶 PSRAM 匯流排。
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [psram, lvgl]
+
+# 一開始照 agillis 的設定走 80MHz,但那是錯的:同解析度、同 ST7262 的通用板
+# (boards/esp32s3_rgb_800x480.yaml)早就實測「80MHz 頻寬不足會撕裂/雜訊」,
+# 專案裡四塊 S3 板也全都跑 120MHz。alpha1 的使用者回報畫面閃爍,對得上這個
+# 症狀,所以改回 120MHz。
+#
+# issue #7 有人回報這片板子在 120MHz 開不起來 —— 那是上面 psram 覆寫要解的
+# flash 廠商 ID 問題,不是 PSRAM 本身的速度極限。萬一覆寫之後仍然開不了機
+# (serial 會印 "The flash model has not been verified" + 0x106 無限重開),
+# 那才是真的硬體限制,退回 speed: 80MHz 即可。
+psram:
+  mode: octal
+  speed: 120MHz
+
+# ---- 背光 Backlight (LEDC PWM) ----
+output:
+  - platform: ledc
+    pin: GPIO2                  # backlight PWM(原廠範例用 1220Hz)
+    id: bl_pwm
+    frequency: 1220Hz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    output: bl_pwm
+    name: Backlight
+    restore_mode: RESTORE_DEFAULT_ON
+
+# ---- 觸控 Touch (GT911, I2C) ----
+# 注意 SDA/SCL 佔用 GPIO19/20 —— 那是 ESP32-S3 的 USB D-/D+,所以這片板子
+# 不能用內建 USB-Serial-JTAG 燒錄/看 log,要走板上的 UART 橋接器(type-C 那顆)。
+i2c:
+  sda: GPIO19                   # GT911 SDA (= USB D-)
+  scl: GPIO20                   # GT911 SCL (= USB D+)
+  frequency: 400kHz
+
+touchscreen:
+  - platform: gt911
+    id: my_touch
+    display: main_display
+    address: 0x5D
+    update_interval: 20ms     # 預設 50ms;縮短輪詢降低觸控延遲(I2C 負擔極小)
+    on_touch:
+      - lambda: |-
+          if (!id(backlight).current_values.is_on()) {
+            id(wake_ms) = millis();      // 剛喚醒,短時間內忽略 PWR 誤觸
+            auto call = id(backlight).turn_on();
+            call.perform();
+            lv_obj_add_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
+            lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x04180C), 0);
+          }
+    # 三指下滑 → 截圖(1.5 秒內平均 y 下移 70px 觸發一次)
+    on_update:
+      - lambda: |-
+          int n = (int) touches.size();
+          if (n >= 3) {
+            float my = 0;
+            for (auto &tp : touches) my += tp.y;
+            my /= n;
+            if (!id(shot_armed)) {
+              id(shot_armed) = true;
+              id(shot_y0) = my;
+              id(shot_ms) = millis();
+            } else if (my - id(shot_y0) > 70.0f && millis() - id(shot_ms) < 1500) {
+              id(shot_armed) = false;
+              id(take_screenshot).execute();
+            }
+          } else {
+            id(shot_armed) = false;
+          }
+    on_release:
+      - lambda: 'id(shot_armed) = false;'
+
+# ---- 螢幕 Display(parallel RGB / DPI panel, driven by LVGL)----
+# 沿用原始板的 rpi_dpi_rgb 驅動(RADAR_DISPLAY_RGB 預設值 1 就是它,截圖可用)。
+# 本板官方 pclk 16MHz 遠低於 rpi_dpi_rgb 的 30MHz 上限,不必像 Waveshare 那樣
+# 改用 mipi_rgb。
+#   H_total = 800+4+8+8 = 820 ; V_total = 480+4+8+8 = 500
+#   16 MHz / (820 x 500) ≈ 39.0 Hz
+# invert_colors: true 是這片面板需要的(原廠/社群設定皆然);若畫面顏色反相
+# 就是這一行被漏掉或多加了。
+display:
+  - platform: rpi_dpi_rgb
+    id: main_display
+    update_interval: never
+    auto_clear_enabled: false
+    color_order: RGB
+    invert_colors: true
+    pclk_frequency: 16MHz
+    pclk_inverted: true
+    dimensions:
+      width: ${disp_w}
+      height: ${disp_h}
+    de_pin: GPIO40              # data enable
+    hsync_pin: GPIO39           # horizontal sync
+    vsync_pin: GPIO41           # vertical sync
+    pclk_pin: GPIO42            # pixel clock
+    hsync_pulse_width: 4
+    hsync_back_porch: 8
+    hsync_front_porch: 8
+    vsync_pulse_width: 4
+    vsync_back_porch: 8
+    vsync_front_porch: 8
+    data_pins:                  # RGB565: R0-R4 / G0-G5 / B0-B4, LSB first
+      red: [45, 48, 47, 21, 14]
+      green: [5, 6, 7, 15, 16, 4]
+      blue: [8, 3, 46, 9, 1]
+
+# ---- LVGL 繪圖緩衝(板子專屬,合併進 ui 套件的 lvgl: 區塊)----
+# 不設時預設 0 → LVGL 把整螢幕緩衝配到 PSRAM,渲染流量與面板掃描 DMA 搶同一
+# 條匯流排。components/lvgl 覆寫改用 heap_caps_malloc(MALLOC_CAP_INTERNAL):
+# buffer_size: 12% → frac=8,覆寫內再減半 → 1/16 螢幕 = 800*480*2/16 = 48KB。
+# 渲染全程在內部 SRAM,只有 flush 寫 PSRAM framebuffer。
+# 開機 log 會印 "draw buffer ... in internal SRAM (1/16 screen)";若印
+# "falling back" 表示內部 RAM 不足,退回 PSRAM(不會開不了機)。
+lvgl:
+  buffer_size: 12%
+
+# ---- 尚未啟用:microSD(TF)插槽 ----
+# 板上有 TF 卡座與一個標著 SP1 的排線座(GPIO10/11/12/13),依 Sunton
+# ESP32-8048S050 系列的慣用接法應為 CS=10 / MOSI=11 / CLK=12 / MISO=13,
+# 且這四支腳沒有被上面的 RGB/I2C 佔用。但規格書的接線圖解析度不足以確認,
+# 手邊也沒有實機可驗,所以先不打開。確認腳位後,照
+# boards/waveshare_esp32s3_rgb_800x480.yaml 的作法在上面 esp32: 區塊加
+# disable_fatfs: false / include_builtin_idf_components: [fatfs],並補這幾個
+# build flag 即可讓三指截圖多存一份到卡上:
+#      - "-DRADAR_SD_SPI=1"
+#      - "-DRADAR_SD_HOST=SPI2_HOST"
+#      - "-DRADAR_SD_MOSI=11"
+#      - "-DRADAR_SD_CLK=12"
+#      - "-DRADAR_SD_MISO=13"
+# (本板 CS 是原生 GPIO,不像 Waveshare 要靠 CH422G,直接交給 sdspi 即可。)
+
+# ---- 鬧鐘本地發聲:板上的 Speak 座尚未支援 ----
+# common/core.yaml 的 fire_alarm/hush_alarm 會無條件呼叫這兩個 script,所以每片
+# board 都要有;沒接喇叭的板子留空實作,鬧鐘目標清單也不會出現 LOCAL SPEAKER
+# (由 -DRADAR_LOCAL_SPK 控制,見 alarm.h)。
+# 這片板子背面確實有 Speak 接頭,但規格書沒有給功放/DAC 的腳位,未經實機確認
+# 前不猜;要用的話請對照實體板量測後再補 speaker: 設定。
+script:
+  - id: local_ring_start
+    then:
+      - lambda: '// Speak 座未接線,尚無板載發聲'
+  - id: local_ring_stop
+    then:
+      - lambda: '// Speak 座未接線,尚無板載發聲'
