@@ -17,7 +17,7 @@ tools/cache/
 __pycache__/
 .claude/settings.local.json
 .claude/*.tmp.*
-
+.venv
 # 發佈用的韌體產物(tools/build_release.sh),不進版控
 dist/
 

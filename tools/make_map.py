@@ -43,6 +43,9 @@ SOURCES = {
     "coastline": NE_BASE + "ne_10m_coastline.geojson",
     "borders": NE_BASE + "ne_10m_admin_0_boundary_lines_land.geojson",
     "states": NE_BASE + "ne_10m_admin_1_states_provinces_lines.geojson",
+    "rivers": NE_BASE + "ne_10m_rivers_lake_centerlines.geojson",
+    "roads": NE_BASE + "ne_10m_roads.geojson",
+    "railroads": NE_BASE + "ne_10m_railroads.geojson",
     "airports": OA_BASE + "airports.csv",
     "runways": OA_BASE + "runways.csv",
     "navaids": OA_BASE + "navaids.csv",
@@ -50,7 +53,15 @@ SOURCES = {
 KM_PER_DEG_LAT = 110.574
 KM_PER_DEG_LON = 111.320  # at equator; scaled by cos(lat)
 
-OUTLINE_KIND = {"coastline": 0, "borders": 1, "states": 2}   # -> outline brightness class
+OUTLINE_KIND = {
+    "coastline": 0,
+    "borders": 1,
+    "states": 2,
+    "rivers": 3,
+    "roads": 4,
+    "railroads": 5,
+}   # -> outline brightness / colour class in firmware
+
 
 AIRPORT_RANK = {"small_airport": 0, "medium_airport": 1, "large_airport": 2}
 CLS_MAP = {"CTR": 0, "TMA": 1, "CTA": 2}          # anything else -> 3
@@ -345,6 +356,28 @@ def c_str(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def keep_road_feature(ft):
+    """Keep only major roads so tiles stay small enough for the 512 KB maps partition."""
+    props = ft.get("properties") or {}
+    t = str(props.get("type") or props.get("road_type") or props.get("scalerank") or "").lower()
+    if t.isdigit():
+        # Natural Earth scalerank: 0..3 are the biggest roads
+        try:
+            return int(t) <= 3
+        except ValueError:
+            return True
+    keys = ("highway", "primary", "secondary", "beltway", "expressway",
+            "freeway", "motorway", "major", "trunk")
+    if any(k in t for k in keys):
+        return True
+    # scalerank as int property
+    sr = props.get("scalerank")
+    if isinstance(sr, (int, float)):
+        return sr <= 3
+    # Unknown label: drop to avoid swallowing the whole ne_10m_roads file
+    return False
+
+
 def read_existing_outline(path):
     """Extract the verbatim MAP_OUTLINE block from an existing map_data.h."""
     try:
@@ -365,6 +398,10 @@ def main():
     ap.add_argument("--lon", type=float, required=True, help="home longitude")
     ap.add_argument("--radius", type=float, required=True, help="max radar range you plan to use, km")
     ap.add_argument("--states", action="store_true", help="also include state/province borders")
+    ap.add_argument("--rivers", action="store_true", help="include Natural Earth river centerlines")
+    ap.add_argument("--roads", action="store_true",
+                    help="include major Natural Earth roads (highways / primary)")
+    ap.add_argument("--railroads", action="store_true", help="include Natural Earth railroads")
     ap.add_argument("--geojson", action="append", default=[],
                     help="use local GeoJSON file(s) for the outline instead of Natural Earth")
     ap.add_argument("--tol", type=float, default=0.0,
@@ -416,7 +453,15 @@ def main():
         if args.geojson:
             files = [(p, 0) for p in args.geojson]   # own boundary file = main outline
         else:
-            names = ["coastline", "borders"] + (["states"] if args.states else [])
+            names = ["coastline", "borders"]
+            if args.states:
+                names.append("states")
+            if args.rivers:
+                names.append("rivers")
+            if args.roads:
+                names.append("roads")
+            if args.railroads:
+                names.append("railroads")
             print("Fetching Natural Earth data (public domain):")
             files = [(fetch(n, cache), OUTLINE_KIND[n]) for n in names]
         clipped = []
@@ -425,6 +470,8 @@ def main():
                 gj = json.load(f)
             feats = gj["features"] if gj.get("type") == "FeatureCollection" else [gj]
             for ft in feats:
+                if kind == OUTLINE_KIND["roads"] and not keep_road_feature(ft):
+                    continue
                 geom = ft.get("geometry") or ft
                 for pl in iter_polylines(geom):
                     clipped.extend((kind, r) for r in

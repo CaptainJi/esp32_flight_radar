@@ -821,7 +821,13 @@ inline void do_echo(const Job &j) {
 // ---- 地圖圖磚下載(job 8)-------------------------------------------------
 // 圖磚在 flight-radar-maps 這個 repo,由 GitHub Pages 供應,10 度一格。
 // 詳見 PLAN_MAPTILES.md 與該 repo 的 README。
-inline const char MAPS_BASE[] = "https://delphicchen.github.io/flight-radar-maps/v1";
+inline const char MAPS_BASE[] =
+#ifndef RADAR_MAPS_BASE
+    "https://delphicchen.github.io/flight-radar-maps/v1"
+#else
+    RADAR_MAPS_BASE
+#endif
+    ;
 
 inline volatile bool g_maps_ready = false;   // true=分割區有新地圖待主迴圈載入
 inline volatile bool g_maps_busy = false;
@@ -1301,6 +1307,10 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
                                bool map_show, bool echo_show, uint8_t atc_layers) {
   lv_draw_buf_t *db = lv_canvas_get_draw_buf(cv);   // LVGL 9:canvas 緩衝改由 draw_buf 描述
   if (!db || !db->data) return;
+  // 重建期間禁止 display 自動刷新:CanvasPainter 的 finish_layer / 直接寫像素
+  // 若邊畫邊送屏,地圖更新會劇烈閃爍。結束後再一次 invalidate。
+  lv_display_t *disp = lv_obj_get_display(cv);
+  if (disp) lv_display_enable_invalidation(disp, false);
   // canvas 建成 LV_COLOR_FORMAT_NATIVE(= RGB565,2 bytes/px);LVGL 9 的
   // lv_color_t 是 24-bit,不能再拿來當畫布像素型別,直接用 uint16_t。
   // ESPHome 設 LV_DRAW_BUF_STRIDE_ALIGN=1,所以 stride 就是寬 x 2、可平坦定址。
@@ -1331,23 +1341,34 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
   // 沒有它畫面會停在舊的(或空的)底圖,直到使用者剛好去動座標才更新。
   bool fresh = cache && c_lat == lat0 && c_lon == lon0 && c_rng == rng &&
                c_map == map_show && c_gen == maptiles::generation;
+  // 重建時先畫進 cache(離屏),再一次 memcpy 到可見緩衝——避免先填黑/綠底並
+  // invalidate 造成「整屏閃一下再慢慢長出海岸線」。顯示端在拷貝前仍是舊底圖。
+  // 無 cache(PSRAM 配不出)才退回直接畫 px。
   if (fresh) {
     memcpy((void *) px, cache, BYTES);
   } else {
+    uint16_t *build = cache ? (uint16_t *) (void *) cache : px;
+    radar_bg::PixCanvas pc_build(build, RADAR_CANVAS, RADAR_CANVAS);
     // 不要用 lv_canvas_fill_bg:它逐像素呼叫 lv_canvas_set_px,每次都重算 offset。
     // 1024x600 的 RGB 面板 GDMA 同時在吃 PSRAM 頻寬,兩者相撞會慢到每像素
     // ~230us,開機直接被 task watchdog 打死。canvas 無 alpha 且此處為不透明
     // 填滿,直接對緩衝區做 16-bit 填充(LVGL 9 已無 lv_color_fill,自己寫迴圈)。
     const uint16_t bg = lv_color_to_u16(lv_color_hex(0x040C08));
-    for (size_t i = 0; i < NPX; i++) px[i] = bg;
-    lv_obj_invalidate(cv);   // 補回 lv_canvas_fill_bg 原本會做的失效標記
+    for (size_t i = 0; i < NPX; i++) build[i] = bg;
     if (map_show) {
       float coslat = cosf(lat0 * 3.14159265f / 180.0f);
-      // 輪廓分層:海岸線最亮、國界中、州/省界最暗,近距離時線一多才分得出主次。
-      // 分隔符(NAN,kind)的第二個值帶種類;舊 map_data.h 是 NAN,NAN,讀到 NAN
-      // 一律當 0=海岸線,外觀與改版前完全相同。
-      static const uint32_t MAP_KIND_COLOR[3] = {0xD8C878, 0x9A8B54, 0x685E38};
-      uint16_t col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[0]));   // 淡黃色輪廓線
+      // 輪廓分層(outline NaN,kind):
+      //   0 海岸線  1 國界  2 省/州界  3 河流  4 公路  5 鐵路
+      // 官方 CDN 舊圖磚通常只有 0/1;省界與路網要重產帶 --states/--rivers/... 的圖磚。
+      static const uint32_t MAP_KIND_COLOR[6] = {
+          0xD8C878,  // coast
+          0x9A8B54,  // country
+          0x685E38,  // province / state
+          0x3A6E8A,  // river
+          0x5A5A5A,  // road
+          0x4A3A5A,  // rail
+      };
+      uint16_t col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[0]));
       float r2 = rng * rng;
       bool have_prev = false;
       lv_point_t prev{0, 0};
@@ -1357,7 +1378,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
         if (isnan(la)) {
           have_prev = false;
           uint8_t kind = isnan(lo) ? 0 : (uint8_t) lo;
-          if (kind > 2) kind = 2;
+          if (kind > 5) kind = 2;
           col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[kind]));
           continue;
         }
@@ -1368,16 +1389,16 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
         p.x = (lv_coord_t) (RADAR_CX + e / rng * (float) RADAR_R);
         p.y = (lv_coord_t) (RADAR_CX - n / rng * (float) RADAR_R);
         if (have_prev && (d2 <= r2 || pd2 <= r2))
-          pc.line(prev.x, prev.y, p.x, p.y, col);
+          pc_build.line(prev.x, prev.y, p.x, p.y, col);
         prev = p;
         pd2 = d2;
         have_prev = true;
       }
     }
     if (cache) {
-      memcpy(cache, px, BYTES);
       c_lat = lat0; c_lon = lon0; c_rng = rng; c_map = map_show;
       c_gen = maptiles::generation;
+      memcpy((void *) px, cache, BYTES);
     }
   }
   // 回波預混合:g_echo_buf 為 [color_lo][color_hi][alpha],逐像素混進底圖。
@@ -1537,6 +1558,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     }
     }
   }
+  if (disp) lv_display_enable_invalidation(disp, true);
   lv_obj_invalidate(cv);
 }
 

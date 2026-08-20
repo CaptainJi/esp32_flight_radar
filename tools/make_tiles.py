@@ -182,7 +182,15 @@ def build_tile(lat0, lon0, level, cache, args):
         if args.geojson:
             files = [(p, 0) for p in args.geojson]
         else:
-            names = ["coastline", "borders"] + (["states"] if args.states else [])
+            names = ["coastline", "borders"]
+            if args.states:
+                names.append("states")
+            if args.rivers:
+                names.append("rivers")
+            if args.roads:
+                names.append("roads")
+            if args.railroads:
+                names.append("railroads")
             files = [(mm.fetch(n, cache), mm.OUTLINE_KIND[n]) for n in names]
         # A detail pack ADDS to Natural Earth, it does not replace it. One cell
         # is 10 degrees across and holds several countries -- swapping the whole
@@ -193,6 +201,8 @@ def build_tile(lat0, lon0, level, cache, args):
         clipped = []
         for path, kind in files:
             for feat in mm.json.load(open(path, encoding="utf-8"))["features"]:
+                if kind == mm.OUTLINE_KIND["roads"] and not mm.keep_road_feature(feat):
+                    continue
                 for pl in mm.iter_polylines(feat.get("geometry") or {}):
                     clipped += [(kind, run)
                                 for run in mm.clip_polyline(pl, clat, clon, dlat, dlon)]
@@ -260,7 +270,13 @@ def main():
     p.add_argument("--out", required=True, help="output directory (tiles repo root)")
     p.add_argument("--cells", help="comma list of cells (e.g. N20E120); default: whole world")
     p.add_argument("--levels", default="1,2,3", help="detail levels to build (default all)")
-    p.add_argument("--states", action="store_true", help="include state/province borders")
+    p.add_argument("--states", action="store_true", default=True,
+                   help="include state/province borders (default on)")
+    p.add_argument("--no-states", action="store_false", dest="states",
+                   help="omit state/province borders")
+    p.add_argument("--rivers", action="store_true", help="include river centerlines")
+    p.add_argument("--roads", action="store_true", help="include major roads")
+    p.add_argument("--railroads", action="store_true", help="include railroads")
     p.add_argument("--geojson", action="append",
                    help="local GeoJSON outline INSTEAD of Natural Earth")
     p.add_argument("--add-geojson", action="append",

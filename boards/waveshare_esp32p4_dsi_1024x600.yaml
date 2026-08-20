@@ -47,6 +47,8 @@ esphome:
       - "-DRADAR_LOCAL_SPK=1"
       # microSD 由下方的 sd_storage 元件掛在 /sdcard,radar_fetch.h 不自己掛載
       - "-DRADAR_SD_EXT=1"
+      # 地圖 CDN(可在 radar-p4-7b.yaml substitutions.maps_base_url 覆寫)
+      - '-DRADAR_MAPS_BASE=\"${maps_base_url}\"'
 
 # ---- 本地覆寫元件 ----
 # storage / sd_storage 取自 p1ngb4ck 的 ESPHome fork(釘 commit,見兩者 __init__.py

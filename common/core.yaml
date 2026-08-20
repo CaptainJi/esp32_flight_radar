@@ -15,6 +15,9 @@
 substitutions:
   opensky_cid: !secret opensky_client_id
   opensky_sec: !secret opensky_client_secret
+  # 地圖圖磚 CDN。官方預設無省界/河/路;自建後改成你的 Pages 位址即可
+  # (見 tools/build_china_map_tiles.sh)。
+  maps_base_url: "https://delphicchen.github.io/flight-radar-maps/v1"
 
 esphome:
   name: flight-radar
@@ -22,6 +25,8 @@ esphome:
   platformio_options:
     lib_deps:
       - kikuchan98/pngle@^1.0.0
+    build_flags:
+      - '-DRADAR_MAPS_BASE=\"${maps_base_url}\"'
     # ---- LVGL 9:平行繪圖單元(把渲染分到第二顆核心)----
     # LVGL 9 把繪製拆成 draw unit + draw task 佇列。開了 OS 之後,LVGL 會替每個
     # 軟體繪圖單元開一條 FreeRTOS 執行緒(lv_draw_sw.c 的 lv_draw_sw_init),
@@ -425,6 +430,8 @@ globals:
   - { id: ac_lc,  type: 'std::vector<uint32_t>' } # last_contact(epoch秒),ATC 訊號延遲判斷
   - { id: slot_map, type: 'std::vector<int>' }   # 標記槽 -> 航班索引
   - { id: sel_cs_g, type: std::string }          # 選取中的呼號
+  - { id: sel_hex_g, type: uint32_t, initial_value: '0' }  # 選取中的 ICAO24(呼號短暫消失時用來對)
+  - { id: sel_hold_ms, type: uint32_t, initial_value: '0' } # 上次在 states 裡見到選中機的 millis
   - { id: spec_on, type: bool, initial_value: 'false' }  # 機型徽章按下 → 顯示輪廓與規格
   - { id: fetch_ms,    type: uint32_t, initial_value: '0' }
   - { id: poll_tick,   type: int,      initial_value: '0' }
@@ -524,10 +531,14 @@ script:
           if (!id(sel_cs_g).empty() && id(ac_cs)[i] == id(sel_cs_g)) {
             // 再點一次同一台 → 取消選取,右下角換回天氣
             id(sel_cs_g).clear();
+            id(sel_hex_g) = 0;
+            id(sel_hold_ms) = 0;
             id(show_weather).execute();
             return;
           }
           id(sel_cs_g) = id(ac_cs)[i];
+          id(sel_hex_g) = (i < (int) id(ac_hex).size()) ? id(ac_hex)[i] : 0;
+          id(sel_hold_ms) = millis();
           lv_label_set_text(id(sel_cs_l), id(ac_cs)[i].c_str());
           lv_label_set_text(id(sel_route_l), "ROUTE ...");
           float lat0 = id(home_lat).state, lon0 = id(home_lon).state;
@@ -924,8 +935,10 @@ interval:
           }
           // ---- 地圖圖磚:需要時下載一次,完成後由主迴圈載入 ----
           // 觸發條件刻意保守,避免變成重試迴圈把流量燒掉(見 PLAN_MAPTILES.md):
-          // 連上網之後,只有「目前沒有地圖」或「座標/半徑已經離存起來的那份太遠」
-          // 才抓。maps_key 記下上次請求的參數,同一組不重複請求。
+          // 連上網之後,只有「目前沒有地圖」或「座標/半徑/層級與存檔不同」才抓。
+          // maps_key 記下上次**成功**的參數;失敗才對「同一組 key」做 5 分鐘節流。
+          // 注意:不能對「換了座標」也套 5 分鐘 —— 否則剛在 A 地下完、改到 B 地
+          // 會繼續畫 A 的輪廓(圈外全空),看起來像地圖壞了。
           if (millis() > 10000 && wifi::global_wifi_component->is_connected() &&
               !radar_bg::g_maps_busy) {
             const int lv = radar_bg::maps_level_for(id(radar_range).state);
@@ -933,31 +946,32 @@ interval:
             char key[48];
             snprintf(key, sizeof(key), "%.1f,%.1f,L%d",
                      id(home_lat).state, id(home_lon).state, lv);
-            // maps_key 只在「成功之後」才記起來。實機上第一次開機還在 captive
-            // portal(is_connected() 在 AP 模式也成立),抓一定失敗;先前是送出
-            // 請求就把 key 寫掉,於是連上網之後再也不會重試,地圖永遠是空的。
-            // 失敗只更新 maps_try_ms,5 分鐘後再試一次 —— 有節流但不會放棄。
-            if (id(maps_key) != key &&
-                (id(maps_try_ms) == 0 || millis() - id(maps_try_ms) > 300000)) {
+            const bool key_changed = (id(maps_key) != key);
+            const bool retrying_same = (id(maps_key_try) == key);
+            const bool throttle_ok =
+                !retrying_same || id(maps_try_ms) == 0 ||
+                (millis() - id(maps_try_ms) > 300000);
+            if (key_changed && throttle_ok) {
               id(maps_try_ms) = millis();
               id(maps_key_try) = key;
               radar_bg::request_maps(id(home_lat).state, id(home_lon).state,
                                      id(radar_range).state);
             }
           }
-          // 下載中在 INITIALIZING 下面那行顯示進度。分母是格數不是位元組(見
-          // radar_fetch.h 的說明);沒選航班時才寫,否則會蓋掉航線顯示。
+          // 下載進度改寫狀態列,绝不碰右下面板(SYS/天氣/航線共用 sel_route_l,
+          // 以前寫進去會把 SYS 面板蓋成 DOWNLOADING / 空白,看起來像 SYS 失效)。
           {
             static bool was_busy = false;
             const bool busy = radar_bg::g_maps_busy;
-            if (busy && id(sel_cs_g).empty()) {
+            if (busy) {
               char m[48];
               snprintf(m, sizeof(m), "DOWNLOADING MAP %d/%d  %u KB",
                        radar_bg::g_maps_progress, radar_bg::g_maps_total,
                        (unsigned) (radar_bg::g_maps_bytes / 1024));
-              lv_label_set_text(id(sel_route_l), m);
-            } else if (was_busy && !busy && id(sel_cs_g).empty()) {
-              lv_label_set_text(id(sel_route_l), "");   // 抓完就清掉
+              lv_label_set_text(id(status_label), m);
+            } else if (was_busy && !busy) {
+              if (id(info_on)) id(show_sysinfo).execute();
+              else if (id(sel_cs_g).empty()) id(show_weather).execute();
             }
             was_busy = busy;
           }
@@ -966,6 +980,7 @@ interval:
             radar_bg::g_maps_ready = false;
             xSemaphoreGive(radar_bg::mtx());
             id(maps_key) = id(maps_key_try);   // 只有成功才算數
+            id(maps_try_ms) = 0;               // 成功後允許立刻因換座標再抓
             // 載入在主迴圈做,不在背景 task —— 繪製程式碼直接讀 maptiles 的
             // vector,在 task 裡改會與繪製打架。
             maptiles::load_from_partition();
@@ -1076,10 +1091,20 @@ interval:
           // 選取中航班的詳情刷新(系統資訊顯示中則不覆蓋)
           if (!id(sel_cs_g).empty() && !id(info_on)) {
             int si = -1;
-            for (int i = 0; i < n; i++)
+            const int nn = (int) id(ac_cs).size();
+            for (int i = 0; i < nn; i++) {
               if (id(ac_cs)[i] == id(sel_cs_g)) { si = i; break; }
+              if (id(sel_hex_g) != 0 && i < (int) id(ac_hex).size() &&
+                  id(ac_hex)[i] == id(sel_hex_g)) {
+                si = i;
+                id(sel_cs_g) = id(ac_cs)[i];  // 呼號若變了(合併源差異)跟著更新
+                break;
+              }
+            }
             char b2[48];
             if (si >= 0) {
+              id(sel_hold_ms) = millis();
+              if (si < (int) id(ac_hex).size()) id(sel_hex_g) = id(ac_hex)[si];
               float lat0 = id(home_lat).state, lon0 = id(home_lon).state;
               float coslat = cosf(lat0 * 3.14159265f / 180.0f);
               float e2 = (id(ac_lon)[si] - lon0) * 111.320f * coslat;
@@ -1112,6 +1137,15 @@ interval:
                                 id(ac_desc)[si].c_str(), id(ac_cat)[si].c_str(),
                                 id(ac_hex)[si], id(ac_cs)[si].c_str(),
                                 id(units_imperial));
+            } else if (id(sel_hold_ms) != 0 && millis() - id(sel_hold_ms) < 45000) {
+              // ADS-B 短暫丟星:保留上一輪數值,只在第一行提示 HOLD
+              const char *cur = lv_label_get_text(id(sel_l1));
+              if (cur == nullptr || strstr(cur, "HOLD") == nullptr) {
+                char hold[48];
+                snprintf(hold, sizeof(hold), "HOLD %lus",
+                         (unsigned long) ((millis() - id(sel_hold_ms)) / 1000));
+                lv_label_set_text(id(sel_l5), hold);
+              }
             } else {
               id(spec_on) = false;   // 飛出範圍 → 徽章消失,規格面板不能留著沒法關
               lv_obj_add_flag(id(spec_panel), LV_OBJ_FLAG_HIDDEN);
@@ -1121,7 +1155,6 @@ interval:
               lv_label_set_text(id(sel_l4), "");
               lv_label_set_text(id(sel_l5), "");
               radar_type_badge(id(sel_type_l), "");   // 隱藏機型徽章
-            lv_label_set_text(id(sel_l5), "");
             }
           }
           char b[64];
