@@ -150,7 +150,11 @@ touchscreen:
 # 本板官方 pclk 16MHz 遠低於 rpi_dpi_rgb 的 30MHz 上限,不必像 Waveshare 那樣
 # 改用 mipi_rgb。
 #   H_total = 800+4+8+8 = 820 ; V_total = 480+4+8+8 = 500
-#   16 MHz / (820 x 500) ≈ 39.0 Hz
+#   原廠給的 16 MHz 只有 39.0 Hz —— 那在 RGB 面板上本來就在人眼閾值邊緣,
+#   使用者回報的閃爍就是它(v1.3.3 的 XIP 修掉了上下跳動,閃爍仍在,兩者是
+#   不同成因)。21 MHz → 51.2 Hz,越過閾值。通用板 17 MHz/41.5 Hz 就不閃,
+#   所以這個範圍是安全的;rpi_dpi_rgb 的上限是 30 MHz,21 還有餘裕。
+#   掃描頻寬 800x480x2x51 ≈ 39 MB/s,120MHz octal PSRAM 餵得動。
 # invert_colors: true 是這片面板需要的(原廠/社群設定皆然);若畫面顏色反相
 # 就是這一行被漏掉或多加了。
 display:
@@ -160,7 +164,7 @@ display:
     auto_clear_enabled: false
     color_order: RGB
     invert_colors: true
-    pclk_frequency: 16MHz
+    pclk_frequency: 21MHz      # 51.2 Hz;原廠 16MHz 只有 39 Hz 會閃(見上)
     pclk_inverted: true
     dimensions:
       width: ${disp_w}

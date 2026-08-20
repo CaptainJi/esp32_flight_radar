@@ -3,6 +3,16 @@
 Notable changes per release. Anything that changes how you flash or upgrade is called
 out first, because that is the part that costs you time.
 
+## [v1.3.4] — 2026-08-20
+
+### Fixed
+
+- **Guition JC8048W550: screen flicker.** The vendor's 16 MHz pixel clock works out to a
+  39 Hz refresh, which is low enough to see. Now 21 MHz — 51.2 Hz. This is the second half
+  of the problem reported in #7: v1.3.3 stopped the picture jumping and the sweep banding,
+  and the flicker that remained was always a separate cause. Only this board changes; the
+  other four are untouched and stay on their current builds.
+
 ## [v1.3.3] — 2026-08-19
 
 ### Fixed
