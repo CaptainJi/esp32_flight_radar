@@ -1692,7 +1692,7 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
   radar_sil_set(img, sil, s ? s->span_dm : 0);
 }
 
-// ---- 系統資訊(i 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角六個 label ----
+// ---- 系統資訊(SYS 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角六個 label ----
 inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,
                                lv_obj_t *l2, lv_obj_t *l3, lv_obj_t *l4, int rssi) {
   char b[48];

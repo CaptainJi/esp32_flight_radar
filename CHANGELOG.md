@@ -7,7 +7,7 @@ out first, because that is the part that costs you time.
 
 ### Added
 
-- **Map status on the system info page (the `i` button).** The FLASH line now ends with
+- **Map status on the SYS page.** The FLASH line now ends with
   `MAP 2t 3075p` (tiles loaded, outline points) or `MAP none`. That one line splits "the
   map isn't showing" into two different problems: `none` means the download or the flash
   write failed, while a tile count with a blank screen means the data is there and the
