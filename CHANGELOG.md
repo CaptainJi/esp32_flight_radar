@@ -4,7 +4,73 @@ Notable changes per release. Dates are the tag dates; `Unreleased` is what is on
 right now. Anything that changes how you flash or upgrade is called out first, because
 that is the part that costs you time.
 
-## Unreleased
+## [v1.3.5] — 2026-08-20
+
+### Added
+
+- **Map status on the system info page (the `i` button).** The FLASH line now ends with
+  `MAP 2t 3075p` (tiles loaded, outline points) or `MAP none`. That one line splits "the
+  map isn't showing" into two different problems: `none` means the download or the flash
+  write failed, while a tile count with a blank screen means the data is there and the
+  drawing is at fault. On the Guition JC8048W550 this is the only way to see it at all —
+  its touch I²C sits on GPIO19/20, the native USB data pins, so the app kills USB serial
+  the moment it starts, and the map loads before Wi-Fi is up, so the web UI log misses it
+  too. From #7.
+
+## [v1.3.4] — 2026-08-20
+
+### Fixed
+
+- **Guition JC8048W550: screen flicker.** The vendor's 16 MHz pixel clock works out to a
+  39 Hz refresh, which is low enough to see. Now 21 MHz — 51.2 Hz. This is the second half
+  of the problem reported in #7: v1.3.3 stopped the picture jumping and the sweep banding,
+  and the flicker that remained was always a separate cause. Only this board changes; the
+  other four are untouched and stay on their current builds.
+
+## [v1.3.3] — 2026-08-19
+
+### Fixed
+
+- **Guition JC8048W550: the picture jumps, and the radar sweep breaks into several
+  offset bands.** The board file was missing `CONFIG_SPIRAM_XIP_FROM_PSRAM`, which both
+  Waveshare RGB boards already set for exactly this symptom. Writing to flash disables
+  the cache, which blocks the RGB panel's bounce-buffer refill interrupt, and the panel
+  loses scan sync permanently — until the next reboot. Running code and rodata from PSRAM
+  removes the trigger. This only started biting in v1.3.0: the map used to be compiled in
+  as rodata and nothing wrote to flash during normal operation, whereas the map tiles are
+  now downloaded and written at runtime. Reported by @Will-wastelander and @nero0956 in
+  #7. Costs about 2 MB of PSRAM.
+
+## [v1.3.2] — 2026-08-19
+
+### Fixed
+
+- **No aircraft at large scan ranges, with `Parse error: IncompleteInput` filling the
+  log.** The HTTP body cap was 150 KB, which a 250 km range over busy airspace (the UK,
+  Japan) goes straight past. The response was cut off mid-JSON and handed to the parser
+  anyway, so the only clue was a parse error that said nothing about the real cause. The
+  cap is now 384 KB, and a truncated body is reported as a failed request instead of
+  being parsed — the caller already backs off and retries, and the log now names the URL
+  and the limit it exceeded. Reported by @nero0956 in #7.
+
+## [v1.3.1] — 2026-08-19
+
+### Fixed
+
+- **ESP32-P4: reboot loop with the weather echo on.** The P4 board file never set
+  `CONFIG_SPIRAM_USE_MALLOC`, which all four S3 boards do, so `malloc()` could only ever
+  use internal RAM — about 768 KB, shared with LVGL 9, the esp-hosted Wi-Fi buffers, TLS
+  and FATFS. Harmless while the map was compiled into flash and cost no RAM; from v1.3.0
+  the tiles are loaded at runtime (~92 KB of outline points on a typical device), so once
+  the echo pushed memory to its peak the next request's buffer failed to allocate. With
+  C++ exceptions disabled a failed allocation aborts, so the device rebooted, forever.
+  **P4 owners on v1.3.0 should reflash.** No S3 board was affected.
+- Running out of memory no longer reboots the device. `http_req()` checks the largest
+  free block before allocating and abandons that one request instead — every
+  `heap_caps_malloc` here already null-checks, but `std::string` growth could neither be
+  checked nor caught.
+
+## [v1.3.0] — 2026-08-18
 
 ### ⚠️ Upgrading needs one USB flash
 
