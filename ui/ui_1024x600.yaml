@@ -5698,8 +5698,8 @@ lvgl:
                            id(radar_range).state * (imp ? 0.6214f : 1.0f));
                   lv_textarea_set_text((lv_obj_t *) id(ta_rng), rb);
                   lv_label_set_text(id(rng_unit_l), imp ? "mi" : "km");
-        # 航班資料來源(下拉三選一;OpenSky 失敗自動 fallback 到免費來源 10 分鐘)
-        # options 的 index 必須對齊 data_src:0=OpenSky 1=airplanes.live 2=adsb.lol
+        # 航班資料來源(下拉;OpenSky 失敗自動 fallback 到免費來源 10 分鐘)
+        # options 的 index 必須對齊 data_src:0=OpenSky 1=airplanes.live 2=adsb.lol 3=adsb.fi 4=MERGE
         - label: { x: 38, y: 315, text: "ADS-B SRC", text_font: font_small, text_color: 0x9AE6B4 }
         - dropdown:
             id: src_dd
@@ -5726,6 +5726,8 @@ lvgl:
               - "OPENSKY"
               - "A.LIVE"
               - "ADSB.LOL"
+              - "ADSB.FI"
+              - "MERGE"
             on_value:
               - lambda: |-
                   int i = (int) x;

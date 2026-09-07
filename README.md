@@ -244,7 +244,7 @@ ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
 
 ## Data sources & credits / 資料來源與致謝 / 数据来源与致谢
 
-- Aircraft states — [OpenSky Network](https://opensky-network.org/), [airplanes.live](https://airplanes.live/), [adsb.lol](https://adsb.lol/)
+- Aircraft states — [OpenSky Network](https://opensky-network.org/), [airplanes.live](https://airplanes.live/), [adsb.lol](https://adsb.lol/), [adsb.fi](https://www.adsb.fi/)
 - Route and aircraft-type lookup — [adsbdb.com](https://www.adsbdb.com/)
 - Aircraft silhouettes — [plane-watch/pw-silhouettes](https://github.com/plane-watch/pw-silhouettes) (CC BY-NC-SA 4.0); airframes it does not cover (the 747 family) are drawn from published dimensions by `tools/make_local_silhouettes.py`
 - Type designators, operators, ICAO24 allocations — ICAO Doc 8643 / Doc 8585 / Annex 10 via [rikgale/ICAOList](https://github.com/rikgale/ICAOList)

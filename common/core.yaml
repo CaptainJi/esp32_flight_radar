@@ -449,7 +449,7 @@ globals:
   - id: data_src
     type: int
     restore_value: true
-    initial_value: '0'        # 航班來源:0=OpenSky 1=airplanes.live 2=adsb.lol(設定頁 SRC 列)
+    initial_value: '0'        # 0=OpenSky 1=A.LIVE 2=ADSB.LOL 3=ADSB.FI 4=MERGE
   # ATC 圖層開關(右下面板設定,各自存 NVS)
   - { id: atc_asp_on, type: bool, restore_value: true, initial_value: 'true' }   # 空域邊界
   - { id: atc_rwy_on, type: bool, restore_value: true, initial_value: 'true' }   # 跑道+延伸線
