@@ -47,9 +47,9 @@ airspaces  u8 cls | u16 npts | u16 name_off(指字串表) | 之後接 npts 組 f
 
 額外輪廓層(自建圖磚,官方 CDN 仍只有海岸/國界/州界+既有 detail pack):
 - `--cities` 用 DataV 中國地級市界,kind 與 `--add-geojson FILE:3` 相同(縣/郡/市)。
-  產生時會去掉與海岸/國界/省界重合的邊,末端仍接到岸。
-- `--rivers` / `--roads` / `--railroads` 可寫進圖磚;韌體預設不畫(太密)。
-- `--add-geojson` 維持 `FILE[:KIND]`,KIND 0–6。
+  產生時會去掉與海岸/國界/省界重合的邊(共用邊只留一份),末端仍接到岸。
+- `--add-geojson` 維持 `FILE[:KIND]`,KIND 0–3 使用中;4–6 留給之後的河/路/鐵 UI 開關。
+- `make_tiles.py` 單張圖磚 ≥ 128 KB 會警告:韌體 `maps` 分割區只有 512 KB,500 km 可能同時載入約 4 格。
 
 ## 裝置端
 - **分割表**:app0/app1 各 0x7C0000(7.75 MB)但韌體只用 3.23 MB。兩邊各縮到 0x500000(5 MB),

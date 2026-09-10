@@ -27,7 +27,6 @@ Sources (all redistributable, which is why these tiles can be hosted at all):
   OurAirports           airports, runways, navaids          public domain
   --airspace-geojson    e.g. tools/taiwan_airspace.geojson  our own conversion
   --cities              China prefecture borders (DataV); self-hosted, not CDN
-  --rivers/--roads/--railroads   Natural Earth extras (opt-in)
 openAIP is deliberately NOT wired up here: CC BY-NC, fine for a user to fetch
 with their own key in make_map.py, not something we redistribute.
 
@@ -91,6 +90,9 @@ LAYER_AIRSPACES = 16
 
 HEADER_FMT = "<4sHHIffBBH"          # magic ver flags crc lat0 lon0 level layers pad
 HEADER_SIZE = struct.calcsize(HEADER_FMT) + 5 * 8   # + 5 x (u32 off, u32 len)
+MAPS_PART_BYTES = 512 * 1024        # firmware maps partition
+# A 500 km range can touch ~4 cells; warn if one tile would eat a quarter of that.
+WARN_TILE_BYTES = 128 * 1024
 
 
 def cell_name(lat0, lon0):
@@ -223,12 +225,6 @@ def build_tile(lat0, lon0, level, cache, args):
             names = ["coastline", "borders"] + (["states"] if args.states else [])
             if args.cities:
                 names.append("cities")
-            if args.rivers:
-                names.append("rivers")
-            if args.roads:
-                names.append("roads")
-            if args.railroads:
-                names.append("railroads")
             files = [(mm.fetch(n, cache), mm.OUTLINE_KIND[n]) for n in names]
         # A detail pack ADDS to Natural Earth, it does not replace it. One cell
         # is 10 degrees across and holds several countries -- swapping the whole
@@ -321,17 +317,14 @@ def main():
     p.add_argument("--states", action="store_true", help="include state/province borders")
     p.add_argument("--cities", action="store_true",
                    help="include China prefecture city borders (DataV; kind 3)")
-    p.add_argument("--rivers", action="store_true", help="include river centerlines")
-    p.add_argument("--roads", action="store_true", help="include major roads")
-    p.add_argument("--railroads", action="store_true", help="include railroads")
     p.add_argument("--geojson", action="append",
                    help="local GeoJSON outline INSTEAD of Natural Earth")
     p.add_argument("--add-geojson", action="append", metavar="FILE[:KIND]",
                    help="local GeoJSON outline drawn IN ADDITION to Natural Earth "
                         "(detail pack, e.g. the g0v Taiwan county boundaries). "
                         "Append :KIND to pick the brightness class -- "
-                        "0 coastline, 1 country, 2 state, 3 county/city, "
-                        "4 river, 5 road, 6 railroad (default 0)")
+                        "0 coastline, 1 country, 2 state, 3 county/city "
+                        "(4–6 reserved for a later river/road/rail UI switch; default 0)")
     p.add_argument("--airspace-geojson", action="append",
                    help="local GeoJSON with CTR/TMA polygons (name + type properties)")
     p.add_argument("--airspace-types", default="CTR,TMA,CTA",
@@ -356,6 +349,7 @@ def main():
 
     os.makedirs(args.cache_dir, exist_ok=True)
     total = written = 0
+    oversized = []
     for lv in levels:
         d = os.path.join(args.out, "v%d" % FORMAT_VERSION, "L%d" % lv)
         os.makedirs(d, exist_ok=True)
@@ -368,8 +362,17 @@ def main():
                 f.write(blob)
             written += 1
             total += len(blob)
-            print("L%d %s  %6d bytes" % (lv, cell_name(lat0, lon0), len(blob)))
+            note = ""
+            if len(blob) >= WARN_TILE_BYTES:
+                oversized.append((lv, cell_name(lat0, lon0), len(blob)))
+                note = "  WARNING: %.0f KB (maps partition is %d KB; ~4 cells fit a 500 km range)" % (
+                    len(blob) / 1024.0, MAPS_PART_BYTES // 1024)
+            print("L%d %s  %6d bytes%s" % (lv, cell_name(lat0, lon0), len(blob), note))
     print("\n%d tiles, %.1f MB total" % (written, total / 1e6))
+    if oversized:
+        print("tiles over %d KB (check before flashing --cities packs):" % (WARN_TILE_BYTES // 1024))
+        for lv, name, n in oversized:
+            print("  L%d %s  %.0f KB" % (lv, name, n / 1024.0))
 
 
 if __name__ == "__main__":

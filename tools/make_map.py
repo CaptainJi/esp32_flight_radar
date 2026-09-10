@@ -197,20 +197,25 @@ def _point_seg_dist2(px, py, ax, ay, bx, by):
 
 
 def retain_shared_city_segments(polylines, quant=1e-5):
-    """Keep only city segments shared by >=2 rings; drop coast/country outer edges.
+    """Keep only city segments shared by >=2 rings, once each; drop outer edges.
 
     DataV adjacent cities reuse identical border vertices. Outer edges (coastline,
     national boundary, coverage fringe) appear once and are removed. Call this on
     clipped GeoJSON polylines — point order is (lon, lat) — *before* simplify.
     Natural Earth coast/country do not align with DataV, so geometric matching
     alone cannot strip those overlaps.
+
+    A shared edge is stored once (first ring that owns it). Drawing it twice in
+    opposite directions costs bytes in the 512 KB maps partition for no pixels.
     """
     kind_city = OUTLINE_KIND["cities"]
     counts = {}
 
     def ekey(a, b):
-        a = (round(a[0] / quant) * quant, round(a[1] / quant) * quant)
-        b = (round(b[0] / quant) * quant, round(b[1] / quant) * quant)
+        # Integer bins: putting the scaled float back into the key reintroduces
+        # rounding noise and can miss a shared edge.
+        a = (int(round(a[0] / quant)), int(round(a[1] / quant)))
+        b = (int(round(b[0] / quant)), int(round(b[1] / quant)))
         return (a, b) if a <= b else (b, a)
 
     out = []
@@ -227,11 +232,14 @@ def retain_shared_city_segments(polylines, quant=1e-5):
     if not city_pls:
         return out
 
+    emitted = set()
     kept = dropped = 0
     for pts in city_pls:
         run = []
         for i in range(len(pts) - 1):
-            if counts.get(ekey(pts[i], pts[i + 1]), 0) >= 2:
+            k = ekey(pts[i], pts[i + 1])
+            if counts.get(k, 0) >= 2 and k not in emitted:
+                emitted.add(k)
                 kept += 1
                 if not run:
                     run.append(pts[i])
@@ -244,7 +252,7 @@ def retain_shared_city_segments(polylines, quant=1e-5):
         if len(run) >= 2:
             out.append((kind_city, run))
     if dropped:
-        print(f"  city shared-edge filter: kept {kept}, dropped {dropped} outer segments")
+        print(f"  city shared-edge filter: kept {kept}, dropped {dropped} outer/duplicate segments")
     return out
 
 
@@ -346,9 +354,9 @@ def strip_city_border_overlaps(polylines, coslat, tol_province=0.025,
     return out
 
 
-def load_china_bound_refs(cache, lat0, lon0, dlat, dlon, tol, coslat):
-    """Clip+simplify DataV national outline -> [(lat,lon)...] for city strip only."""
-    path = fetch("china_bound", cache)
+def clip_source_polylines(name, cache, lat0, lon0, dlat, dlon):
+    """Fetch + clip, no simplify. Result is (lon, lat) rings for later `build()`."""
+    path = fetch(name, cache)
     with open(path, encoding="utf-8") as f:
         gj = json.load(f)
     feats = gj["features"] if gj.get("type") == "FeatureCollection" else [gj]
@@ -357,6 +365,18 @@ def load_china_bound_refs(cache, lat0, lon0, dlat, dlon, tol, coslat):
         geom = ft.get("geometry") or ft
         for pl in iter_polylines(geom):
             clipped.extend(clip_polyline(pl, lat0, lon0, dlat, dlon))
+    return clipped
+
+
+def load_china_bound_refs(cache, lat0, lon0, dlat, dlon, tol, coslat,
+                          clipped=None):
+    """Clip+simplify DataV national outline -> [(lat,lon)...] for city strip only.
+
+    Pass `clipped` (from clip_source_polylines) to skip re-reading the JSON when
+    the caller is raising Douglas-Peucker tolerance in a loop.
+    """
+    if clipped is None:
+        clipped = clip_source_polylines("china_bound", cache, lat0, lon0, dlat, dlon)
     if not clipped:
         return []
     built = build([(0, pl) for pl in clipped], lat0, lon0, tol, coslat)
@@ -600,10 +620,6 @@ def main():
     ap.add_argument("--states", action="store_true", help="also include state/province borders")
     ap.add_argument("--cities", action="store_true",
                     help="include China prefecture city borders (DataV; kind 3)")
-    ap.add_argument("--rivers", action="store_true", help="include Natural Earth river centerlines")
-    ap.add_argument("--roads", action="store_true",
-                    help="include major Natural Earth roads (scalerank <= 3)")
-    ap.add_argument("--railroads", action="store_true", help="include Natural Earth railroads")
     ap.add_argument("--geojson", action="append", default=[],
                     help="use local GeoJSON file(s) for the outline instead of Natural Earth")
     ap.add_argument("--tol", type=float, default=0.0,
@@ -660,12 +676,6 @@ def main():
                 names.append("states")
             if args.cities:
                 names.append("cities")
-            if args.rivers:
-                names.append("rivers")
-            if args.roads:
-                names.append("roads")
-            if args.railroads:
-                names.append("railroads")
             print("Fetching outline sources:")
             files = [(fetch(n, cache), OUTLINE_KIND[n]) for n in names]
         clipped = []
@@ -685,11 +695,17 @@ def main():
         if not clipped:
             sys.exit("no map lines inside the bounding box - check --lat/--lon/--radius")
         clipped = retain_shared_city_segments(clipped)
+        china_clipped = []
+        if args.cities and not args.geojson:
+            china_clipped = clip_source_polylines(
+                "china_bound", cache, args.lat, args.lon, dlat, dlon)
         while True:
             lines = build(clipped, args.lat, args.lon, tol, coslat)
             refs = []
-            if args.cities and not args.geojson:
-                refs = load_china_bound_refs(cache, args.lat, args.lon, dlat, dlon, tol, coslat)
+            if china_clipped:
+                refs = load_china_bound_refs(
+                    cache, args.lat, args.lon, dlat, dlon, tol, coslat,
+                    clipped=china_clipped)
             lines = strip_city_border_overlaps(lines, coslat, extra_refs=refs)
             npts = sum(len(p) for _, p in lines)
             if npts <= args.max_points or not lines:

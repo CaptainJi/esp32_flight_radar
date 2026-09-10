@@ -1188,10 +1188,10 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
       // 一多才分得出主次(每階約前一階的七成亮度)。分隔符(NAN,kind)的第二個
       // 值帶種類;舊 map_data.h 是 NAN,NAN,讀到 NAN 一律當 0=海岸線,外觀與改版
       // 前完全相同。kind 3 由 --add-geojson FILE:KIND 或 --cities 產生。
-      // kind 4/5/6(河/路/鐵)圖磚可帶,預設不畫——線太密,500 km 雷達會糊成一片。
+      // kind 4/5/6 留給之後的河/路/鐵開關;這輪不產生、也不畫。
       static const uint32_t MAP_KIND_COLOR[7] = {
           0xD8C878, 0x9A8B54, 0x685E38, 0x494227,  // 0-3 與 v1.3.9 相同
-          0x3A6E8A, 0x5A5A5A, 0x4A3A5A};           // 4 river 5 road 6 rail
+          0x3A6E8A, 0x5A5A5A, 0x4A3A5A};           // 4 river 5 road 6 rail (reserved)
       uint16_t col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[0]));   // 淡黃色輪廓線
       float r2 = rng * rng;
       bool have_prev = false;
