@@ -21,14 +21,16 @@ radar-jc8048w550.yaml entry: Guition JC8048W550C = Sunton ESP32-8048S050 (800×4
 radar-s3-5.yaml       entry: Waveshare ESP32-S3-Touch-LCD-5   (800×480 RGB)
 radar-s3-5b.yaml      entry: Waveshare ESP32-S3-Touch-LCD-5B  (1024×600 RGB)
 radar-p4-7b.yaml      entry: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024×600 MIPI-DSI)
+radar-tab5.yaml       entry: M5Stack Tab5 (1280×720 MIPI-DSI, landscape via LVGL 90°)
 common/core.yaml      shared logic + UI-independent components (fonts, scripts, …)
 partitions.csv        custom partition table: shrinks app0/app1 to make room for `maps`
 map_tiles.h           parses the downloaded map tiles; the map is no longer compiled in
 boards/*.yaml         per-board hardware: MCU / PSRAM / display / touch / backlight
 components/*          local overrides of two ESPHome components, pulled in by the
-                      Waveshare board files (see "Local component overrides")
+                      Waveshare / Tab5 board files (see "Local component overrides")
 ui/ui_800x480.yaml    LVGL layout at 800×480  ← edit this one
 ui/ui_1024x600.yaml   LVGL layout at 1024×600  (generated; re-run tools/scale_layout.py)
+ui/ui_1280x720.yaml   LVGL layout at 1280×720  (generated ×1.5; ~80px unused on the right)
 ```
 
 Each entry file just picks a resolution (via `substitutions`) and a `board` + `ui`
@@ -43,6 +45,15 @@ dimensions left to chase.
 | `radar-s3-5.yaml` | Waveshare ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB (ST7262) | native | config + build verified, **not yet flashed** |
 | `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | native | **verified on hardware** |
 | `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI (EK79007) | ESP32-C6 (esp-hosted/SDIO) | **verified on hardware** (panel, colours, touch) |
+| `radar-tab5.yaml` | M5Stack Tab5 | ESP32-P4 | 1280×720 MIPI-DSI (ILI9881C / ST712x) | ESP32-C6 (esp-hosted/SDIO) | **config added** — flash and tune on device |
+
+**Tab5 notes:** keep `WLAN_PWR_EN` (PI4IOE 0x44 P0) on — otherwise the C6 never powers up.
+Display model depends on build date (`M5STACK-TAB5` vs `M5STACK-TAB5-ST7123` /
+`M5STACK-TAB5-ST7121`); override `tab5_display_model` in `radar-tab5.yaml`. The board
+package deliberately omits camera, mic/VA, battery monitor and charge GPIO HA entities —
+only Wi-Fi power, backlight, speaker PA, panel/touch reset and microSD are wired for the
+radar firmware. UI is ×1.5 from 800×480 (square canvas stays square); 16:9 leaves ~80 px
+of background on the right until a bespoke layout exists.
 
 Common requirements for the RGB boards: **≥8 MB octal PSRAM** (quad-PSRAM can't feed
 the RGB panel), a **GT911** I²C touch controller, and 16 MB flash (`flash_size` is set
@@ -181,13 +192,15 @@ radar-jc8048w550.yaml 入口:Guition JC8048W550C = Sunton ESP32-8048S050(800×48
 radar-s3-5.yaml       入口:微雪 ESP32-S3-Touch-LCD-5(800×480 RGB)
 radar-s3-5b.yaml      入口:微雪 ESP32-S3-Touch-LCD-5B(1024×600 RGB)
 radar-p4-7b.yaml      入口:微雪 ESP32-P4-WIFI6-Touch-LCD-7B(1024×600 MIPI-DSI)
+radar-tab5.yaml       入口:M5Stack Tab5(1280×720 MIPI-DSI,LVGL 90° 橫向)
 common/core.yaml      共用邏輯 + 與版面無關的元件(字型、腳本…)
 partitions.csv        自訂分割表:縮小 app0/app1 空出 `maps` 分割區
 map_tiles.h           解析下載回來的地圖圖磚;地圖不再編譯進韌體
 boards/*.yaml         各板硬體:MCU / PSRAM / 螢幕 / 觸控 / 背光
-components/*          兩個 ESPHome 元件的本地覆寫,由微雪板檔載入(見「本地元件覆寫」)
+components/*          兩個 ESPHome 元件的本地覆寫,由微雪 / Tab5 板檔載入(見「本地元件覆寫」)
 ui/ui_800x480.yaml    800×480 的 LVGL 版面 ← 改這一份
 ui/ui_1024x600.yaml   1024×600 版面(生成檔;改完來源要重跑 tools/scale_layout.py)
+ui/ui_1280x720.yaml   1280×720 版面(×1.5 生成;右側約 80px 底色)
 ```
 
 入口檔只用 `substitutions` 選解析度,再挑 `board` + `ui` 兩個 package。解析度會流進字型、
@@ -200,6 +213,13 @@ display 驅動與 C++ 巨集(透過 `build_flags` → `radar_fetch.h`),不再有
 | `radar-s3-5.yaml` | 微雪 ESP32-S3-Touch-LCD-5 | ESP32-S3 | 800×480 parallel-RGB(ST7262) | 原生 | config + 編譯驗證,**尚未實機燒錄** |
 | `radar-s3-5b.yaml` | 微雪 ESP32-S3-Touch-LCD-5B | ESP32-S3 | 1024×600 parallel-RGB | 原生 | **實機驗證過** |
 | `radar-p4-7b.yaml` | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | ESP32-P4 | 1024×600 MIPI-DSI(EK79007) | ESP32-C6(esp-hosted/SDIO) | **實機驗證過**(面板、顏色、觸控) |
+| `radar-tab5.yaml` | M5Stack Tab5 | ESP32-P4 | 1280×720 MIPI-DSI(ILI9881C / ST712x) | ESP32-C6(esp-hosted/SDIO) | **已加設定** — 待實機燒錄微調 |
+
+**Tab5 摘要:**`WLAN_PWR_EN`(PI4IOE 0x44 P0)必須常開,否則 C6 沒電。顯示 model 依出廠批次
+(`M5STACK-TAB5` / `M5STACK-TAB5-ST7123` / `M5STACK-TAB5-ST7121`),在 `radar-tab5.yaml`
+改 `tab5_display_model`。板檔刻意不掛相機、語音助手、電量與充電 GPIO 等 HA 實體 ——
+雷達只需要 Wi-Fi 電源、背光、喇叭功放、面板/觸控复位與 microSD。版面由 800×480 ×1.5
+生成(畫布保持正方形);16:9 會在右側留約 80px,日後若要鋪滿再做專用版面。
 
 RGB 板共同需求:**≥8 MB octal PSRAM**(quad 餵不動 RGB 屏)、**GT911** I²C 觸控、16 MB flash
 (`flash_size` 各板自訂)。Guition JC8048W550(另一個賣法叫 Sunton ESP32-8048S050)有自己的

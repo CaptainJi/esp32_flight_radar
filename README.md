@@ -28,6 +28,7 @@ Inspired by [AnthonySturdy/micro-radar](https://github.com/AnthonySturdy/micro-r
 | `radar-s3-5.yaml` | Waveshare ESP32-S3-Touch-LCD-5 | 800×480 RGB | `main` |
 | `radar-s3-5b.yaml` | Waveshare ESP32-S3-Touch-LCD-5B | 1024×600 RGB | `main` |
 | `radar-p4-7b.yaml` | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | 1024×600 MIPI-DSI | `lvgl9` |
+| `radar-tab5.yaml` | M5Stack Tab5 (ESP32-P4 + C6) | 1280×720 MIPI-DSI | `lvgl9` |
 
 All need **≥8 MB octal PSRAM**, a **GT911** touch controller and **16 MB flash**.
 
@@ -99,9 +100,10 @@ cd esp32_flight_radar
 # S3 boards -> main branch:
 pip install 'esphome==2026.3.*'
 esphome run radar-s3-5b.yaml       # or radar.yaml / radar-s3-5.yaml / radar-jc8048w550.yaml
-# P4 board -> lvgl9 branch:
+# P4 boards -> lvgl9 branch:
 git checkout lvgl9 && pip install 'esphome==2026.6.*'
-ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
+ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml   # Waveshare P4-7B
+ESPHOME_BUILD_PATH=build9 esphome run radar-tab5.yaml    # M5Stack Tab5
 ```
 
 First flash must be over **USB**. If it stalls: hold **BOOT**, tap **RESET**, release **BOOT**.
@@ -162,7 +164,8 @@ pip install 'esphome==2026.3.*'
 esphome run radar-s3-5b.yaml       # 或 radar.yaml / radar-s3-5.yaml / radar-jc8048w550.yaml
 # P4 板 → lvgl9 分支:
 git checkout lvgl9 && pip install 'esphome==2026.6.*'
-ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
+ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml   # 微雪 P4-7B
+ESPHOME_BUILD_PATH=build9 esphome run radar-tab5.yaml    # M5Stack Tab5
 ```
 
 第一次必須用 **USB** 燒錄。卡住的話:按住 **BOOT**、點一下 **RESET**、放開 **BOOT**。
@@ -221,7 +224,8 @@ pip install 'esphome==2026.3.*'
 esphome run radar-s3-5b.yaml       # 或 radar.yaml / radar-s3-5.yaml / radar-jc8048w550.yaml
 # P4 板 → lvgl9 分支:
 git checkout lvgl9 && pip install 'esphome==2026.6.*'
-ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml
+ESPHOME_BUILD_PATH=build9 esphome run radar-p4-7b.yaml   # 微雪 P4-7B
+ESPHOME_BUILD_PATH=build9 esphome run radar-tab5.yaml    # M5Stack Tab5
 ```
 
 第一次必须用 **USB** 烧录。卡住的话:按住 **BOOT**、点一下 **RESET**、放开 **BOOT**。

@@ -1,0 +1,257 @@
+# =====================================================================
+#  Board: M5Stack Tab5 (SKU C145 / K145)
+#         ESP32-P4 + 16 MB flash + hex PSRAM
+#         5" 1280×720 IPS via MIPI-DSI (native panel 720×1280 portrait)
+#         Touch: GT911 (early units) / ST712x integrated (later units)
+#         Wi-Fi / BT: ESP32-C6-MINI-1U over SDIO (esp-hosted)
+#         Audio: ES8388 DAC + PA (SPK_EN on PI4IOE) — alarm LOCAL SPEAKER
+#         microSD: native SDMMC (same pin family as Waveshare P4)
+#
+#  與 Waveshare P4-7B 相同的大架構(P4 + C6 hosted + mipi_dsi + sd_storage),
+#  但腳位、IO 擴展器、codec、面板 model 全不同 —— 不要混用 7B 板檔。
+#
+#  橫向 UI:面板原生直向 720×1280,LVGL 軟體旋轉 90° → 邏輯解析度 1280×720。
+#  版面由 ui_800x480 以 ×1.5 生成(內容約 1200×720),右側約留 80px 底色;
+#  16:9 與 5:3 長寬比不同,不能單倍率剛好鋪滿且保持雷達畫布為正方形。
+#
+#  顯示驅動因出廠批次而異(見 ESPHome mipi_dsi 說明):
+#    · 2025-10-14 前:ILI9881C + GT911     → M5STACK-TAB5(預設)
+#    · 之後:ST7123 或 ST7121 整合觸控     → M5STACK-TAB5-ST7123 / -ST7121
+#  改入口檔 substitutions 的 tab5_display_model 即可;觸控平台若換 ST712x
+#  需另改下方 touchscreen(預設 GT911)。選錯 model 時常是黑屏且幾乎無 log。
+#
+#  引腳依據:M5Stack Tab5 官方管腳表 / 原理圖,以及
+#  https://devices.esphome.io/devices/m5stack-tab5/
+# =====================================================================
+
+substitutions:
+  # 可在 radar-tab5.yaml 覆寫。ST7123/ST7121 機請改成對應 model 名。
+  tab5_display_model: "M5STACK-TAB5"
+
+esphome:
+  platformio_options:
+    build_flags:
+      - "-DSCREEN_W=${disp_w}"
+      - "-DSCREEN_H=${disp_h}"
+      - "-DRADAR_CANVAS=${radar_canvas}"
+      - "-DRADAR_DISPLAY_RGB=3"    # MIPI-DSI → 截圖讀 DPI framebuffer
+      - "-DSHOT_SWAP_BYTES=0"     # display + lvgl 皆 little_endian
+      # 邏輯畫面是 90° 軟體旋轉;原生 FB 仍是直向掃描。截圖方向請實機再調,
+      # 目前不做 ROT180(那是 7B 的 180° 補償)。
+      - "-DRADAR_SHOT_ROT180=0"
+      - "-DRADAR_LOCAL_SPK=1"
+      - "-DRADAR_SD_EXT=1"
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [storage, sd_storage]
+
+esp32:
+  board: esp32-p4-evboard
+  flash_size: 16MB
+  cpu_frequency: 360MHz
+  framework:
+    type: esp-idf
+    advanced:
+      # Tab5 / P4 hosted Wi-Fi 需要實驗性 IDF 選項(官方 device 範例同樣開啟)
+      enable_idf_experimental_features: true
+      disable_fatfs: false
+      include_builtin_idf_components: [fatfs]
+    sdkconfig_options:
+      CONFIG_FATFS_LFN_NONE: "n"
+      CONFIG_FATFS_LFN_HEAP: "y"
+      CONFIG_FATFS_MAX_LFN: "255"
+      CONFIG_SPIRAM_USE_MALLOC: "y"
+      CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: "y"
+      CONFIG_MBEDTLS_DYNAMIC_BUFFER: "y"
+      CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN: "y"
+
+# USB 燒錄/日誌(Tab5 走 USB Serial/JTAG,不是 UART0)
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+# ---- Wi-Fi: ESP32-C6 over SDIO (與 TF 卡的 SDMMC slot 分開) ----
+# 管腳表:G12 CLK / G13 CMD / G11 D0 / G10 D1 / G9 D2 / G8 D3 / G15 RESET
+esp32_hosted:
+  variant: ESP32C6
+  active_high: true
+  reset_pin: GPIO15
+  clk_pin: GPIO12
+  cmd_pin: GPIO13
+  d0_pin: GPIO11
+  d1_pin: GPIO10
+  d2_pin: GPIO9
+  d3_pin: GPIO8
+  slot: 1
+
+# ---- microSD (SDIO1 / slot 0) — 與 Waveshare P4 同腳:39–42 / 43 / 44 ----
+sd_storage:
+  type: sd_mmc
+  id: tf_card
+  clk_pin: GPIO43
+  cmd_pin: GPIO44
+  data0_pin: GPIO39
+  data1_pin: GPIO40
+  data2_pin: GPIO41
+  data3_pin: GPIO42
+  slot: 0
+  mount_path: /sdcard
+
+# ---- 系統 I²C:觸控 / PI4IOE / ES8388 / INA226 / RTC 共用 ----
+i2c:
+  sda: GPIO31
+  scl: GPIO32
+  frequency: 400kHz
+
+# DSI PHY 電源
+esp_ldo:
+  - channel: 3
+    voltage: 2.5V
+
+# ---- PI4IOE5V6408:只開雷達需要的腳,其餘電源/充電/相機不掛 HA 實體 ----
+pi4ioe5v6408:
+  - id: pi4ioe1
+    address: 0x43
+    # P1 SPK_EN / P4 LCD_RST / P5 TP_RST
+  - id: pi4ioe2
+    address: 0x44
+    # P0 WLAN_PWR_EN — C6 供電,必須開著 Wi-Fi 才活
+
+switch:
+  - platform: gpio
+    id: wifi_power
+    name: "WiFi Power"
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 0
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    id: spk_pa
+    pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 1
+    restore_mode: ALWAYS_OFF
+    internal: true
+
+# ---- 背光 GPIO22(高電位亮,可 PWM)----
+output:
+  - platform: ledc
+    pin: GPIO22
+    id: bl_pwm
+    frequency: 1000Hz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    output: bl_pwm
+    name: Backlight
+    restore_mode: RESTORE_DEFAULT_ON
+
+# ---- 板載喇叭(鬧鐘 LOCAL SPEAKER):ES8388 + NS4150B ----
+i2s_audio:
+  - id: i2s_out
+    i2s_mclk_pin: GPIO30
+    i2s_bclk_pin: GPIO27
+    i2s_lrclk_pin: GPIO29
+
+audio_dac:
+  - platform: es8388
+    id: es8388_dac
+
+speaker:
+  - platform: i2s_audio
+    id: local_spk
+    i2s_audio_id: i2s_out
+    dac_type: external
+    i2s_dout_pin: GPIO26
+    audio_dac: es8388_dac
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: mono
+
+rtttl:
+  id: alarm_tone
+  speaker: local_spk
+  gain: 0.6
+  on_finished_playback:
+    - switch.turn_off: spk_pa
+
+script:
+  - id: local_ring_start
+    mode: single
+    then:
+      - switch.turn_on: spk_pa
+      - rtttl.play: "radar:d=8,o=6,b=180:c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c"
+  - id: local_ring_stop
+    mode: single
+    then:
+      - rtttl.stop:
+      - switch.turn_off: spk_pa
+
+# ---- 觸控 GT911(早期批次)。ST712x 機請改 platform / 拿掉這段 transform 再實測 ----
+touchscreen:
+  - platform: gt911
+    id: my_touch
+    display: main_display
+    interrupt_pin: GPIO23
+    update_interval: 20ms
+    reset_pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 5
+    # 直向 raw → 橫向 UI:與 ESPHome Tab5 landscape 範例一致。
+    # LVGL 9 另會依 lvgl.rotation 再轉一次指標;若實機軸向反了,只改這裡。
+    transform:
+      swap_xy: true
+      mirror_x: false
+      mirror_y: true
+    on_touch:
+      - lambda: |-
+          if (!id(backlight).current_values.is_on()) {
+            id(wake_ms) = millis();
+            auto call = id(backlight).turn_on();
+            call.perform();
+            lv_obj_add_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
+            lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x04180C), 0);
+          }
+    on_update:
+      - lambda: |-
+          int n = (int) touches.size();
+          if (n >= 3) {
+            float my = 0;
+            for (auto &tp : touches) my += tp.y;
+            my /= n;
+            if (!id(shot_armed)) {
+              id(shot_armed) = true;
+              id(shot_y0) = my;
+              id(shot_ms) = millis();
+            } else if (my - id(shot_y0) > 70.0f && millis() - id(shot_ms) < 1500) {
+              id(shot_armed) = false;
+              id(take_screenshot).execute();
+            }
+          } else {
+            id(shot_armed) = false;
+          }
+    on_release:
+      - lambda: 'id(shot_armed) = false;'
+
+# ---- 顯示:原生直向,橫向由下方 lvgl.rotation 處理 ----
+display:
+  - platform: mipi_dsi
+    id: main_display
+    model: ${tab5_display_model}
+    reset_pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 4
+    update_interval: never
+    auto_clear_enabled: false
+
+# LVGL 9:rotation / byte_order 寫在 lvgl(不可寫在 display)
+lvgl:
+  rotation: 90°
+  byte_order: little_endian
