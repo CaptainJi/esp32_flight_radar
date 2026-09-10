@@ -383,7 +383,7 @@ number:
     min_value: 5
     max_value: 300
     step: 5
-    initial_value: 15           # 免費來源(airplanes.live/adsb.lol)抓取間隔;無每日額度可較密
+    initial_value: 15           # 單源免費 API 間隔;MERGE 另外夾到 >=45s
     unit_of_measurement: s
     mode: box
     optimistic: true
@@ -921,8 +921,10 @@ interval:
           }
           // OpenSky 失敗冷卻中(bg task 走免費來源)→ 節奏也切到免費來源的間隔
           bool cooling = (millis() / 1000) < radar_bg::g_os_cooldown_until;
-          int itv = (id(data_src) != 0 || cooling) ? (int) id(poll_interval_alt).state
-                                                   : (int) id(poll_interval).state;
+          int itv = radar_bg::effective_poll_s(id(data_src),
+                                              (int) id(poll_interval).state,
+                                              (int) id(poll_interval_alt).state,
+                                              cooling);
           if (id(poll_tick) >= itv) {
             if (wifi::global_wifi_component->is_connected() &&
                 (id(backlight).current_values.is_on() || id(poll_when_off))) {   // 背光關=暫停抓取(可設定例外)

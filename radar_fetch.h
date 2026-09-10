@@ -180,6 +180,15 @@ inline uint8_t g_v2_consec_fail[4] = {0, 0, 0, 0};  // 連續連線失敗數(成
 // 429 之外,adsb.lol 被限速時更常直接把 TLS 交握切線(st=-1、CONN_EOF)或
 // ECONNABORTED —— 不回狀態碼,光認 429 攔不住。連續兩次連線失敗就套同一組
 // 指數退避:少打不只少撞牆,Wi-Fi TX 爆發變稀也同時緩解面板抖動(EMI)。
+// MERGE 一輪打 3–4 次 HTTPS,不能跟單源共用 15 s;最低夾到 45 s。
+static const int MERGE_MIN_POLL_S = 45;
+
+inline int effective_poll_s(int src, int os_s, int alt_s, bool os_cooling) {
+  if (src == 0 && !os_cooling) return os_s;
+  int itv = alt_s;
+  if (src == 4 && itv < MERGE_MIN_POLL_S) itv = MERGE_MIN_POLL_S;
+  return itv;
+}
 
 inline const char *src_name(int src) {
   switch (src) {
@@ -417,6 +426,7 @@ inline void v2_note_status(int src, int st) {
 inline void publish_states(std::vector<AcInfo> &&acs, int src) {
   std::sort(acs.begin(), acs.end(),
             [](const AcInfo &a, const AcInfo &b) { return a.dist < b.dist; });
+  if (acs.size() > AC_SLOTS) acs.resize(AC_SLOTS);  // 畫面只有 40 槽,多的佔 PSRAM
   xSemaphoreTake(mtx(), portMAX_DELAY);
   g_result = std::move(acs);
   g_states_ready = true;
@@ -426,23 +436,39 @@ inline void publish_states(std::vector<AcInfo> &&acs, int src) {
 
 // 依 ICAO24(hex)優先、否則呼號+近距離合併;較新/較完整的欄位覆蓋空欄
 inline void merge_into(std::vector<AcInfo> &dst, std::vector<AcInfo> &&src) {
+  std::map<uint32_t, size_t> by_hex;
+  for (size_t i = 0; i < dst.size(); i++) {
+    if (dst[i].hex != 0) by_hex[dst[i].hex] = i;
+  }
   for (auto &a : src) {
     int found = -1;
-    for (size_t i = 0; i < dst.size(); i++) {
-      if (a.hex != 0 && dst[i].hex != 0 && a.hex == dst[i].hex) { found = (int) i; break; }
-      if (!a.cs.empty() && a.cs != "?" && a.cs == dst[i].cs) {
-        float dlat = a.lat - dst[i].lat, dlon = a.lon - dst[i].lon;
-        if (dlat * dlat + dlon * dlon < 0.02f * 0.02f) { found = (int) i; break; }
+    if (a.hex != 0) {
+      auto it = by_hex.find(a.hex);
+      if (it != by_hex.end()) found = (int) it->second;
+    }
+    if (found < 0 && !a.cs.empty() && a.cs != "?") {
+      for (size_t i = 0; i < dst.size(); i++) {
+        if (a.cs == dst[i].cs) {
+          float dlat = a.lat - dst[i].lat, dlon = a.lon - dst[i].lon;
+          if (dlat * dlat + dlon * dlon < 0.02f * 0.02f) { found = (int) i; break; }
+        }
       }
     }
-    if (found < 0) { dst.push_back(std::move(a)); continue; }
+    if (found < 0) {
+      if (a.hex != 0) by_hex[a.hex] = dst.size();
+      dst.push_back(std::move(a));
+      continue;
+    }
     AcInfo &t = dst[(size_t) found];
     bool newer = a.lc >= t.lc;
     if (newer) {
       t.lat = a.lat; t.lon = a.lon; t.trk = a.trk; t.vel = a.vel;
       t.alt = a.alt; t.vr = a.vr; t.dist = a.dist; t.lc = a.lc;
     }
-    if (t.hex == 0 && a.hex != 0) t.hex = a.hex;
+    if (t.hex == 0 && a.hex != 0) {
+      t.hex = a.hex;
+      by_hex[t.hex] = (size_t) found;
+    }
     if (t.sq.empty() && !a.sq.empty()) t.sq = std::move(a.sq);
     if (t.ty.empty() && !a.ty.empty()) t.ty = std::move(a.ty);
     if (t.reg.empty() && !a.reg.empty()) t.reg = std::move(a.reg);
@@ -457,7 +483,7 @@ inline bool parse_readsb_json(const std::string &r, float lat0, float lon0,
   float coslat = cosf(lat0 * 3.14159265f / 180.0f);
   return esphome::json::parse_json(r, [&](JsonObject root) -> bool {
     uint32_t now_s = (uint32_t) ((root["now"] | 0.0) / 1000.0);
-    if (now_s == 0) now_s = (uint32_t) (millis() / 1000);
+    if (now_s == 0) return false;   // 沒有 now 就不要猜 lc,ATC 延遲判斷會歪
     JsonArray arr = root["ac"].as<JsonArray>();
     if (arr.isNull()) return true;
     for (JsonVariant v : arr) {
@@ -521,8 +547,18 @@ inline void do_states_merge(const Job &j) {
   std::vector<AcInfo> all, part;
   int ok_n = 0;
   if (!j.cid.empty() && !j.sec.empty()) {
-    part.clear();
-    if (fetch_opensky(j, part)) { merge_into(all, std::move(part)); ok_n++; }
+    uint32_t now = millis() / 1000;
+    if (now >= g_os_cooldown_until) {
+      part.clear();
+      if (fetch_opensky(j, part)) {
+        g_os_cooldown_until = 0;
+        merge_into(all, std::move(part));
+        ok_n++;
+      } else {
+        g_os_cooldown_until = now + 600;
+        ESP_LOGW("radar_bg", "opensky failed in merge, cooling 600s");
+      }
+    }
   }
   part.clear();
   if (fetch_states_v2(j, 2, part)) { merge_into(all, std::move(part)); ok_n++; }

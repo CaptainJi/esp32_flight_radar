@@ -5066,8 +5066,10 @@ lvgl:
                   lv_textarea_set_text((lv_obj_t *) id(ta_rng), b);
                   lv_label_set_text(id(rng_unit_l), id(units_imperial) ? "mi" : "km");
                   // 單一 POLL 欄位:顯示目前 SRC 對應的間隔
-                  snprintf(b, sizeof(b), "%.0f", id(data_src) == 0 ? id(poll_interval).state
-                                                                   : id(poll_interval_alt).state);
+                  snprintf(b, sizeof(b), "%.0f",
+                           (float) radar_bg::effective_poll_s(id(data_src),
+                               (int) id(poll_interval).state,
+                               (int) id(poll_interval_alt).state, false));
                   lv_textarea_set_text((lv_obj_t *) id(ta_poll), b);
                   // SRC 下拉與 data_src 同步
                   lv_dropdown_set_selected(id(src_dd)->obj, id(data_src));
@@ -5736,8 +5738,10 @@ lvgl:
                   radar_bg::g_os_cooldown_until = 0;   // 手動選來源即重置 fallback 冷卻
                   // POLL 欄位自動匹配新來源的間隔
                   char pb[8];
-                  snprintf(pb, sizeof(pb), "%.0f", i == 0 ? id(poll_interval).state
-                                                          : id(poll_interval_alt).state);
+                  snprintf(pb, sizeof(pb), "%.0f",
+                           (float) radar_bg::effective_poll_s(i,
+                               (int) id(poll_interval).state,
+                               (int) id(poll_interval_alt).state, false));
                   lv_textarea_set_text((lv_obj_t *) id(ta_poll), pb);
         # 手搓數字鍵盤(與整體風格一致)
         - button:
