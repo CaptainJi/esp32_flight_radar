@@ -170,6 +170,15 @@ inline volatile int g_os_remaining = -1;   // OpenSky X-Rate-Limit-Remaining(-1=
 inline bool g_want_rl = false;             // 只在 states 請求期間擷取(bg task 序列執行,無競態)
 inline volatile uint32_t g_os_cooldown_until = 0;  // OpenSky 失敗冷卻期限(millis 秒),期間走免費來源
 inline volatile int g_last_src = -1;       // 最近一次成功抓取的來源(0/1/2,-1=尚未成功)
+// 免費 v2 來源的 429 退避:冷卻期限(millis 秒)+ 目前的懲罰秒數(成功後歸位)。
+// OpenSky 掛掉退到免費來源時,節奏是 poll_interval_alt 的 15 秒,曾把 adsb.lol
+// 撞到回 429;繼續用固定間隔撞牆只會讓限速更久才解除,所以收到 429 就指數退避。
+inline volatile uint32_t g_v2_cooldown_until[3] = {0, 0, 0};
+inline uint32_t g_v2_penalty_s[3] = {60, 60, 60};
+inline uint8_t g_v2_consec_fail[3] = {0, 0, 0};  // 連續連線失敗數(成功歸零)
+// 429 之外,adsb.lol 被限速時更常直接把 TLS 交握切線(st=-1、CONN_EOF)或
+// ECONNABORTED —— 不回狀態碼,光認 429 攔不住。連續兩次連線失敗就套同一組
+// 指數退避:少打不只少撞牆,Wi-Fi TX 爆發變稀也同時緩解面板抖動(EMI)。
 
 // HTTP body 上限。150KB 太緊:250km 半徑在繁忙空域(英國、日本)的航班清單就會
 // 超過,回應被截斷後解析必定失敗。字串配在 PSRAM,384KB 對 8MB PSRAM 綽綽有餘,
@@ -366,7 +375,26 @@ inline bool do_states_v2(const Job &j, int src) {
            src == 2 ? "api.adsb.lol" : "api.airplanes.live", j.lat, j.lon, r_nm);
   int st = 0;
   std::string r = http_req(url, false, "", nullptr, "", st, 131072);
+  if (st == 429) {
+    // 被限速:指數退避 60→120→…→600s(封頂)。millis 秒與 g_os_cooldown_until 同款。
+    uint32_t now = millis() / 1000;
+    g_v2_cooldown_until[src] = now + g_v2_penalty_s[src];
+    if (g_v2_penalty_s[src] < 600) g_v2_penalty_s[src] *= 2;
+    ESP_LOGW("radar_bg", "v2 states(src %d) rate limited -- backing off %us",
+             src, (unsigned) g_v2_penalty_s[src]);
+  } else if (st == 200) {
+    g_v2_penalty_s[src] = 60;   // 成功就歸位,下次從最短退避開始
+    g_v2_consec_fail[src] = 0;
+  }
   if (st != 200 || r.empty()) {
+    // 連線層失敗(st<=0)連續兩次也退避:伺服器切線式限速不會給 429。
+    if (st <= 0 && ++g_v2_consec_fail[src] >= 2) {
+      uint32_t now = millis() / 1000;
+      g_v2_cooldown_until[src] = now + g_v2_penalty_s[src];
+      if (g_v2_penalty_s[src] < 600) g_v2_penalty_s[src] *= 2;
+      ESP_LOGW("radar_bg", "v2 states(src %d) connect fail x%u -- backing off %us",
+               src, (unsigned) g_v2_consec_fail[src], (unsigned) g_v2_penalty_s[src]);
+    }
     ESP_LOGW("radar_bg", "v2 states(src %d) failed: %d (%u bytes)", src, st, (unsigned) r.size());
     return false;
   }
@@ -431,7 +459,11 @@ inline void do_states(const Job &j) {
   // 對所有人一律 403(不是我們被封)。原本的順序等於每一輪都先浪費一次必定失敗
   // 的 TLS 連線,才輪到真正能用的來源 —— 也讓 adsb.lol 更容易撞到它的速率限制。
   // 保留它當第二順位:如果哪天恢復開放,不必改碼就會自己回來。
-  if (!do_states_v2(j, 2)) do_states_v2(j, 1);   // adsb.lol → airplanes.live
+  // 429 冷卻中的來源直接跳過,不發請求(退避由 do_states_v2 記帳)。
+  uint32_t now2 = millis() / 1000;
+  bool skip2 = now2 < g_v2_cooldown_until[2];
+  if (!skip2 && !do_states_v2(j, 2) && now2 >= g_v2_cooldown_until[1])
+    do_states_v2(j, 1);   // adsb.lol → airplanes.live
 }
 
 inline void do_route(const Job &j) {
@@ -1100,6 +1132,10 @@ class CanvasPainter {
 };
 
 }  // namespace radar_bg
+// 最近一次底圖重建時,半徑內的輪廓點數(-1 = 尚未算過 / MAP 關閉)。輪廓線只在
+// 「線段至少一端落在雷達半徑內」才畫:資料載入成功(MAP Nt Np)但 near=0,就代表
+// 點全在範圍外 —— 是範圍/圖磚密度的問題,不是繪製 bug。SYS 頁的 MAP 行會顯示。
+inline volatile int g_map_near = -1;
 
 inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
                                bool map_show, bool echo_show, uint8_t atc_layers) {
@@ -1138,6 +1174,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
   if (fresh) {
     memcpy((void *) px, cache, BYTES);
   } else {
+    if (!map_show) g_map_near = -1;   // MAP 關掉就別讓 SYS 頁顯示舊的點數
     // 不要用 lv_canvas_fill_bg:它逐像素呼叫 lv_canvas_set_px,每次都重算 offset。
     // 1024x600 的 RGB 面板 GDMA 同時在吃 PSRAM 頻寬,兩者相撞會慢到每像素
     // ~230us,開機直接被 task watchdog 打死。canvas 無 alpha 且此處為不透明
@@ -1147,27 +1184,30 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
     lv_obj_invalidate(cv);   // 補回 lv_canvas_fill_bg 原本會做的失效標記
     if (map_show) {
       float coslat = cosf(lat0 * 3.14159265f / 180.0f);
-      // 輪廓分層:海岸線最亮、國界中、州/省界最暗,近距離時線一多才分得出主次。
-      // 分隔符(NAN,kind)的第二個值帶種類;舊 map_data.h 是 NAN,NAN,讀到 NAN
-      // 一律當 0=海岸線,外觀與改版前完全相同。
-      static const uint32_t MAP_KIND_COLOR[3] = {0xD8C878, 0x9A8B54, 0x685E38};
+      // 輪廓分層:海岸線最亮、國界次之、州/省界更暗、縣市/郡界最暗,近距離時線
+      // 一多才分得出主次(每階約前一階的七成亮度)。分隔符(NAN,kind)的第二個
+      // 值帶種類;舊 map_data.h 是 NAN,NAN,讀到 NAN 一律當 0=海岸線,外觀與改版
+      // 前完全相同。kind 3 由 make_tiles.py 的 --add-geojson FILE:KIND 產生。
+      static const uint32_t MAP_KIND_COLOR[4] = {0xD8C878, 0x9A8B54, 0x685E38, 0x494227};
       uint16_t col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[0]));   // 淡黃色輪廓線
       float r2 = rng * rng;
       bool have_prev = false;
       lv_point_t prev{0, 0};
       float pd2 = 1e18f;
+      int near_pts = 0;
       for (int i = 0; i + 1 < MAP_OUTLINE_LEN; i += 2) {
         float la = MAP_OUTLINE[i], lo = MAP_OUTLINE[i + 1];
         if (isnan(la)) {
           have_prev = false;
           uint8_t kind = isnan(lo) ? 0 : (uint8_t) lo;
-          if (kind > 2) kind = 2;
+          if (kind > 3) kind = 3;
           col = lv_color_to_u16(lv_color_hex(MAP_KIND_COLOR[kind]));
           continue;
         }
         float e = (lo - lon0) * 111.320f * coslat;
         float n = (la - lat0) * 110.574f;
         float d2 = e * e + n * n;
+        if (d2 <= r2) near_pts++;   // 診斷:半徑內的點數(SYS 頁 MAP 行)
         lv_point_t p;
         p.x = (lv_coord_t) (RADAR_CX + e / rng * (float) RADAR_R);
         p.y = (lv_coord_t) (RADAR_CX - n / rng * (float) RADAR_R);
@@ -1177,6 +1217,7 @@ inline void radar_rebuild_base(lv_obj_t *cv, float lat0, float lon0, float rng,
         pd2 = d2;
         have_prev = true;
       }
+      g_map_near = near_pts;
     }
     if (cache) {
       memcpy(cache, px, BYTES);
@@ -1844,14 +1885,39 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
   radar_sil_set(img, sil, s ? s->span_dm : 0);
 }
 
-// ---- 系統資訊(i 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角六個 label ----
-inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,
-                               lv_obj_t *l2, lv_obj_t *l3, lv_obj_t *l4, int rssi) {
+// ---- 系統資訊(SYS 鈕):CPU / RAM / PSRAM / FLASH / 運行時間 / API 額度 填入右下角 label ----
+// sq(SQUAWK 列)在系統資訊模式下挪給 MAP 狀態專用:800x480 右下面板只有
+// 292px 寬(font_mono 一字 11.3px ≈ 26 字),「FLASH .. APP .. MAP ..」塞同一行
+// 會被螢幕右緣切掉——切掉的偏偏就是要使用者回報的 MAP 欄位(issue #7)。
+// 拆成兩行後各 ≤ 24 字都放得下,且 MAP 提到第二列更醒目。
+inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *sq,
+                               lv_obj_t *l1, lv_obj_t *l2, lv_obj_t *l3,
+                               lv_obj_t *l4, int rssi) {
   char b[48];
   lv_label_set_text(cs, "SYSTEM");
   snprintf(b, sizeof(b), "ESP32-S3 %uMHz   RSSI %d",
            (unsigned) esp_rom_get_cpu_ticks_per_us(), rssi);
   lv_label_set_text(route, b);
+  // 地圖狀態:**這是使用者唯一看得到它的地方**。Guition 那塊板的 I2C 佔用
+  // GPIO19/20(原生 USB 資料腳),app 一啟動 USB serial 就死,拿不到開機 log;
+  // 而地圖在 Wi-Fi 之前就載入,web UI 的 log 也接不到。沒有這一行,「地圖不顯示」
+  // 只能靠猜是下載、儲存還是繪製出問題(issue #7)。
+  //   MAP 2t 3075p = 2 張圖磚、3075 個輪廓點 → 資料在,問題在繪製
+  //   MAP none     = 分割區裡沒有有效地圖 → 問題在下載或儲存
+  // 尾碼 Nnr = 半徑內的輪廓點數(底圖重建時順手統計):0nr 但點數正常,代表點全在
+  // 雷達半徑外 —— 是範圍/圖磚密度的問題,不是畫不出來(issue #7 的 Will:
+  // MAP 1t 688p 卻整片空白,先用這個分辨「範圍太小/資料太疏」還是投影 bug)。
+  if (maptiles::loaded) {
+    if (g_map_near >= 0)
+      snprintf(b, sizeof(b), "MAP %dt %up %dnr",
+               maptiles::stored_tiles, (unsigned) (maptiles::OUTLINE.size() / 2),
+               g_map_near);
+    else
+      snprintf(b, sizeof(b), "MAP %dt %up",
+               maptiles::stored_tiles, (unsigned) (maptiles::OUTLINE.size() / 2));
+  } else
+    snprintf(b, sizeof(b), "MAP none");
+  lv_label_set_text(sq, b);
   snprintf(b, sizeof(b), "RAM   %4u / %4u KB",
            (unsigned) (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
            (unsigned) (heap_caps_get_total_size(MALLOC_CAP_INTERNAL) / 1024));
@@ -1863,19 +1929,8 @@ inline void radar_show_sysinfo(lv_obj_t *cs, lv_obj_t *route, lv_obj_t *l1,
   uint32_t fsz = 0;
   esp_flash_get_size(nullptr, &fsz);
   const esp_partition_t *ap = esp_ota_get_running_partition();
-  // 地圖狀態也放這裡:同樣是儲存相關,而且**這是使用者唯一看得到它的地方**。
-  // Guition 那塊板的 I2C 佔用 GPIO19/20(原生 USB 資料腳),app 一啟動 USB serial
-  // 就死,拿不到開機 log;而地圖在 Wi-Fi 之前就載入,web UI 的 log 也接不到。
-  // 沒有這一行,「地圖不顯示」只能靠猜是下載、儲存還是繪製出問題(issue #7)。
-  //   MAP 2t 3075p = 2 張圖磚、3075 個輪廓點 → 資料在,問題在繪製
-  //   MAP none     = 分割區裡沒有有效地圖 → 問題在下載或儲存
-  if (maptiles::loaded)
-    snprintf(b, sizeof(b), "FLASH %u MB  APP %.1f MB  MAP %dt %up",
-             (unsigned) (fsz >> 20), ap ? ap->size / 1048576.0f : 0.0f,
-             maptiles::stored_tiles, (unsigned) (maptiles::OUTLINE.size() / 2));
-  else
-    snprintf(b, sizeof(b), "FLASH %u MB  APP %.1f MB  MAP none",
-             (unsigned) (fsz >> 20), ap ? ap->size / 1048576.0f : 0.0f);
+  snprintf(b, sizeof(b), "FLASH %u MB  APP %.1f MB",
+           (unsigned) (fsz >> 20), ap ? ap->size / 1048576.0f : 0.0f);
   lv_label_set_text(l3, b);
   uint32_t up = (uint32_t) (esp_timer_get_time() / 1000000LL);
   if (radar_bg::g_last_src > 0)   // 免費來源(手選或 fallback):無額度,顯示來源名

@@ -1,14 +1,109 @@
 # Changelog
 
-Notable changes per release. Dates are the tag dates; `Unreleased` is what is on `main`
-right now. Anything that changes how you flash or upgrade is called out first, because
-that is the part that costs you time.
+Notable changes per release. Anything that changes how you flash or upgrade is called
+out first, because that is the part that costs you time.
+
+## [v1.3.9] — 2026-09-07
+
+### Added
+
+- **The display can be flipped 180°** so the power cord can leave the case on either
+  side (#14). Set `disp_rotation: "180°"` and `touch_mirror: "true"` together in the
+  entry file — LVGL resets the display's own rotation once it takes over, so the GT911
+  needs the matching mirror or taps land in the opposite corner. On the `mipi_rgb`
+  boards it is free: ESPHome folds the rotation into the panel's MADCTL and leaves the
+  software rotation at zero. On the `rpi_dpi_rgb` boards LVGL rotates in software,
+  which costs a second buffer and a copy per flush. Defaults to upright everywhere.
+- **A detail pack can pick its own map brightness class.** `make_tiles.py --add-geojson`
+  now takes an optional `:KIND` suffix (`--add-geojson counties.geojson:3`), so a county
+  or district layer draws under the state borders instead of level with the coastline.
+  There is a fourth outline class for it (`0x494227`, about 70% of the state-border
+  brightness, continuing the existing ramp). The kind already travelled in the tile
+  format as a float, so this needs no format bump: firmware older than this clamps
+  kind 3 to the state-border colour and still renders the tile.
+
+### Fixed
+
+- **Tapping a crowded area selected the wrong aircraft, and on 1024x600 the icon
+  sat 4 px left and 3 px high of its own track.** The mark container carries the
+  callsign label, so its hit area is far wider than the symbol and a neighbour's
+  label often covers the aircraft you aimed at; the tap now picks the track
+  closest to the touch point (within RS(48)) and only falls back to the slot that
+  was hit. The icon offset is the other half of the same complaint: `plane.png` is
+  a fixed 28x28 image that is deliberately not scaled, while the container anchor
+  and the ATC square both follow `RADAR_SCALE`, so the YAML's `RS(6)` put the icon
+  centre off the anchor on the 1024x600 layout. The icon is now positioned from
+  the anchor instead. The 800x480 layout is unchanged, pixel for pixel. Reported
+  by @CaptainJi in #12, reimplemented here against the current tree.
+- **Connection failures back off too, not just HTTP 429s.** adsb.lol often enforces
+  its rate limit by dropping the TLS handshake mid-way (`CONN_EOF`) or aborting the
+  connection instead of answering 429, so the v1.3.8 backoff never triggered and the
+  fallback chain kept knocking every 15 s. Two consecutive transport-level failures
+  now start the same exponential backoff per source (60 → 600 s cap, reset on
+  success), which also cuts the Wi-Fi TX bursts implicated in the panel jitter.
+
+## [v1.3.8] — 2026-08-24
+
+### Added
+
+- **SYS page map status now shows how many outline points are in range** (`MAP 1t 688p 0nr`).
+  Outline segments only draw when an endpoint falls inside the radar radius, so a
+  loaded-but-blank map can mean "all points out of range" (range setting / sparse
+  tile) rather than a drawing bug. The count is tallied while rebuilding the base
+  image; it shows without the suffix until the first rebuild after boot.
+
+### Fixed
+
+- **Free-source 429s now back off instead of hammering.** When an OpenSky outage
+  falls back to adsb.lol, the 15 s free-source cadence could trip its rate limit
+  (HTTP 429) and then keep knocking every 15 s, which only prolongs the throttle.
+  A 429 now starts an exponential backoff (60 → 120 → … → 600 s cap) per source,
+  reset on the next success; a source in cooldown is skipped without a request.
+- **Wi-Fi modem sleep disabled** (`power_save_mode: none`). ESPHome's default
+  LIGHT power save buffers traffic between DTIM beacons and on some routers
+  single-packet DNS queries intermittently all time out for tens of seconds and
+  then recover — observed together with RGB-panel flicker on the generic S3
+  800x480 (issue #7 thread). The device is mains-powered, so power saving buys
+  nothing.
+
+## [v1.3.7] — 2026-08-22
+
+### Fixed
+
+- **Tapping SYS could trigger PWR instead (Guition & generic 800x480, since v1.2.x).**
+  After the map-tiles merge, late-created layers sat above the toolbar and broke hit
+  testing on its right edge — taps near SYS/PWR landed on the wrong button. The five
+  toolbar buttons are defined contiguously again and re-raised once a second; child
+  labels no longer swallow touches; SYS and PWR get slightly larger extended click
+  areas (12 px / 8 px). By @CaptainJi in #13, with a follow-up repair restoring the
+  `brt_l` label header that the original patch had dropped in both ui packages.
+
+### Added
+
+- **`tools/dev_flash.sh`** for everyday flashing: each entry builds in its own
+  `rel-dev-<entry>` directory and the script refuses to upload unless the C++ source
+  was regenerated during that run. Motivated by a real incident where a bare
+  `esphome upload radar.yaml` picked up another board's stale image from the shared
+  build dir and OTA'd it over Wi-Fi (backlight on, panel black). The README flashing
+  sections no longer suggest a bare `esphome run`.
+
+## [v1.3.6] — 2026-08-21
+
+### Fixed
+
+- **The MAP status on the SYS page was cut off on 800x480 boards.** v1.3.5 appended
+  `MAP ...` to the FLASH line, but that line runs ~34 characters against a panel that
+  fits ~26 — the screen edge trimmed exactly the part users were asked to read and
+  report (#7). The map status now gets its own line near the top of the panel
+  (reusing the SQUAWK row, which SYS info leaves empty), and the FLASH line keeps
+  just flash and app sizes. Both lines now fit on every board; no layout change,
+  so no reflash-specific notes.
 
 ## [v1.3.5] — 2026-08-20
 
 ### Added
 
-- **Map status on the system info page (the `i` button).** The FLASH line now ends with
+- **Map status on the SYS page.** The FLASH line now ends with
   `MAP 2t 3075p` (tiles loaded, outline points) or `MAP none`. That one line splits "the
   map isn't showing" into two different problems: `none` means the download or the flash
   write failed, while a tile count with a blank screen means the data is there and the
