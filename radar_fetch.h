@@ -170,6 +170,7 @@ inline volatile int g_os_remaining = -1;   // OpenSky X-Rate-Limit-Remaining(-1=
 inline bool g_want_rl = false;             // 只在 states 請求期間擷取(bg task 序列執行,無競態)
 inline volatile uint32_t g_os_cooldown_until = 0;  // OpenSky 失敗冷卻期限(millis 秒),期間走免費來源
 inline volatile int g_last_src = -1;       // 最近一次成功抓取的來源(0..4,-1=尚未成功)
+inline volatile int g_fetched_n = 0;       // 裁切 AC_SLOTS 前的架數(狀態列 AC: 用)
 // 免費 readsb 來源的 429 退避:冷卻期限(millis 秒)+ 目前的懲罰秒數(成功後歸位)。
 // 索引對齊 src:1=airplanes.live 2=adsb.lol 3=adsb.fi(0 不用)。
 // OpenSky 掛掉退到免費來源時,節奏是 poll_interval_alt 的 15 秒,曾把 adsb.lol
@@ -426,6 +427,7 @@ inline void v2_note_status(int src, int st) {
 inline void publish_states(std::vector<AcInfo> &&acs, int src) {
   std::sort(acs.begin(), acs.end(),
             [](const AcInfo &a, const AcInfo &b) { return a.dist < b.dist; });
+  g_fetched_n = (int) acs.size();           // 狀態列顯示抓到幾架
   if (acs.size() > AC_SLOTS) acs.resize(AC_SLOTS);  // 畫面只有 40 槽,多的佔 PSRAM
   xSemaphoreTake(mtx(), portMAX_DELAY);
   g_result = std::move(acs);
