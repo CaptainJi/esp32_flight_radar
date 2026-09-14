@@ -22,4 +22,10 @@ __pycache__/
 dist/
 .venv/
 
+# 本地密钥，禁止入库
+ApiKey.txt
 credentials.json
+voice_atc/.env
+voice_atc/data/audio/
+voice_atc/data/sim/
+

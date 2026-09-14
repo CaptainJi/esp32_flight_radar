@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voice ATC 联调</title>
+  <style>
+    :root {
+      --bg: #04180c;
+      --fg: #d2e6d7;
+      --accent: #00e66e;
+      --amber: #e8a020;
+      --panel: #0a2814;
+      --border: #1a5a32;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "IBM Plex Sans", "Noto Sans SC", system-ui, sans-serif;
+      background: radial-gradient(ellipse at 20% 0%, #0d3a1e, var(--bg) 55%);
+      color: var(--fg);
+    }
+    main {
+      max-width: 920px; margin: 0 auto; padding: 28px 20px 60px;
+    }
+    h1 {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-weight: 500; letter-spacing: 0.04em;
+      color: var(--accent); margin: 0 0 8px;
+    }
+    .sub { opacity: 0.75; margin-bottom: 24px; font-size: 0.95rem; }
+    .grid {
+      display: grid; gap: 16px;
+      grid-template-columns: 1fr 1fr;
+    }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px;
+    }
+    section h2 {
+      margin: 0 0 12px; font-size: 0.85rem; color: var(--amber);
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    label { display: block; font-size: 0.75rem; opacity: 0.7; margin: 8px 0 4px; }
+    input, textarea, select {
+      width: 100%; background: #02140a; color: var(--fg);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 10px; font: inherit;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    button {
+      background: var(--accent); color: #04180c; border: 0;
+      border-radius: 6px; padding: 10px 14px; font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary { background: transparent; color: var(--accent);
+      border: 1px solid var(--accent); }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    #log {
+      white-space: pre-wrap; font-family: ui-monospace, monospace;
+      font-size: 0.85rem; line-height: 1.45; min-height: 220px;
+      max-height: 420px; overflow: auto;
+    }
+    .bubble-user { color: #8fd4a8; }
+    .bubble-crew { color: #ffe08a; }
+    .meta { font-size: 0.75rem; opacity: 0.6; margin-top: 8px; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      border: 1px solid var(--border); font-size: 0.7rem; margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>VOICE ATC BRIDGE</h1>
+  <p class="sub">先在此页用文本验证「选机上下文 → MiniMax 机组回复 → TTS」。雷达固件稍后对接同一 <code>/v1/radio/turn</code>。</p>
+
+  <div class="grid">
+    <section>
+      <h2>Flight context</h2>
+      <label>Callsign</label>
+      <input id="cs" value="CPA123" />
+      <label>Type / Reg</label>
+      <div class="row">
+        <input id="ty" value="B77W" style="flex:1" />
+        <input id="reg" value="B-KPF" style="flex:1" />
+      </div>
+      <label>Route</label>
+      <input id="route" value="VHHH-ZBAA" />
+      <label>Alt m / Spd m/s / Track</label>
+      <div class="row">
+        <input id="alt" type="number" value="10668" style="flex:1" />
+        <input id="spd" type="number" value="250" style="flex:1" />
+        <input id="trk" type="number" value="015" style="flex:1" />
+      </div>
+      <label>Squawk / ICAO24</label>
+      <div class="row">
+        <input id="sq" value="6101" style="flex:1" />
+        <input id="hex" value="780A1B" style="flex:1" />
+      </div>
+    </section>
+
+    <section>
+      <h2>Radio</h2>
+      <div id="status" class="meta">checking /health …</div>
+      <label>ATC / 你说</label>
+      <textarea id="msg">CPA123, Beijing Control, say altitude.</textarea>
+      <div class="row">
+        <button type="button" class="secondary" data-p="电台检查，请回答">电台检查</button>
+        <button type="button" class="secondary" data-p="请求下降到飞行高度 240">请求下降</button>
+        <button type="button" class="secondary" data-p="Traffic in sight, maintaining present heading.">Traffic in sight</button>
+      </div>
+      <div class="row">
+        <button id="send" type="button">发送（LLM + TTS）</button>
+        <button id="clear" type="button" class="secondary">清空会话</button>
+      </div>
+      <label>会话记录</label>
+      <div id="log"></div>
+      <audio id="player" controls style="width:100%; margin-top:10px"></audio>
+    </section>
+  </div>
+</main>
+<script>
+  let sessionId = "";
+  let history = [];
+
+  const logEl = document.getElementById("log");
+  const statusEl = document.getElementById("status");
+
+  function append(role, text) {
+    const cls = role === "user" ? "bubble-user" : "bubble-crew";
+    const who = role === "user" ? "YOU" : "CREW";
+    logEl.textContent += `${who}: ${text}\n\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  async function refreshHealth() {
+    try {
+      const r = await fetch("/health");
+      const j = await r.json();
+      statusEl.innerHTML =
+        `<span class="pill">${j.mock ? "MOCK" : "LIVE"}</span>` +
+        `<span class="pill">${j.has_key ? "KEY OK" : "NO KEY"}</span>` +
+        `<span class="pill">${j.base || ""}</span>`;
+    } catch (e) {
+      statusEl.textContent = "health failed: " + e;
+    }
+  }
+
+  function flight() {
+    return {
+      callsign: cs.value.trim(),
+      type: ty.value.trim(),
+      registration: reg.value.trim(),
+      route: route.value.trim(),
+      altitude_m: Number(alt.value),
+      speed_ms: Number(spd.value),
+      track_deg: Number(trk.value),
+      squawk: sq.value.trim(),
+      icao24: hex.value.trim(),
+    };
+  }
+
+  async function send(text) {
+    const userText = (text || msg.value).trim();
+    if (!userText) return;
+    sendBtn.disabled = true;
+    append("user", userText);
+    try {
+      const r = await fetch("/v1/radio/turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          flight: flight(),
+          user_text: userText,
+          history,
+          want_audio: true,
+          session_id: sessionId,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.detail || r.statusText);
+      sessionId = j.session_id;
+      history.push({ role: "user", content: userText });
+      history.push({ role: "assistant", content: j.reply_text });
+      append("crew", j.reply_text);
+      statusEl.innerHTML += ` <span class="pill">${j.latency_ms} ms</span>`;
+      if (j.audio_url) {
+        // 浏览器不能直接播 raw PCM；用 MediaSource 太重 → 提示用 ffplay
+        // 若后续改 mp3 可直接 player.src = j.audio_url
+        player.removeAttribute("src");
+        statusEl.innerHTML += ` <span class="pill">PCM ${j.sample_rate}Hz → ${j.audio_url}</span>`;
+      }
+    } catch (e) {
+      append("crew", "[error] " + e);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  const sendBtn = document.getElementById("send");
+  sendBtn.onclick = () => send();
+  document.getElementById("clear").onclick = () => {
+    sessionId = ""; history = []; logEl.textContent = "";
+  };
+  document.querySelectorAll("button[data-p]").forEach((b) => {
+    b.onclick = () => { msg.value = b.dataset.p; send(b.dataset.p); };
+  });
+  refreshHealth();
+</script>
+</body>
+</html>
