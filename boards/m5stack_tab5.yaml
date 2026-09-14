@@ -10,22 +10,23 @@
 #  與 Waveshare P4-7B 相同的大架構(P4 + C6 hosted + mipi_dsi + sd_storage),
 #  但腳位、IO 擴展器、codec、面板 model 全不同 —— 不要混用 7B 板檔。
 #
-#  橫向 UI:面板原生直向 720×1280,LVGL 軟體旋轉 90° → 邏輯解析度 1280×720。
+#  橫向 UI:面板原生直向 720×1280,LVGL 軟體旋轉 270° → 邏輯解析度 1280×720。
+#  (ST7121 用 270°;若畫面上下顛倒可改回 90°)
 #  版面由 ui_800x480 以 ×1.5 生成(內容約 1200×720),右側約留 80px 底色;
 #  16:9 與 5:3 長寬比不同,不能單倍率剛好鋪滿且保持雷達畫布為正方形。
 #
 #  顯示驅動因出廠批次而異(見 ESPHome mipi_dsi 說明):
 #    · 2025-10-14 前:ILI9881C + GT911     → M5STACK-TAB5(預設)
 #    · 之後:ST7123 或 ST7121 整合觸控     → M5STACK-TAB5-ST7123 / -ST7121
-#  改入口檔 substitutions 的 tab5_display_model 即可;觸控平台若換 ST712x
-#  需另改下方 touchscreen(預設 GT911)。選錯 model 時常是黑屏且幾乎無 log。
+#  改入口檔 substitutions 的 tab5_display_model 即可。
+#  本檔觸控預設 st7123(ST7121/ST7123);早期機改回 gt911。選錯 model 常黑屏。
 #
 #  引腳依據:M5Stack Tab5 官方管腳表 / 原理圖,以及
 #  https://devices.esphome.io/devices/m5stack-tab5/
 # =====================================================================
 
 substitutions:
-  # 可在 radar-tab5.yaml 覆寫。ST7123/ST7121 機請改成對應 model 名。
+  # 可在 radar-tab5.yaml 覆寫。ST7123→M5STACK-TAB5-V2;ST7121→M5STACK-TAB5-ST7121
   tab5_display_model: "M5STACK-TAB5"
 
 esphome:
@@ -46,7 +47,8 @@ external_components:
   - source:
       type: local
       path: components
-    components: [storage, sd_storage]
+    # st7123: vendored from ESPHome dev (PR #12075); 2026.6.5 尚未内建
+    components: [storage, sd_storage, st7123]
 
 esp32:
   board: esp32-p4-evboard
@@ -138,6 +140,15 @@ switch:
       number: 1
     restore_mode: ALWAYS_OFF
     internal: true
+  # ST7121 顯示/觸控同 die:勿在 touchscreen.reset_pin 再脈衝復位(會沖掉已初始化狀態)。
+  # 只保持 TP_RST 釋放(高電平);LCD 復位仍由 display.reset_pin 負責。
+  - platform: gpio
+    id: tp_nreset
+    pin:
+      pi4ioe5v6408: pi4ioe1
+      number: 5
+    restore_mode: ALWAYS_ON
+    internal: true
 
 # ---- 背光 GPIO22(高電位亮,可 PWM)----
 output:
@@ -194,22 +205,40 @@ script:
       - rtttl.stop:
       - switch.turn_off: spk_pa
 
-# ---- 觸控 GT911(早期批次)。ST712x 機請改 platform / 拿掉這段 transform 再實測 ----
-touchscreen:
-  - platform: gt911
-    id: my_touch
-    display: main_display
-    interrupt_pin: GPIO23
-    update_interval: 20ms
+# ---- 顯示:原生直向,橫向由下方 lvgl.rotation 處理(須在 touchscreen 之前) ----
+display:
+  - platform: mipi_dsi
+    id: main_display
+    model: ${tab5_display_model}
     reset_pin:
       pi4ioe5v6408: pi4ioe1
-      number: 5
-    # 直向 raw → 橫向 UI:與 ESPHome Tab5 landscape 範例一致。
-    # LVGL 9 另會依 lvgl.rotation 再轉一次指標;若實機軸向反了,只改這裡。
-    transform:
-      swap_xy: true
-      mirror_x: false
-      mirror_y: true
+      number: 4
+    update_interval: never
+    auto_clear_enabled: false
+
+# LVGL 9:rotation / byte_order 寫在 lvgl(不可寫在 display)
+# Tab5 ST7121 橫向用 270°(90° 會上下顛倒)
+lvgl:
+  rotation: 270°
+  byte_order: little_endian
+
+# ---- 觸控:ST7121/ST7123 用 st7123(I²C 0x55);早期 GT911 請改回 platform: gt911 ----
+# ST7121:勿設 reset_pin(見上方 tp_nreset)。
+#
+# LVGL 9 在 lvgl.rotation=270° 時會對觸控再做一次 rotate_coordinates
+# (lvgl_esphome.cpp)。觸控必須輸出「面板原生 / display FB」座標
+# (720×1280),不要在這裡做橫向 swap——否則會雙重變換→漂移或點不到。
+# 也不要掛 interrupt_pin:一掛上 ESPHome 會停掉輪詢,Tab5 上 INT 常不穩。
+touchscreen:
+  - platform: st7123
+    id: my_touch
+    display: main_display
+    update_interval: 50ms
+    calibration:
+      x_min: 0
+      x_max: 720
+      y_min: 0
+      y_max: 1280
     on_touch:
       - lambda: |-
           if (!id(backlight).current_values.is_on()) {
@@ -239,19 +268,3 @@ touchscreen:
           }
     on_release:
       - lambda: 'id(shot_armed) = false;'
-
-# ---- 顯示:原生直向,橫向由下方 lvgl.rotation 處理 ----
-display:
-  - platform: mipi_dsi
-    id: main_display
-    model: ${tab5_display_model}
-    reset_pin:
-      pi4ioe5v6408: pi4ioe1
-      number: 4
-    update_interval: never
-    auto_clear_enabled: false
-
-# LVGL 9:rotation / byte_order 寫在 lvgl(不可寫在 display)
-lvgl:
-  rotation: 90°
-  byte_order: little_endian

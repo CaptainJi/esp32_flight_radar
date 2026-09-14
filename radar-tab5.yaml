@@ -1,14 +1,16 @@
 # =============================================================
 # Flight Radar — M5Stack Tab5 (ESP32-P4 + C6 Wi-Fi)
 #   5" 1280×720 landscape UI (panel native 720×1280, LVGL 90°)
-#   GT911 touch (early units) / see board file for ST712x notes
+#   Touch: st7123 (ST7121/ST7123); early units use GT911 in board file
 #
 # Same shared firmware as radar-p4-7b.yaml; only board + UI differ.
 # Flash from the `lvgl9` line of development (ESPHome 2026.6.x / LVGL 9).
 #
-# 若螢幕全黑但觸控有反應:多半是顯示驅動批次不符,在下方把
-# tab5_display_model 改成 M5STACK-TAB5-ST7123 或 M5STACK-TAB5-ST7121
-# (機身背面標籤;標 ST7123 仍可能是 ST7121,需試)。
+# 顯示驅動(看機身背面貼紙;選錯常黑屏且幾乎無 log):
+#   M5STACK-TAB5         — 早期 ILI9881C + GT911
+#   M5STACK-TAB5-V2      — ST7123(ESPHome 2026.6.x 名;新版別名 ST7123)
+#   M5STACK-TAB5-ST7121  — 2026-04 後 ST7121(本機;需本倉庫 st7123 外部組件)
+# ESPHome 2026.6.5 無內建 ST7121 model:python tools/patch_esphome_tab5_st7121.py
 # =============================================================
 
 substitutions:
@@ -21,8 +23,8 @@ substitutions:
   f_clock: "96"
   f_mono: "27"
   f_tiny: "21"
-  # 預設早期 ILI9881C+GT911;新機改 ST7123 / ST7121
-  tab5_display_model: "M5STACK-TAB5"
+  # 本機貼紙 ST7121
+  tab5_display_model: "M5STACK-TAB5-ST7121"
 
 packages:
   core:  !include common/core.yaml
