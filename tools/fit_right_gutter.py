@@ -46,6 +46,12 @@ def main() -> None:
             out.append(line)
             continue
 
+        # when we see a new list item at page widget level (indent matching `- button:` etc), reset last_x unless this item sets x
+        if stripped.startswith("-"):
+            # 新同级列表项:勿继承上一项的 x,否则无绝对坐标的 keyboard
+            # (align: BOTTOM_MID) 会被误拉宽超出屏宽
+            last_x = None
+
         # 离开右侧容器(严格更外层;同级 widgets/bg_color 等不得清掉)
         if right_indent is not None and indent < right_indent:
             right_indent = None

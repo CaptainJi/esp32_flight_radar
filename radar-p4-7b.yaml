@@ -22,5 +22,6 @@ substitutions:
 
 packages:
   core:  !include common/core.yaml
+  alarm: !include common/alarm.yaml
   board: !include boards/waveshare_esp32p4_dsi_1024x600.yaml
   ui:    !include ui/ui_1024x600.yaml

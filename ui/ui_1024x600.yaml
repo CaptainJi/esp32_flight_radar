@@ -5072,6 +5072,7 @@ lvgl:
             on_click:
               # Tab5 以 RADAR_NO_ALARM 停响铃/巡检;闹钟页仍可进(不响)
               - lvgl.page.show: alarm_page
+              - script.execute: hide_dd_symbols
               - script.execute: alarm_refresh
               - script.execute: spk_dd_refresh
               - lambda: |-
@@ -5110,6 +5111,7 @@ lvgl:
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x006030), 0);
               - lvgl.page.show: settings_page
+              - script.execute: hide_dd_symbols
         - line:
             points: ["613, 185", "998, 185"]
             line_color: 0x003820
@@ -5496,17 +5498,19 @@ lvgl:
                         c.perform();
                     - script.execute: voice_vol_beep
               # 旁路特效:默认关;开=服务端加无线电干扰/飞行背景
+              # 中文 label 需更高:font_small CJK 行高易裁切底部
               - button:
                   id: call_rfx_btn
                   x: 10
-                  y: 295
+                  y: 290
                   width: 180
-                  height: 43
+                  height: 50
                   checkable: true
                   radius: 5
                   bg_color: 0x040C08
                   border_width: 1
                   border_color: 0x00A050
+                  pad_all: 0
                   checked: { bg_color: 0x00A050, border_color: 0x00A050 }
                   widgets:
                     - label: { id: call_rfx_l, align: CENTER, text: "干扰", text_font: font_small, text_color: 0x00E66E }
@@ -5520,14 +5524,15 @@ lvgl:
               - button:
                   id: call_fbg_btn
                   x: 195
-                  y: 295
+                  y: 290
                   width: 180
-                  height: 43
+                  height: 50
                   checkable: true
                   radius: 5
                   bg_color: 0x040C08
                   border_width: 1
                   border_color: 0x00A050
+                  pad_all: 0
                   checked: { bg_color: 0x00A050, border_color: 0x00A050 }
                   widgets:
                     - label: { id: call_fbg_l, align: CENTER, text: "背景", text_font: font_small, text_color: 0x00E66E }
@@ -5541,12 +5546,13 @@ lvgl:
               - button:
                   id: call_talk_btn
                   x: 10
-                  y: 343
+                  y: 345
                   width: 365
-                  height: 45
+                  height: 50
                   radius: 5
                   bg_color: 0x00C060
                   border_width: 0
+                  pad_all: 0
                   widgets:
                     - label: { align: CENTER, text: "自由对话", text_font: font_small, text_color: 0x04180C }
                   on_click:
@@ -5635,14 +5641,15 @@ lvgl:
 
         - keyboard:
             id: call_kb
-            align: BOTTOM_MID
+            align: BOTTOM_LEFT
+            x: 0
             y: 0
             width: 1000
             height: 275
             mode: TEXT_LOWER
             text_font: montserrat_18
             bg_color: 0x0A1810
-            pad_all: 4
+            pad_all: 3
             hidden: true
             items:
               bg_color: 0x0A2416
@@ -5952,10 +5959,10 @@ lvgl:
             text: "s"
             text_font: font_small
             text_color: 0x6E8273
-        # SET / CANCEL
+        # SET / CANCEL — 右上角(與 NETWORK 頁 SAVE/BACK 同區),避免與數字鍵/TZ 互擋
         - button:
-            x: 38
-            y: 238
+            x: 675
+            y: 70
             width: 138
             height: 53
             radius: 8
@@ -5988,8 +5995,8 @@ lvgl:
                   }
               - lvgl.page.show: main_page
         - button:
-            x: 188
-            y: 238
+            x: 835
+            y: 70
             width: 138
             height: 53
             radius: 8
@@ -6001,11 +6008,12 @@ lvgl:
             on_click:
               - lvgl.page.show: main_page
         # 背光關閉時是否持續抓取(勾選=關屏也更新;耗 API 額度,估算列會反映)
+        # TZ 底≈414;1.5× 後屏高 720 → y≤440 才不裁底;與 TZ 留 ≥12px
         - button:
             id: poff_btn
             x: 38
-            y: 470
-            width: 348
+            y: 543
+            width: 450
             height: 48
             radius: 5
             checkable: true
@@ -6019,7 +6027,7 @@ lvgl:
               - label:
                   id: poff_btn_l
                   align: CENTER
-                  text: "UPDATE WHEN SCREEN OFF"
+                  text: "POLL WHEN OFF"
                   text_font: font_small
                   text_color: 0x00C060
             on_click:
@@ -6065,6 +6073,49 @@ lvgl:
                            id(radar_range).state * (imp ? 0.6214f : 1.0f));
                   lv_textarea_set_text((lv_obj_t *) id(ta_rng), rb);
                   lv_label_set_text(id(rng_unit_l), imp ? "mi" : "km");
+        # 時區(原在鬧鐘頁;Tab5 無鬧鐘頁後改放設定頁)
+        - label: { x: 38, y: 480, text: "TZ", text_font: font_small, text_color: 0x9AE6B4 }
+        - dropdown:
+            id: tz_dd
+            x: 185
+            y: 470
+            width: 350
+            height: 48
+            text_font: font_small
+            text_color: 0x9AE6B4
+            bg_color: 0x0A2416
+            border_width: 1
+            border_color: 0x00A050
+            dropdown_list:
+              bg_color: 0x0A2416
+              text_color: 0x9AE6B4
+              text_font: font_small
+              border_width: 1
+              border_color: 0x006030
+              radius: 8
+              selected:
+                bg_color: 0x00C060
+                text_color: 0x04180C
+            # 顯示名的 index 必須對齊 radar_bg::tz_posix() 的 POSIX 陣列
+            options:
+              - "TAIPEI (UTC+8)"
+              - "TOKYO (UTC+9)"
+              - "SHANGHAI (UTC+8)"
+              - "HONG KONG (UTC+8)"
+              - "SEOUL (UTC+9)"
+              - "BANGKOK (UTC+7)"
+              - "LONDON (UTC+0)"
+              - "PARIS (UTC+1)"
+              - "BERLIN (UTC+1)"
+              - "NEW YORK (UTC-5)"
+              - "LOS ANGELES (UTC-8)"
+              - "UTC"
+            on_value:
+              - lambda: |-
+                  int i = (int) x;
+                  if (i == id(tz_sel)) return;
+                  id(tz_sel) = i;
+                  id(rtc_time).set_timezone(radar_bg::tz_posix(i));
         # 航班資料來源(下拉;index=data_src)
         # 0=OpenSky 1=A.LIVE 2=ADSB.LOL 3=ADSB.FI 4=MERGE(多源合併,預設)
         - label: { x: 38, y: 315, text: "ADS-B SRC", text_font: font_small, text_color: 0x9AE6B4 }
@@ -6243,7 +6294,8 @@ lvgl:
             border_width: 1
             border_color: 0x00A050
             widgets:
-              - label: { align: CENTER, text: ".", text_font: font_mid, text_color: 0x00C060 }
+              # font_mid 的 '.' 位图像素极矮,放大后像空键/方框;montserrat 句点清晰
+              - label: { align: CENTER, text: ".", text_font: montserrat_18, text_color: 0x00C060 }
             on_click:
               - lambda: |-
                   lv_obj_t *ta = id(kb_target) == 0 ? (lv_obj_t *) id(ta_lat)
@@ -6527,14 +6579,16 @@ lvgl:
               - lvgl.page.show: main_page
         - keyboard:
             id: cfg_kb
-            align: BOTTOM_MID
+            # 贴底左对齐撑满屏宽;BOTTOM_MID+缩水宽度在 Tab5 旋转后易裁切侧栏键
+            align: BOTTOM_LEFT
+            x: 0
             y: 0
             width: 1000
             height: 300
             mode: TEXT_LOWER
             text_font: montserrat_18
             bg_color: 0x0A1810
-            pad_all: 4
+            pad_all: 3
             items:
               bg_color: 0x0A2416
               text_color: 0x00C060
@@ -7421,51 +7475,6 @@ lvgl:
                   call.set_value(id(spk_ids)[i]);
                   call.perform();
         # ===== 時間選擇覆蓋層(點列上的時間開啟,預設隱藏;al_edit=編輯中的鬧鐘)=====
-        # ===== 時區設定(鬧鐘列壓縮後騰出的底部空間;呼應喇叭下拉的視覺)=====
-        - label: { x: 25, y: 495, text: "TIMEZONE", text_font: font_tiny, text_color: 0x9AE6B4 }
-        - dropdown:
-            id: tz_dd
-            x: 25
-            y: 525
-            width: 375
-            height: 55
-            text_font: font_small
-            text_color: 0x9AE6B4
-            bg_color: 0x0A2416
-            border_width: 1
-            border_color: 0x006030
-            dropdown_list:
-              bg_color: 0x0A2416
-              text_color: 0x9AE6B4
-              text_font: font_small
-              border_width: 1
-              border_color: 0x006030
-              radius: 8
-              selected:
-                bg_color: 0x00C060
-                text_color: 0x04180C
-            # 顯示名的 index 必須對齊 radar_bg::tz_posix() 的 POSIX 陣列
-            # 括號內為標準時間偏移;有日光節約的時區(LONDON/PARIS/BERLIN/NEW YORK/
-            # LOS ANGELES)夏季實際會 +1,實際換算由 tz_posix() 的 POSIX 字串處理
-            options:
-              - "TAIPEI (UTC+8)"
-              - "TOKYO (UTC+9)"
-              - "SHANGHAI (UTC+8)"
-              - "HONG KONG (UTC+8)"
-              - "SEOUL (UTC+9)"
-              - "BANGKOK (UTC+7)"
-              - "LONDON (UTC+0)"
-              - "PARIS (UTC+1)"
-              - "BERLIN (UTC+1)"
-              - "NEW YORK (UTC-5)"
-              - "LOS ANGELES (UTC-8)"
-              - "UTC"
-            on_value:
-              - lambda: |-
-                  int i = (int) x;
-                  if (i == id(tz_sel)) return;          // set_selected_index 會回打,值沒變就跳過
-                  id(tz_sel) = i;
-                  id(rtc_time).set_timezone(radar_bg::tz_posix(i));
         - obj:
             id: tp_overlay
             x: 263

@@ -1,0 +1,210 @@
+# =============================================================
+# Alarm UI scripts — only included by boards that ship alarm_page.
+# Tab5 (RADAR_NO_ALARM) uses board-level stubs instead and omits this
+# package so alarm widgets are not compiled in.
+# =============================================================
+
+esphome:
+  on_boot:
+    - priority: -90
+      then:
+        - lambda: |-
+            lv_obj_clear_flag(id(alarm_page)->obj, LV_OBJ_FLAG_SCROLLABLE);
+            LvDropdownType *dds[5] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd) };
+            for (auto *d : dds) {
+              if (d == nullptr || d->obj == nullptr) continue;
+              lv_dropdown_set_symbol(d->obj, nullptr);
+            }
+
+script:
+  - id: start_alarm            # 開始響鈴:亮背光、顯示面板、發聲
+    mode: single
+    then:
+      - lambda: |-
+          id(alarm_ringing) = true;
+          if (!id(backlight).current_values.is_on()) {
+            auto c = id(backlight).turn_on(); c.perform();
+          }
+          lv_obj_clear_flag((lv_obj_t *) id(alarm_overlay), LV_OBJ_FLAG_HIDDEN);
+      - lambda: 'id(ring_last_ms) = millis();'
+      - lvgl.page.show: main_page
+      - script.execute: fire_alarm
+
+  - id: stop_alarm             # 關閉鬧鐘:停聲、收面板、清貪睡
+    mode: single
+    then:
+      - lambda: |-
+          id(alarm_ringing) = false;
+          id(snooze_at) = 0;
+          lv_obj_add_flag((lv_obj_t *) id(alarm_overlay), LV_OBJ_FLAG_HIDDEN);
+      - script.execute: hush_alarm
+
+  - id: snooze_alarm           # 貪睡:停聲、收面板、9 分鐘後再響
+    mode: single
+    then:
+      - lambda: |-
+          id(alarm_ringing) = false;
+          auto t = id(rtc_time).now();
+          if (t.is_valid()) id(snooze_at) = (uint32_t) t.timestamp + 540;   // 9 分鐘
+          lv_obj_add_flag((lv_obj_t *) id(alarm_overlay), LV_OBJ_FLAG_HIDDEN);
+      - script.execute: hush_alarm
+
+  # 發聲/停聲都看目標是不是板載喇叭:是 → 走 board 套件的 local_ring_*(rtttl),
+  # 否則 → 走 HA 的 media_player(需在 HA 裝置頁允許執行動作)。
+  - id: fire_alarm             # 觸發響鈴
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return alarmpk::is_local_spk(id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk));'
+          then:
+            - script.execute: local_ring_start
+          else:
+            - homeassistant.action:
+                action: media_player.play_media
+                data:
+                  entity_id: !lambda 'return id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk);'
+                  media_content_id: !lambda 'return id(alarm_media).state;'
+                  media_content_type: music
+
+  - id: hush_alarm             # 停止響鈴(DISMISS/SNOOZE 共用)
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return alarmpk::is_local_spk(id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk));'
+          then:
+            - script.execute: local_ring_stop
+          else:
+            - homeassistant.action:
+                action: media_player.media_stop
+                data:
+                  entity_id: !lambda 'return id(ring_spk).empty() ? id(alarm_speaker).state : id(ring_spk);'
+
+  - id: alarm_refresh          # 依 globals 重繪鬧鐘頁所有欄位
+    mode: single
+    then:
+      - lambda: |-
+          uint32_t A[4] = { id(al0), id(al1), id(al2), id(al3) };
+          lv_obj_t *en[4]  = { id(a0_en), id(a1_en), id(a2_en), id(a3_en) };
+          lv_obj_t *enl[4] = { id(a0_enl), id(a1_enl), id(a2_enl), id(a3_enl) };
+          lv_obj_t *tl[4]  = { id(a0_tl), id(a1_tl), id(a2_tl), id(a3_tl) };
+          lv_obj_t *wd[4][7] = {
+            { id(a0d0),id(a0d1),id(a0d2),id(a0d3),id(a0d4),id(a0d5),id(a0d6) },
+            { id(a1d0),id(a1d1),id(a1d2),id(a1d3),id(a1d4),id(a1d5),id(a1d6) },
+            { id(a2d0),id(a2d1),id(a2d2),id(a2d3),id(a2d4),id(a2d5),id(a2d6) },
+            { id(a3d0),id(a3d1),id(a3d2),id(a3d3),id(a3d4),id(a3d5),id(a3d6) } };
+          for (int i = 0; i < 4; i++) {
+            bool e = alarmpk::en(A[i]);
+            if (e) lv_obj_add_state(en[i], LV_STATE_CHECKED);
+            else   lv_obj_clear_state(en[i], LV_STATE_CHECKED);
+            lv_label_set_text(enl[i], e ? "ON" : "OFF");
+            lv_obj_set_style_text_color(enl[i], lv_color_hex(e ? 0x04180C : 0x6E8273), 0);
+            char b[8];
+            snprintf(b, sizeof(b), "%02d:%02d", alarmpk::hh(A[i]), alarmpk::mm(A[i]));
+            lv_label_set_text(tl[i], b);
+            for (int k = 0; k < 7; k++) {
+              bool on = alarmpk::day_on(A[i], k);
+              if (on) lv_obj_add_state(wd[i][k], LV_STATE_CHECKED);
+              else    lv_obj_clear_state(wd[i][k], LV_STATE_CHECKED);
+            }
+          }
+
+  - id: spk_dd_refresh         # 各喇叭下拉選單顯示其目標(鬧鐘 1-4 專屬/預設)目前指派的喇叭
+    mode: single
+    then:
+      - lambda: |-
+          // 注意:dropdown 的 id() 是 LvDropdownType*(compound),不可硬轉 lv_obj_t*
+          LvDropdownType *dd[5] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd) };
+          esphome::text::Text *t[5] = { id(al_spk0), id(al_spk1), id(al_spk2),
+                                        id(al_spk3), id(alarm_speaker) };
+          for (int k = 0; k < 5; k++) {
+            std::string cur = t[k]->state;
+            for (size_t j = 0; j < id(spk_ids).size(); j++)
+              if (id(spk_ids)[j] == cur) {
+                dd[k]->set_selected_index(j, LV_ANIM_OFF);
+                break;
+              }
+          }
+
+  - id: spk_scan               # 掃描 HA 的 media_player 清單 → 背景抓,結果填入 5 個下拉選單
+    mode: single
+    then:
+      - lambda: |-
+          LvDropdownType *dd[5] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd) };
+          // 板載喇叭永遠排第一,不依賴 HA:沒填 token 也選得到(見 alarm.h)
+          id(spk_ids).clear();
+          std::vector<std::string> names;
+          #if RADAR_LOCAL_SPK
+          id(spk_ids).push_back(alarmpk::LOCAL_SPK_ID);
+          names.push_back(alarmpk::LOCAL_SPK_NAME);
+          #endif
+          if (id(ha_token).state.empty()) {
+            names.push_back("SET HA TOKEN FIRST");   // 只是提示,選它不會寫入實體
+            for (auto *d : dd) d->set_options(names);
+            id(spk_dd_refresh).execute();
+            return;
+          }
+          std::string url = id(ha_url).state;
+          if (url.empty()) url = "http://homeassistant.local:8123";
+          names.push_back("SCANNING ...");
+          for (auto *d : dd) d->set_options(names);
+          radar_bg::request_speakers(url, id(ha_token).state);
+
+  - id: tp_open                # 開啟時間選擇覆蓋層,捲輪定位到 al_edit 那組的時分
+    mode: single
+    then:
+      - lambda: |-
+          uint32_t A[4] = { id(al0), id(al1), id(al2), id(al3) };
+          int i = id(al_edit);
+          char b[12];
+          snprintf(b, sizeof(b), "ALARM %d", i + 1);
+          lv_label_set_text(id(tp_title), b);
+          // 注意:roller 的 id() 是 LvRollerType*(compound),不可硬轉 lv_obj_t*
+          id(tp_hr)->set_selected_index(alarmpk::hh(A[i]), LV_ANIM_OFF);
+          id(tp_mr)->set_selected_index(alarmpk::mm(A[i]), LV_ANIM_OFF);
+          lv_obj_clear_flag((lv_obj_t *) id(tp_overlay), LV_OBJ_FLAG_HIDDEN);
+
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          // 喇叭掃描結果 → 填入鬧鐘頁 5 個下拉選單(1-4 專屬 + DEF 預設)
+          if (radar_bg::g_speakers_ready) {
+            xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
+            radar_bg::g_speakers_ready = false;
+            std::string raw = radar_bg::g_speakers;
+            int st2 = radar_bg::g_spk_status;
+            xSemaphoreGive(radar_bg::mtx());
+            // 注意:dropdown 的 id() 是 LvDropdownType*(compound),不可硬轉 lv_obj_t*
+            LvDropdownType *dd[5] = { id(a0_dd), id(a1_dd), id(a2_dd), id(a3_dd), id(spk_dd) };
+            id(spk_ids).clear();
+            std::vector<std::string> names;
+            #if RADAR_LOCAL_SPK
+            id(spk_ids).push_back(alarmpk::LOCAL_SPK_ID);   // 板載喇叭固定在第一項
+            names.push_back(alarmpk::LOCAL_SPK_NAME);
+            #endif
+            const size_t base_n = names.size();             // HA 之外已有幾項
+            if (st2 == 401 || st2 == 403) {
+              names.push_back("TOKEN INVALID");
+            } else if (st2 != 200) {
+              names.push_back("HA UNREACHABLE");
+            } else {
+              size_t pos = 0;
+              while (pos < raw.size()) {
+                size_t nl = raw.find('\n', pos);
+                if (nl == std::string::npos) nl = raw.size();
+                std::string line = raw.substr(pos, nl - pos);
+                pos = nl + 1;
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                size_t bar = line.find('|');
+                if (bar == std::string::npos || bar == 0) continue;
+                id(spk_ids).push_back(line.substr(0, bar));
+                names.push_back(line.substr(bar + 1));
+              }
+              if (names.size() == base_n) names.push_back("NO SPEAKERS FOUND");
+            }
+            for (auto *d : dd) d->set_options(names);
+            id(spk_dd_refresh).execute();   // 各選單同步顯示目前指派的喇叭
+          }
