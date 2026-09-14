@@ -90,7 +90,12 @@ def _ws_url() -> str:
     )
 
 
-def _voice_id() -> str:
+def _voice_id(lang: str = "zh") -> str:
+    if (lang or "").strip().lower() in ("en", "english", "eng"):
+        return _env(
+            "VOICE_SPEAKER_EN",
+            _env("VOICE_SPEAKER", "en_male_adam_mars_bigtts"),
+        )
     return _env("VOICE_SPEAKER", "zh_male_yunzhou_jupiter_bigtts")
 
 
@@ -104,6 +109,87 @@ def resample_pcm_s16le(pcm: bytes, src_rate: int, dst_rate: int) -> bytes:
     # audioop.ratecv state 跨 chunk；整段一次转换
     converted, _ = audioop.ratecv(pcm, 2, 1, src_rate, dst_rate, None)
     return converted
+
+
+def trim_pcm_silence(
+    pcm: bytes,
+    sample_rate: int = 16000,
+    *,
+    frame_ms: int = 20,
+    thresh: int = 180,
+    pad_frames: int = 5,
+) -> bytes:
+    """裁掉首尾近静音。
+
+    长录音（自动停满缓冲）常是前几秒有话、后面全静音；
+    若强制保留原长 25%，静音会把 duplex ASR 拖死。最短保留用绝对时长。
+    """
+    if not pcm or len(pcm) < 4:
+        return pcm
+    frame = max(1, (sample_rate * frame_ms) // 1000) * 2  # bytes, s16le mono
+    n = len(pcm) // frame
+    if n < 5:
+        return pcm
+    levels: list[int] = []
+    for i in range(n):
+        chunk = pcm[i * frame : (i + 1) * frame]
+        levels.append(audioop.rms(chunk, 2))
+    peak = max(levels) if levels else 0
+    if peak < max(120, thresh):
+        return pcm
+    first = next((i for i, v in enumerate(levels) if v >= thresh), None)
+    if first is None:
+        return pcm
+    last = next((i for i in range(n - 1, -1, -1) if levels[i] >= thresh), first)
+    a = max(0, first - pad_frames)
+    b = min(n, last + 1 + pad_frames)
+    out = pcm[a * frame : b * frame]
+    min_keep = frame * 15  # ~300ms，与原长无关
+    if len(out) < min_keep:
+        return pcm
+    return out
+
+
+def _fold_asr_piece(prev: str, piece: str) -> str:
+    """合并 ASR 片段：兼容增量 / 全量(累计)两种 delta。"""
+    piece = (piece or "").strip()
+    if not piece:
+        return prev
+    if not prev:
+        return piece
+    if piece.startswith(prev):
+        return piece
+    if prev.startswith(piece):
+        return prev
+    # 重叠后缀前缀（常见于半增量）
+    max_ov = min(len(prev), len(piece), 24)
+    for ov in range(max_ov, 0, -1):
+        if prev.endswith(piece[:ov]):
+            return prev + piece[ov:]
+    return prev + piece
+
+
+def normalize_asr_text(text: str) -> str:
+    """压缩幻觉重复：喂喂喂喂喂… → 喂喂喂。"""
+    import re
+
+    t = (text or "").strip()
+    if not t:
+        return ""
+    # 连续同一字符（含中文）最多保留 3 次
+    t = re.sub(r"(.)\1{3,}", r"\1\1\1", t, flags=re.DOTALL)
+    # 连续同一双字词：喂喂喂喂 → 喂喂
+    t = re.sub(r"(.{2,}?)\1{2,}", r"\1\1", t)
+    return t.strip()
+
+
+def _asr_event_text(evt: dict[str, Any]) -> str:
+    """优先 transcript（全量），再 delta。"""
+    for key in ("transcript", "text", "delta"):
+        v = evt.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
 
 
 def _event_id() -> str:
@@ -189,11 +275,11 @@ async def _recv_json(ws: Any, timeout: float) -> dict[str, Any]:
     return json.loads(raw)
 
 
-async def _duplex_session(instructions: str):
+async def _duplex_session(instructions: str, *, lang: str = "zh"):
     """打开 duplex 会话，yield (ws, session_id)。调用方须持有 _duplex_lock。"""
     url = _ws_url()
     headers = _voice_headers()
-    voice = _voice_id()
+    voice = _voice_id(lang)
     create = {
         "type": "session.create",
         "event_id": _event_id(),
@@ -249,12 +335,20 @@ async def _duplex_session(instructions: str):
                 pass
 
 
-async def duplex_tts(text: str, *, instructions: str = "") -> tuple[bytes, int]:
+async def duplex_tts(
+    text: str, *, instructions: str = "", lang: str = "zh"
+) -> tuple[bytes, int]:
     """用 duplex speech_text_buffer.commit 合成 PCM（默认 24 kHz）。"""
     if not text.strip():
         return b"", 24000
     # TTS 不需要机组长 system prompt，过长易拖慢/超时
-    tts_instructions = "你是机载电台语音合成器，只清晰朗读给定文本，不要额外解释。"
+    if (lang or "").strip().lower() in ("en", "english", "eng"):
+        tts_instructions = (
+            "You are an airborne radio voice synthesizer. "
+            "Read the given text clearly in English only; no extra commentary."
+        )
+    else:
+        tts_instructions = "你是机载电台语音合成器，只清晰朗读给定文本，不要额外解释。"
     if instructions:
         tts_instructions = instructions[:200] + "\n" + tts_instructions
 
@@ -262,7 +356,7 @@ async def duplex_tts(text: str, *, instructions: str = "") -> tuple[bytes, int]:
         pcm_parts: list[bytes] = []
         out_rate = 24000
         async with _duplex_lock:
-            async for ws, _sid in _duplex_session(tts_instructions):
+            async for ws, _sid in _duplex_session(tts_instructions, lang=lang):
                 await ws.send(
                     json.dumps(
                         {
@@ -313,6 +407,7 @@ async def duplex_chat_turn(
     user_text: str,
     history: list[dict[str, str]],
     want_audio: bool = True,
+    lang: str = "zh",
 ) -> tuple[str, bytes, int]:
     """端到端 duplex：写入上下文 + 用户文本，收 reply + PCM。"""
     reply_parts: list[str] = []
@@ -323,7 +418,7 @@ async def duplex_chat_turn(
     async def _run() -> None:
         nonlocal reply_final
         async with _duplex_lock:
-            async for ws, _sid in _duplex_session(instructions):
+            async for ws, _sid in _duplex_session(instructions, lang=lang):
                 items: list[dict[str, Any]] = []
                 for m in history[-8:]:
                     role = m.get("role")
@@ -426,6 +521,308 @@ async def duplex_chat_turn(
     return text, pcm, out_rate
 
 
+async def duplex_audio_turn(
+    pcm: bytes,
+    *,
+    instructions: str,
+    history: list[dict[str, str]],
+    lang: str = "zh",
+    sample_rate: int = 16000,
+    want_audio: bool = True,
+) -> tuple[str, str, bytes, int]:
+    """全双工：上传用户 PCM → 转写 + 机组回复文本 + TTS PCM。
+
+    返回 (user_transcript, reply_text, pcm_out, out_rate)。
+    """
+    if sample_rate != 16000:
+        pcm = resample_pcm_s16le(pcm, sample_rate, 16000)
+    pcm = trim_pcm_silence(pcm, 16000)
+    if len(pcm) < 320:
+        raise VolcError("录音太短或几乎无声")
+    chunk = 3200
+
+    async def _run() -> tuple[str, str, bytes, int]:
+        transcript = ""
+        live = ""
+        reply_parts: list[str] = []
+        reply_final = ""
+        pcm_parts: list[bytes] = []
+        out_rate = 24000
+
+        async with _duplex_lock:
+            async for ws, _sid in _duplex_session(instructions, lang=lang):
+                items: list[dict[str, Any]] = []
+                for m in history[-8:]:
+                    role = m.get("role")
+                    content = (m.get("content") or "").strip()
+                    if role not in ("user", "assistant") or not content:
+                        continue
+                    ctype = "input_text" if role == "user" else "text"
+                    items.append(
+                        {
+                            "type": "message",
+                            "role": role,
+                            "content": [{"type": ctype, "text": content}],
+                        }
+                    )
+                if items:
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "conversation.item.create",
+                                "event_id": _event_id(),
+                                "items": items,
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
+                    try:
+                        ack = await _recv_json(ws, timeout=5)
+                        if ack.get("type") == "error":
+                            raise VolcError(
+                                f"duplex history error: {ack.get('error') or ack}"
+                            )
+                    except TimeoutError:
+                        pass
+
+                for i in range(0, len(pcm), chunk):
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "input_audio_buffer.append",
+                                "event_id": _event_id(),
+                                "audio": base64.b64encode(pcm[i : i + chunk]).decode(
+                                    "ascii"
+                                ),
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "input_audio_buffer.commit",
+                            "event_id": _event_id(),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+
+                # 转写常很快；端到端回复经常卡住，转写后最多再等 reply_wait。
+                deadline = time.monotonic() + 40
+                reply_wait = 12.0
+                reply_deadline: float | None = None
+                got_reply = False
+                while time.monotonic() < deadline:
+                    if reply_deadline is not None and time.monotonic() >= reply_deadline:
+                        break
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    try:
+                        evt = await _recv_json(ws, timeout=min(8.0, remaining))
+                    except TimeoutError:
+                        if got_reply or pcm_parts:
+                            break
+                        if reply_deadline is not None:
+                            break
+                        continue
+                    et = evt.get("type")
+                    if et == "error":
+                        raise VolcError(f"duplex voice error: {evt.get('error') or evt}")
+                    if et in (
+                        "conversation.item.input_audio_transcription.delta",
+                        "conversation.item.input_audio_transcription.started",
+                    ):
+                        piece = _asr_event_text(evt)
+                        if piece:
+                            if isinstance(evt.get("transcript"), str) and evt[
+                                "transcript"
+                            ].strip():
+                                live = evt["transcript"].strip()
+                            else:
+                                live = _fold_asr_piece(live, piece)
+                    elif et == "conversation.item.input_audio_transcription.completed":
+                        transcript = _asr_event_text(evt) or live
+                        if not got_reply and reply_deadline is None:
+                            reply_deadline = time.monotonic() + reply_wait
+                    elif et == "conversation.item.input_audio_transcription.failed":
+                        raise VolcError(f"duplex asr failed: {evt}")
+                    elif et == "response.output_text.delta":
+                        d = evt.get("delta") or ""
+                        if d:
+                            reply_parts.append(d)
+                            got_reply = True
+                    elif et == "response.output_text.done":
+                        t = (evt.get("text") or "").strip()
+                        if t:
+                            reply_final = t
+                            got_reply = True
+                    elif et == "response.output_audio.delta" and want_audio:
+                        delta = evt.get("delta") or ""
+                        if delta:
+                            pcm_parts.append(base64.b64decode(delta))
+                            got_reply = True
+                    elif et in ("response.output_audio.done", "response.done"):
+                        if got_reply or transcript or live:
+                            break
+                    elif et == "session.closed":
+                        break
+                break
+
+        user_text = normalize_asr_text(transcript or live)
+        reply = reply_final or "".join(reply_parts).strip()
+        out = b"".join(pcm_parts)
+        if not user_text and not reply and not out:
+            raise VolcError("duplex 语音对讲无结果（可能太短/无语音）")
+        return user_text, reply, out, out_rate
+
+    try:
+        return await asyncio.wait_for(_run(), timeout=50)
+    except TimeoutError as e:
+        raise VolcError("语音对讲超时，请再录一次") from e
+
+
+async def duplex_asr(
+    pcm: bytes,
+    *,
+    lang: str = "zh",
+    sample_rate: int = 16000,
+) -> str:
+    """经全双工 duplex：上传 PCM → 取转写后 cancel 对话回复。"""
+    if sample_rate != 16000:
+        pcm = resample_pcm_s16le(pcm, sample_rate, 16000)
+    pcm = trim_pcm_silence(pcm, 16000)
+    if len(pcm) < 320:
+        raise VolcError("录音太短或几乎无声")
+    if (lang or "").strip().lower() in ("en", "english", "eng"):
+        instructions = (
+            "You are a radio speech-to-text engine. "
+            "Transcribe exactly what was spoken, including short words like hello/hey/radio check. "
+            "Do not invent extra words beyond the audio. Do not reply or chat."
+        )
+    else:
+        instructions = (
+            "你是机载电台语音转写引擎，只把音频里真实说过的话原样转成文字，"
+            "包括很短的呼叫（例如「喂」「收到」「电台检查」）。"
+            "不要凭空加长或重复；不要回答或闲聊。"
+        )
+    chunk = 3200
+
+    async def _run() -> str:
+        import logging
+
+        log = logging.getLogger("voice_atc")
+        transcript = ""
+        live = ""
+        seen: list[str] = []
+        async with _duplex_lock:
+            async for ws, _sid in _duplex_session(instructions, lang=lang):
+                for i in range(0, len(pcm), chunk):
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "input_audio_buffer.append",
+                                "event_id": _event_id(),
+                                "audio": base64.b64encode(pcm[i : i + chunk]).decode(
+                                    "ascii"
+                                ),
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "input_audio_buffer.commit",
+                            "event_id": _event_id(),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                deadline = time.monotonic() + 35
+                while time.monotonic() < deadline:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    try:
+                        evt = await _recv_json(ws, timeout=min(12.0, remaining))
+                    except TimeoutError:
+                        if transcript or live:
+                            break
+                        continue
+                    et = str(evt.get("type") or "")
+                    if et:
+                        seen.append(et)
+                    if et == "error":
+                        raise VolcError(f"duplex asr error: {evt.get('error') or evt}")
+                    if et in (
+                        "conversation.item.input_audio_transcription.delta",
+                        "conversation.item.input_audio_transcription.started",
+                    ):
+                        piece = _asr_event_text(evt)
+                        if piece:
+                            # transcript 字段多为全量；仅有 delta 时用智能合并
+                            if isinstance(evt.get("transcript"), str) and evt[
+                                "transcript"
+                            ].strip():
+                                live = evt["transcript"].strip()
+                            else:
+                                live = _fold_asr_piece(live, piece)
+                    elif et == "conversation.item.input_audio_transcription.completed":
+                        transcript = _asr_event_text(evt) or live
+                        try:
+                            await ws.send(
+                                json.dumps(
+                                    {
+                                        "type": "response.cancel",
+                                        "event_id": _event_id(),
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            )
+                        except Exception:
+                            pass
+                        break
+                    elif et == "conversation.item.input_audio_transcription.failed":
+                        raise VolcError(f"duplex asr failed: {evt}")
+                    elif et in (
+                        "response.output_text.delta",
+                        "response.output_audio.delta",
+                        "response.done",
+                    ):
+                        if transcript or live:
+                            try:
+                                await ws.send(
+                                    json.dumps(
+                                        {
+                                            "type": "response.cancel",
+                                            "event_id": _event_id(),
+                                        },
+                                        ensure_ascii=False,
+                                    )
+                                )
+                            except Exception:
+                                pass
+                            break
+                    elif et == "session.closed":
+                        break
+                break
+        raw = (transcript or live).strip()
+        text = normalize_asr_text(raw)
+        if raw != text:
+            log.info("asr normalize %r -> %r", raw[:80], text[:80])
+        if not text:
+            tail = ",".join(seen[-8:]) if seen else "(no events)"
+            raise VolcError(f"duplex ASR 未返回文本（可能太短/无语音） events={tail}")
+        return text
+
+    try:
+        return await asyncio.wait_for(_run(), timeout=45)
+    except TimeoutError as e:
+        raise VolcError("语音识别超时，请再录一次") from e
+
+
 async def radio_turn(
     *,
     system_prompt: str,
@@ -433,6 +830,7 @@ async def radio_turn(
     history: list[dict[str, str]],
     want_audio: bool = True,
     target_sample_rate: int = 16000,
+    lang: str = "zh",
 ) -> TurnResult:
     """执行一轮无线电对讲，统一输出 target_sample_rate 的 PCM。"""
     if mock_forced() or not has_live_credentials():
@@ -453,6 +851,7 @@ async def radio_turn(
             user_text=user_text,
             history=history,
             want_audio=want_audio,
+            lang=lang,
         )
         if want_audio and pcm:
             pcm = resample_pcm_s16le(pcm, rate, target_sample_rate)
@@ -469,10 +868,44 @@ async def radio_turn(
     pcm = b""
     if want_audio and text:
         try:
-            raw, rate = await duplex_tts(text)
+            raw, rate = await duplex_tts(text, lang=lang)
             pcm = resample_pcm_s16le(raw, rate, target_sample_rate)
             if not pcm:
                 raise VolcError("duplex TTS 返回空音频")
         except VolcError as e:
             raise TtsFailed(text, e) from e
     return TurnResult(text, pcm, target_sample_rate, "hybrid")
+
+
+async def asr_pcm(
+    pcm: bytes,
+    *,
+    lang: str = "zh",
+    sample_rate: int = 16000,
+) -> tuple[str, bool]:
+    """短语音识别。返回 (text, mock)。有 VOICE_API_KEY 时走 duplex 真实转写。"""
+    import logging
+
+    from prompt import normalize_lang
+
+    lang = normalize_lang(lang)
+    if not pcm or len(pcm) < 320:  # <10ms @16k s16
+        raise VolcError("录音太短")
+
+    if mock_forced() or not _env("VOICE_API_KEY"):
+        if lang == "en":
+            return "ASR mock: Radio check, please acknowledge.", True
+        return "ASR mock: 电台检查，请回答。", True
+
+    # 诊断板端麦电平（偏低时上游常只回 committed、不给转写）
+    try:
+        peak = audioop.max(pcm, 2)
+        rms = audioop.rms(pcm, 2)
+        logging.getLogger("voice_atc").info(
+            "asr pcm=%u peak=%d rms=%d lang=%s", len(pcm), peak, rms, lang
+        )
+    except Exception:
+        pass
+
+    text = await duplex_asr(pcm, lang=lang, sample_rate=sample_rate)
+    return text, False

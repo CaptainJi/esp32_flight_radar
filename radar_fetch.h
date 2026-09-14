@@ -135,6 +135,8 @@ struct Job {
              // 6 = route cache, 7 = 機型查詢(callsign 欄放 ICAO24 十六進位字串),
              // 8 = 下載地圖圖磚,
              // 9 = voice ATC(cid=完整 URL, sec=JSON body)
+             // 10 = ASR(cid=完整 URL, sec 空; body 用 g_asr_pcm)
+             // 11 = voice PCM 直发(cid=URL, sec=X-Voice-Meta JSON; body=g_asr_pcm)
   std::string cid, sec, callsign;
   float lat, lon, range;
   int src;   // 0=OpenSky 1=A.LIVE 2=ADSB.LOL 3=ADSB.FI 4=MERGE(多源合併)
@@ -169,6 +171,7 @@ inline int g_spk_status = 0;               // HTTP 狀態:200 成功 / 401 token
 
 // Voice ATC 中繼(voice_atc/):選機後文字對講 → LLM 回覆 + 可選 PCM
 inline std::string g_voice_reply;
+inline std::string g_voice_user_text;  // 语音直发时的用户转写(可空)
 inline volatile bool g_voice_ready = false;
 inline volatile bool g_voice_busy = false;
 inline int g_voice_status = 0;
@@ -176,6 +179,28 @@ inline std::vector<uint8_t> g_voice_pcm;       // 16 kHz s16le mono
 inline size_t g_voice_pcm_pos = 0;
 inline volatile bool g_voice_pcm_ready = false; // 有新 PCM 待播
 inline volatile bool g_voice_playing = false;   // 正在往喇叭餵資料
+
+// 点按录音 → ASR
+inline std::vector<uint8_t> g_asr_pcm;
+inline std::string g_asr_text;
+inline volatile bool g_asr_ready = false;
+inline volatile bool g_asr_busy = false;
+inline int g_asr_status = 0;
+static const size_t ASR_MAX_BYTES = 16000 * 2 * 8;  // 8s @16kHz s16le
+
+inline void asr_buf_clear() {
+  g_asr_pcm.clear();
+  g_asr_pcm.shrink_to_fit();
+}
+
+inline void asr_buf_append(const std::vector<uint8_t> &chunk) {
+  if (chunk.empty()) return;
+  if (g_asr_pcm.size() >= ASR_MAX_BYTES) return;
+  size_t n = chunk.size();
+  if (g_asr_pcm.size() + n > ASR_MAX_BYTES)
+    n = ASR_MAX_BYTES - g_asr_pcm.size();
+  g_asr_pcm.insert(g_asr_pcm.end(), chunk.begin(), chunk.begin() + (std::ptrdiff_t) n);
+}
 
 inline volatile int g_os_remaining = -1;   // OpenSky X-Rate-Limit-Remaining(-1=未知)
 inline bool g_want_rl = false;             // 只在 states 請求期間擷取(bg task 序列執行,無競態)
@@ -237,7 +262,9 @@ inline QueueHandle_t queue() {
 // ---- 簡易 HTTP(直接用 esp_http_client,不經 ESPHome 元件)----
 inline std::string http_req(const std::string &url, bool post, const std::string &body,
                             const char *ctype, const std::string &bearer, int &status,
-                            size_t reserve_hint = 8192, int timeout_ms = 20000) {
+                            size_t reserve_hint = 8192, int timeout_ms = 20000,
+                            const char *extra_hdr = nullptr,
+                            const std::string *extra_val = nullptr) {
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.timeout_ms = timeout_ms;
@@ -254,6 +281,8 @@ inline std::string http_req(const std::string &url, bool post, const std::string
     auth = "Bearer " + bearer;
     esp_http_client_set_header(c, "Authorization", auth.c_str());
   }
+  if (extra_hdr != nullptr && extra_val != nullptr && !extra_val->empty())
+    esp_http_client_set_header(c, extra_hdr, extra_val->c_str());
   // 記憶體不足時要「這次抓取失敗」,不能變成「整台重開」。
   // C++ 例外是關閉的(CONFIG_COMPILER_CXX_EXCEPTIONS 未設),所以 std::string
   // 配置失敗會丟 bad_alloc → __wrap___cxa_allocate_exception → abort()。
@@ -519,8 +548,9 @@ inline bool fetch_airplanes_live(const Job &j, std::vector<AcInfo> &out) {
     g_alive_cooldown_until = 0;
     return true;
   }
-  g_alive_cooldown_until = now + 60;  // 1 分鐘
-  ESP_LOGW("radar_bg", "airplanes.live cooling down 60s");
+  // 公開 API 已關/常 403：長冷卻，避免每輪白打（1 小時）
+  g_alive_cooldown_until = now + 3600;
+  ESP_LOGW("radar_bg", "airplanes.live cooling down 3600s");
   return false;
 }
 
@@ -744,16 +774,20 @@ inline void do_speakers(const Job &j) {
 }
 
 // 輕量抽 JSON 字串欄位(避開把整包含 base64 的 body 丟進 ArduinoJson)
+// 容忍 "key":"v" / "key": "v"；支援 \\uXXXX
 inline bool voice_json_str(const std::string &body, const char *key, std::string &out) {
   out.clear();
-  std::string pat = std::string("\"") + key + "\":\"";
+  std::string pat = std::string("\"") + key + "\"";
   size_t p = body.find(pat);
-  if (p == std::string::npos) {
-    // null
-    pat = std::string("\"") + key + "\":null";
-    return body.find(pat) != std::string::npos;
-  }
+  if (p == std::string::npos) return false;
   p += pat.size();
+  while (p < body.size() && (body[p] == ' ' || body[p] == '\t')) p++;
+  if (p >= body.size() || body[p] != ':') return false;
+  p++;
+  while (p < body.size() && (body[p] == ' ' || body[p] == '\t')) p++;
+  if (p < body.size() && body.compare(p, 4, "null") == 0) return true;
+  if (p >= body.size() || body[p] != '"') return false;
+  p++;  // open quote
   std::string v;
   v.reserve(128);
   for (size_t i = p; i < body.size(); i++) {
@@ -763,7 +797,35 @@ inline bool voice_json_str(const std::string &body, const char *key, std::string
       if (n == 'n') v.push_back('\n');
       else if (n == 'r') v.push_back('\r');
       else if (n == 't') v.push_back('\t');
-      else v.push_back(n);
+      else if (n == 'u' && i + 4 < body.size()) {
+        // \uXXXX → UTF-8(僅 BMP)
+        auto hex = [](char h) -> int {
+          if (h >= '0' && h <= '9') return h - '0';
+          if (h >= 'a' && h <= 'f') return h - 'a' + 10;
+          if (h >= 'A' && h <= 'F') return h - 'A' + 10;
+          return -1;
+        };
+        int h0 = hex(body[i + 1]), h1 = hex(body[i + 2]);
+        int h2 = hex(body[i + 3]), h3 = hex(body[i + 4]);
+        if (h0 >= 0 && h1 >= 0 && h2 >= 0 && h3 >= 0) {
+          unsigned cp = (unsigned) ((h0 << 12) | (h1 << 8) | (h2 << 4) | h3);
+          i += 4;
+          if (cp < 0x80) {
+            v.push_back((char) cp);
+          } else if (cp < 0x800) {
+            v.push_back((char) (0xC0 | (cp >> 6)));
+            v.push_back((char) (0x80 | (cp & 0x3F)));
+          } else {
+            v.push_back((char) (0xE0 | (cp >> 12)));
+            v.push_back((char) (0x80 | ((cp >> 6) & 0x3F)));
+            v.push_back((char) (0x80 | (cp & 0x3F)));
+          }
+          continue;
+        }
+        v.push_back(n);
+      } else {
+        v.push_back(n);
+      }
       continue;
     }
     if (c == '"') break;
@@ -831,11 +893,137 @@ inline void do_voice(const Job &j) {
   xSemaphoreTake(mtx(), portMAX_DELAY);
   g_voice_status = st;
   g_voice_reply = reply;
+  g_voice_user_text.clear();
   g_voice_pcm.swap(pcm);
   g_voice_pcm_pos = 0;
   g_voice_pcm_ready = !g_voice_pcm.empty();
   g_voice_ready = true;
   g_voice_busy = false;
+  xSemaphoreGive(mtx());
+}
+
+// Voice PCM 直发:POST raw PCM + X-Voice-Meta → /v1/radio/voice_turn
+inline void do_voice_pcm(const Job &j) {
+  int st = 0;
+  std::string pcm_body;
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  pcm_body.assign((const char *) g_asr_pcm.data(), g_asr_pcm.size());
+  g_asr_pcm.clear();
+  xSemaphoreGive(mtx());
+
+  ESP_LOGI("radar_bg", "voice_pcm POST %.80s (%u pcm meta=%u)", j.cid.c_str(),
+           (unsigned) pcm_body.size(), (unsigned) j.sec.size());
+  std::string r = http_req(j.cid, true, pcm_body, "application/octet-stream", "",
+                           st, 4096, 90000, "X-Voice-Meta", &j.sec);
+  ESP_LOGI("radar_bg", "voice_pcm http %d (%u bytes)", st, (unsigned) r.size());
+  if (st != 200 && !r.empty()) {
+    ESP_LOGW("radar_bg", "voice_pcm err: %.180s", r.c_str());
+  }
+
+  std::string reply;
+  std::string user_tx;
+  std::string audio_path;
+  if (st == 200) {
+    voice_json_str(r, "reply_text", reply);
+    voice_json_str(r, "user_text", user_tx);
+    voice_json_str(r, "audio_url", audio_path);
+    if (reply.empty() && r.size() < 8192) {
+      esphome::json::parse_json(r, [&](JsonObject root) -> bool {
+        if (!root["reply_text"].isNull())
+          reply = root["reply_text"].as<std::string>();
+        if (!root["user_text"].isNull())
+          user_tx = root["user_text"].as<std::string>();
+        if (!root["audio_url"].isNull())
+          audio_path = root["audio_url"].as<std::string>();
+        return true;
+      });
+    }
+    if (reply.empty())
+      reply = "(empty reply)";
+  } else if (st < 0) {
+    reply = "RADIO FAIL: no connect\nCheck ATC URL (WiFi)";
+  } else {
+    char b[64];
+    snprintf(b, sizeof(b), "RADIO FAIL HTTP %d", st);
+    reply = b;
+  }
+
+  std::vector<uint8_t> pcm;
+  if (st == 200 && !audio_path.empty()) {
+    std::string origin = j.cid;
+    static const char *kSufs[] = {"/v1/radio/voice_turn", "/v1/radio/turn"};
+    for (const char *suf : kSufs) {
+      const size_t sl = strlen(suf);
+      if (origin.size() >= sl && origin.compare(origin.size() - sl, sl, suf) == 0) {
+        origin.resize(origin.size() - sl);
+        break;
+      }
+    }
+    // 去掉 query
+    size_t q = origin.find('?');
+    if (q != std::string::npos) origin.resize(q);
+    if (!audio_path.empty() && audio_path[0] != '/')
+      audio_path.insert(audio_path.begin(), '/');
+    std::string aurl = origin + audio_path;
+    int ast = 0;
+    std::string raw = http_req(aurl, false, "", nullptr, "", ast, 393216, 30000);
+    ESP_LOGI("radar_bg", "voice_pcm audio http %d (%u bytes)", ast, (unsigned) raw.size());
+    if (ast == 200 && raw.size() >= 64)
+      pcm.assign(raw.begin(), raw.end());
+  }
+
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  g_voice_status = st;
+  g_voice_reply = reply;
+  g_voice_user_text = user_tx;
+  g_voice_pcm.swap(pcm);
+  g_voice_pcm_pos = 0;
+  g_voice_pcm_ready = !g_voice_pcm.empty();
+  g_voice_ready = true;
+  g_voice_busy = false;
+  xSemaphoreGive(mtx());
+}
+
+// Voice ASR:POST raw PCM 到 /v1/radio/asr?lang=&sr=
+inline void do_asr(const Job &j) {
+  int st = 0;
+  std::string pcm_body;
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  pcm_body.assign((const char *) g_asr_pcm.data(), g_asr_pcm.size());
+  g_asr_pcm.clear();
+  xSemaphoreGive(mtx());
+
+  ESP_LOGI("radar_bg", "asr POST %.80s (%u pcm)", j.cid.c_str(),
+           (unsigned) pcm_body.size());
+  std::string r = http_req(j.cid, true, pcm_body, "application/octet-stream", "",
+                           st, 2048, 30000);
+  ESP_LOGI("radar_bg", "asr http %d (%u bytes)", st, (unsigned) r.size());
+  std::string text;
+  if (st == 200) {
+    voice_json_str(r, "text", text);
+    if (text.empty() && r.size() < 4096) {
+      esphome::json::parse_json(r, [&](JsonObject root) -> bool {
+        if (!root["text"].isNull())
+          text = root["text"].as<std::string>();
+        return true;
+      });
+    }
+    if (text.empty())
+      text = "(empty asr)";
+  } else if (st < 0) {
+    text.clear();
+  } else {
+    char b[48];
+    snprintf(b, sizeof(b), "(asr HTTP %d)", st);
+    text = b;
+  }
+  ESP_LOGI("radar_bg", "asr text (%u): %.60s", (unsigned) text.size(), text.c_str());
+
+  xSemaphoreTake(mtx(), portMAX_DELAY);
+  g_asr_status = st;
+  g_asr_text = text;
+  g_asr_ready = true;
+  g_asr_busy = false;
   xSemaphoreGive(mtx());
 }
 
@@ -1103,6 +1291,8 @@ inline void task_fn(void *arg) {
       else if (j->type == 5) do_speakers(*j);
       else if (j->type == 8) do_maps(*j);
       else if (j->type == 9) do_voice(*j);
+      else if (j->type == 10) do_asr(*j);
+      else if (j->type == 11) do_voice_pcm(*j);
       delete j;
     }
   }
@@ -1152,7 +1342,7 @@ inline void request_speakers(const std::string &url, const std::string &token) {
 // 回傳 false=未入佇列(忙/滿/參數空),呼叫端應提示使用者
 inline bool request_voice(const std::string &url, const std::string &json_body) {
   if (url.empty() || json_body.empty()) return false;
-  if (g_voice_busy) {
+  if (g_voice_busy || g_asr_busy) {
     ESP_LOGW("radar_bg", "voice busy, drop");
     return false;
   }
@@ -1163,6 +1353,51 @@ inline bool request_voice(const std::string &url, const std::string &json_body) 
     g_voice_busy = false;
     delete j;
     ESP_LOGW("radar_bg", "voice queue full, drop");
+    return false;
+  }
+  return true;
+}
+
+inline bool request_asr(const std::string &url) {
+  if (url.empty()) return false;
+  if (g_voice_busy || g_asr_busy) {
+    ESP_LOGW("radar_bg", "asr busy, drop");
+    return false;
+  }
+  if (g_asr_pcm.empty()) {
+    ESP_LOGW("radar_bg", "asr empty pcm");
+    return false;
+  }
+  ensure_task();
+  g_asr_busy = true;
+  Job *j = new Job{10, url, "", "", 0, 0, 0};
+  if (xQueueSend(queue(), &j, 0) != pdTRUE) {
+    g_asr_busy = false;
+    delete j;
+    ESP_LOGW("radar_bg", "asr queue full, drop");
+    return false;
+  }
+  return true;
+}
+
+// 录音缓冲 g_asr_pcm + meta JSON → /v1/radio/voice_turn(直发对讲)
+inline bool request_voice_pcm(const std::string &url, const std::string &meta_json) {
+  if (url.empty() || meta_json.empty()) return false;
+  if (g_voice_busy || g_asr_busy) {
+    ESP_LOGW("radar_bg", "voice_pcm busy, drop");
+    return false;
+  }
+  if (g_asr_pcm.empty()) {
+    ESP_LOGW("radar_bg", "voice_pcm empty");
+    return false;
+  }
+  ensure_task();
+  g_voice_busy = true;
+  Job *j = new Job{11, url, meta_json, "", 0, 0, 0};
+  if (xQueueSend(queue(), &j, 0) != pdTRUE) {
+    g_voice_busy = false;
+    delete j;
+    ESP_LOGW("radar_bg", "voice_pcm queue full, drop");
     return false;
   }
   return true;

@@ -59,6 +59,8 @@ esphome:
       - "-DRADAR_LOCAL_SPK=1"
       - "-DRADAR_SD_EXT=1"
       - "-DTAB5_KB=1"           # Tab5 Keyboard(A164) Ext.Port1
+      - "-DTAB5_MIC=1"          # ES7210 双麦点按录音
+      - "-DTAB5_BAT=1"          # INA226 电量 + IP2326 充电状态
       - "-DRADAR_NO_ALARM=1"    # 暂关闹钟:省 RAM/CPU,优先稳住喇叭播放
 
 external_components:
@@ -145,16 +147,16 @@ esp_ldo:
   - channel: 3
     voltage: 2.5V
 
-# ---- PI4IOE5V6408:只开雷達需要的腳,其餘電源/充電/相機不掛 HA 實體 ----
+# ---- PI4IOE5V6408:只开雷達需要的腳 ----
+# pi4ioe1@0x43: P1 SPK_EN / P4 LCD_RST / P5 TP_RST
+# pi4ioe2@0x44: P0 WLAN_PWR_EN / P6 CHG_STAT(入) / P7 CHG_EN
 pi4ioe5v6408:
   - id: pi4ioe1
     i2c_id: i2c_sys
     address: 0x43
-    # P1 SPK_EN / P4 LCD_RST / P5 TP_RST
   - id: pi4ioe2
     i2c_id: i2c_sys
     address: 0x44
-    # P0 WLAN_PWR_EN — C6 供電,必須開著 Wi-Fi 才活
 
 switch:
   - platform: gpio
@@ -172,6 +174,14 @@ switch:
     # 官方 Tab5 ESPHome:speaker_enable ALWAYS_ON;高电平开 NS4150
     restore_mode: ALWAYS_ON
     internal: true
+  # 开机后须使能充电(IP2326);关机态无法充
+  - platform: gpio
+    id: charge_enable
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 7
+    restore_mode: ALWAYS_ON
+    internal: true
   # ST7121 顯示/觸控同 die:勿在 touchscreen.reset_pin 再脈衝復位(會沖掉已初始化狀態)。
   # 只保持 TP_RST 釋放(高電平);LCD 復位仍由 display.reset_pin 負責。
   - platform: gpio
@@ -181,6 +191,50 @@ switch:
       number: 5
     restore_mode: ALWAYS_ON
     internal: true
+
+# IP2326 CHG_STAT(高=充电中);也可结合 INA226 电流极性辅助判断
+binary_sensor:
+  - platform: gpio
+    id: bat_charging
+    pin:
+      pi4ioe5v6408: pi4ioe2
+      number: 6
+      mode: INPUT_PULLDOWN
+    internal: true
+
+# INA226:2S 电池总线电压/电流(官方 devices.esphome.io Tab5)
+sensor:
+  - platform: ina226
+    i2c_id: i2c_sys
+    address: 0x41
+    adc_averaging: 16
+    max_current: 8.192A
+    shunt_resistance: 0.005ohm
+    update_interval: 15s
+    bus_voltage:
+      id: battery_voltage
+      internal: true
+      accuracy_decimals: 2
+    current:
+      id: battery_current
+      internal: true
+      accuracy_decimals: 3
+      # 正=放电,负=充电(官方注释)
+  - platform: template
+    id: battery_percent
+    internal: true
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 15s
+    lambda: |-
+      float v = id(battery_voltage).state;
+      if (isnan(v) || v < 1.0f) return NAN;
+      // NP-F550 2S:满电约 8.23V,关机阈值约 6.0V(产品规格)
+      const float vmin = 6.0f, vmax = 8.23f;
+      float pct = (v - vmin) / (vmax - vmin) * 100.0f;
+      if (pct > 100.0f) pct = 100.0f;
+      if (pct < 0.0f) pct = 0.0f;
+      return pct;
 
 # ---- 背光 GPIO22(高電位亮,可 PWM)----
 output:
@@ -211,6 +265,15 @@ audio_dac:
     id: es8388_dac
     i2c_id: i2c_sys
 
+# ES7210 双麦(与 ES8388 共用 MCLK/BCLK/LRCK;DIN=GPIO28)
+audio_adc:
+  - platform: es7210
+    id: es7210_adc
+    i2c_id: i2c_sys
+    bits_per_sample: 16bit
+    sample_rate: 16000
+    mic_gain: 24db
+
 speaker:
   - platform: i2s_audio
     id: local_spk
@@ -227,6 +290,22 @@ speaker:
     use_apll: false
     buffer_duration: 800ms
     timeout: 1500ms
+
+microphone:
+  - platform: i2s_audio
+    id: tab5_mic
+    i2s_audio_id: i2s_out
+    adc_type: external
+    i2s_din_pin: GPIO28
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: left
+    pdm: false
+    # 半双工:录音时由脚本停播;不与 speaker 同时跑
+    on_data:
+      - lambda: |-
+          if (id(talk_rec_on))
+            radar_bg::asr_buf_append(x);
 
 rtttl:
   id: alarm_tone
@@ -301,7 +380,8 @@ script:
           radar_bg::g_voice_pcm_ready = false;
           radar_bg::g_voice_pcm.clear();
           radar_bg::g_voice_pcm_pos = 0;
-      - speaker.finish:
+      # stop 立即释放 I2S(finish 会等缓冲播完,麦起不来)
+      - speaker.stop:
           id: local_spk
 
 # ---- 顯示:原生直向,橫向由下方 lvgl.rotation 處理(須在 touchscreen 之前) ----
@@ -400,6 +480,9 @@ interval:
     then:
       - lambda: |-
           // 空闲早退:避免无播放时也每 10ms 占 loop
+          // 录音中禁止喂喇叭,避免与 ES7210 抢同一 I2S
+          if (id(talk_rec_on))
+            return;
           if (!radar_bg::g_voice_playing && !radar_bg::g_voice_pcm_ready)
             return;
 
@@ -462,4 +545,37 @@ interval:
               }
             }
           }
+
+  # 右上角电量/充电状态(bat_label 仅 Tab5 UI)
+  - interval: 5s
+    then:
+      - lambda: |-
+          float pct = id(battery_percent).state;
+          float v = id(battery_voltage).state;
+          float cur = id(battery_current).state;
+          bool chg = id(bat_charging).state;
+          // 电流为负也视为充电中(USB 供电时 STAT 偶发不准)
+          if (!isnan(cur) && cur < -0.05f) chg = true;
+          char buf[24];
+          uint32_t color = 0x6E8273;
+          if (isnan(pct)) {
+            snprintf(buf, sizeof(buf), "BAT --");
+          } else {
+            int p = (int) (pct + 0.5f);
+            if (p < 0) p = 0;
+            if (p > 100) p = 100;
+            if (chg) {
+              snprintf(buf, sizeof(buf), "CHG %d%%", p);
+              color = 0x00E66E;
+            } else {
+              snprintf(buf, sizeof(buf), "BAT %d%%", p);
+              if (p <= 15) color = 0xE04040;
+              else if (p <= 30) color = 0xE8A020;
+            }
+          }
+          lv_label_set_text(id(bat_label), buf);
+          lv_obj_set_style_text_color(id(bat_label), lv_color_hex(color), 0);
+          if (!isnan(v))
+            ESP_LOGD("radar_bg", "bat %.2fV %.0f%% cur=%.3fA chg=%d",
+                     v, isnan(pct) ? -1.0f : pct, isnan(cur) ? 0.0f : cur, (int) chg);
 

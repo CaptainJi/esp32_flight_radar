@@ -5063,6 +5063,15 @@ lvgl:
                   lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_ssid));
                   radar_kb_focus((lv_obj_t *) id(ta_ssid));
               - lvgl.page.show: config_page
+        # Tab5:INA226 电量 + IP2326 充电状态(板档 interval 刷新)
+        - label:
+            id: bat_label
+            x: 1095
+            y: 14
+            width: 112
+            text: "BAT --"
+            text_font: font_tiny
+            text_color: 0x6E8273
         - label:
             id: clock_label
             align: TOP_MID
@@ -5349,13 +5358,13 @@ lvgl:
               - label: { id: spec_l6, x: 11, y: 257, width: 510, text: " ", text_font: font_mono, text_color: 0x7E9284 }
 
         # ===== 模擬通話面板(選機後按 CALL;短語 + 自由對講)=====
-        # 高度對齊右側資訊區(200..446=246);按鈕尺寸對齊 atc_panel asp_btn(138×44)
+        # 底部 VOL / 特效 / 自由对话留 10~12px 行距,避免挤成一团
         - obj:
             id: call_panel
             x: 735
-            y: 228
+            y: 210
             width: 541
-            height: 480
+            height: 504
             bg_color: 0x040C08
             bg_opa: COVER
             border_width: 2
@@ -5367,17 +5376,40 @@ lvgl:
               - label:
                   id: call_title_l
                   x: 18
-                  y: 15
-                  width: 352
+                  y: 12
+                  width: 229
                   text: "RADIO"
                   text_font: font_mid
                   text_color: 0x00E66E
+              - button:
+                  id: call_lang_btn
+                  x: 260
+                  y: 9
+                  width: 120
+                  height: 45
+                  checkable: true
+                  radius: 6
+                  bg_color: 0x040C08
+                  border_width: 2
+                  border_color: 0x00A050
+                  pad_all: 0
+                  checked: { bg_color: 0x00A050, border_color: 0x00A050 }
+                  widgets:
+                    - label: { id: call_lang_l, align: CENTER, text: "中", text_font: font_small, text_color: 0x00E66E }
+                  on_click:
+                    - lambda: |-
+                        bool en = lv_obj_has_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
+                        id(voice_lang_en) = en;
+                        lv_label_set_text(id(call_lang_l), en ? "EN" : "中");
+                        lv_obj_set_style_text_color(id(call_lang_l),
+                            lv_color_hex(en ? 0x04180C : 0x00E66E), 0);
+                        ESP_LOGI("radar_bg", "voice_lang %s", en ? "en" : "zh");
               - button:
                   id: call_close_btn
                   x: 394
                   y: 9
                   width: 130
-                  height: 48
+                  height: 45
                   radius: 6
                   bg_color: 0x040C08
                   border_width: 2
@@ -5391,7 +5423,7 @@ lvgl:
                   x: 14
                   y: 60
                   width: 513
-                  height: 108
+                  height: 81
                   long_mode: WRAP
                   text: " "
                   # 须用 font_small(含 Noto CJK);font_mono 无中文 → 方框
@@ -5400,9 +5432,9 @@ lvgl:
               - button:
                   id: call_p1
                   x: 14
-                  y: 177
-                  width: 253
-                  height: 60
+                  y: 153
+                  width: 250
+                  height: 54
                   radius: 6
                   bg_color: 0x040C08
                   border_width: 2
@@ -5415,10 +5447,10 @@ lvgl:
                         phrase: "Radio check, how do you read?"
               - button:
                   id: call_p2
-                  x: 274
-                  y: 177
-                  width: 253
-                  height: 60
+                  x: 278
+                  y: 153
+                  width: 250
+                  height: 54
                   radius: 6
                   bg_color: 0x040C08
                   border_width: 2
@@ -5432,9 +5464,9 @@ lvgl:
               - button:
                   id: call_p3
                   x: 14
-                  y: 243
-                  width: 253
-                  height: 60
+                  y: 219
+                  width: 250
+                  height: 54
                   radius: 6
                   bg_color: 0x040C08
                   border_width: 2
@@ -5447,10 +5479,10 @@ lvgl:
                         phrase: "Ident, please."
               - button:
                   id: call_p4
-                  x: 274
-                  y: 243
-                  width: 253
-                  height: 60
+                  x: 278
+                  y: 219
+                  width: 250
+                  height: 54
                   radius: 6
                   bg_color: 0x040C08
                   border_width: 2
@@ -5464,14 +5496,14 @@ lvgl:
               - label:
                   id: call_vol_l
                   x: 14
-                  y: 312
+                  y: 294
                   text: "VOL"
                   text_font: font_small
                   text_color: 0xB07818
               - slider:
                   id: call_vol_sl
                   x: 91
-                  y: 324
+                  y: 306
                   width: 436
                   height: 21
                   min_value: 5
@@ -5500,7 +5532,7 @@ lvgl:
                   id: call_rfx_btn
                   x: 14
                   y: 348
-                  width: 253
+                  width: 250
                   height: 60
                   checkable: true
                   radius: 6
@@ -5520,9 +5552,9 @@ lvgl:
                         ESP_LOGI("radar_bg", "radio_fx %s", on ? "ON" : "OFF");
               - button:
                   id: call_fbg_btn
-                  x: 274
+                  x: 278
                   y: 348
-                  width: 253
+                  width: 250
                   height: 60
                   checkable: true
                   radius: 6
@@ -5543,9 +5575,9 @@ lvgl:
               - button:
                   id: call_talk_btn
                   x: 14
-                  y: 414
+                  y: 426
                   width: 513
-                  height: 60
+                  height: 63
                   radius: 6
                   bg_color: 0x00C060
                   border_width: 0
@@ -5559,9 +5591,9 @@ lvgl:
         - obj:
             id: call_talk_panel
             x: 735
-            y: 228
+            y: 210
             width: 541
-            height: 432
+            height: 504
             bg_color: 0x040C08
             bg_opa: COVER
             border_width: 2
@@ -5592,9 +5624,9 @@ lvgl:
               - textarea:
                   id: ta_call
                   x: 14
-                  y: 72
+                  y: 66
                   width: 513
-                  height: 195
+                  height: 162
                   one_line: false
                   max_length: 240
                   text_font: font_small
@@ -5611,9 +5643,24 @@ lvgl:
                         lv_obj_clear_flag(id(call_kb)->obj, LV_OBJ_FLAG_HIDDEN);
                         #endif
               - button:
+                  id: call_rec_btn
                   x: 14
-                  y: 282
-                  width: 253
+                  y: 240
+                  width: 162
+                  height: 60
+                  radius: 6
+                  bg_color: 0x040C08
+                  border_width: 2
+                  border_color: 0x00A050
+                  pad_all: 0
+                  widgets:
+                    - label: { id: call_rec_l, align: CENTER, text: "REC", text_font: font_small, text_color: 0x00C060 }
+                  on_click:
+                    - script.execute: talk_rec_toggle
+              - button:
+                  x: 190
+                  y: 240
+                  width: 162
                   height: 60
                   radius: 6
                   bg_color: 0x00C060
@@ -5623,9 +5670,9 @@ lvgl:
                   on_click:
                     - script.execute: send_call_talk
               - button:
-                  x: 274
-                  y: 282
-                  width: 253
+                  x: 366
+                  y: 240
+                  width: 162
                   height: 60
                   radius: 6
                   bg_color: 0x040C08

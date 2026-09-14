@@ -1,0 +1,19 @@
+# 家用服务器：仅使用已 load 的镜像（不本地 build）
+# 用法见 deploy_on_server.sh
+services:
+  voice-atc:
+    image: esp32-flight-radar/voice-atc:18650
+    container_name: voice-atc
+    ports:
+      - "18650:18650"
+    env_file:
+      - .env
+    environment:
+      VOICE_ATC_HOST: "0.0.0.0"
+      VOICE_ATC_PORT: "18650"
+    volumes:
+      - voice_atc_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  voice_atc_data:

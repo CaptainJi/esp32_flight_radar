@@ -113,6 +113,13 @@
         <label style="display:flex;align-items:center;gap:6px;opacity:1;margin:0">
           <input id="fxBg" type="checkbox" /> 飞行背景音
         </label>
+        <label style="display:flex;align-items:center;gap:6px;opacity:1;margin:0">
+          语言
+          <select id="lang" style="width:auto;min-width:88px">
+            <option value="zh" selected>中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
       </div>
       <label>ATC / 你说</label>
       <textarea id="msg">CPA123, Beijing Control, say altitude.</textarea>
@@ -139,6 +146,7 @@
   const statusEl = document.getElementById("status");
   const fxRadio = document.getElementById("fxRadio");
   const fxBg = document.getElementById("fxBg");
+  const langEl = document.getElementById("lang");
 
   function append(role, text) {
     const who = role === "user" ? "YOU" : "CREW";
@@ -228,6 +236,7 @@
           session_id: sessionId,
           radio_fx: fxRadio.checked,
           flight_bg: fxBg.checked,
+          lang: langEl.value || "zh",
         }),
       });
       const j = await readJson(r);

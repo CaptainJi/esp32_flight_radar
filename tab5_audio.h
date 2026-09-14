@@ -1,6 +1,7 @@
 #pragma once
 // Tab5 板载喇叭:对齐 M5Unified::_speaker_enabled_cb_tab5 的 ES8388 初始化。
 // ESPHome es8388::setup() 不写 DACPOWER / OUT 音量 / mixer(0xB8),仅靠它会静音。
+// ES7210(0x40) 由 ESPHome audio_adc 平台配置;此处仅保留喇叭路径。
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/core/log.h"
 
@@ -25,7 +26,8 @@ inline bool es8388_speaker_on(esphome::i2c::I2CBus *bus) {
       {0, 0x0E},
       {1, 0x00},
       {2, 0x0A},   // CHIPPOWER: power up all
-      {3, 0xFF},   // ADCPOWER: down
+      // ADC 保持上电,便于 ES7210 与 I2S 时钟共存(半双工由脚本停播)
+      {3, 0x00},   // ADCPOWER: up (was 0xFF down)
       {4, 0x3C},   // DACPOWER: DAC + LOUT1/ROUT1/LOUT2/ROUT2
       {5, 0x00},
       {6, 0x00},

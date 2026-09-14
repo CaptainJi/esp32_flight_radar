@@ -478,6 +478,12 @@ globals:
   # 旁路播放後處理(覆寫 voice_atc 服務端默認;默認關=更清晰)
   - { id: voice_radio_fx, type: bool, restore_value: true, initial_value: 'false' }
   - { id: voice_flight_bg, type: bool, restore_value: true, initial_value: 'false' }
+  # 机组回复语种:0=zh 1=en(默认中文,避免快捷短语触发英文飘忽)
+  - { id: voice_lang_en, type: bool, restore_value: true, initial_value: 'false' }
+  # Tab5 点按录音
+  - { id: talk_rec_on, type: bool, initial_value: 'false' }
+  - { id: talk_rec_ms, type: uint32_t, initial_value: '0' }
+  - { id: talk_rec_cmd, type: int, initial_value: '0' }  # 1=start 2=stop
   - { id: fetch_ms,    type: uint32_t, initial_value: '0' }
   - { id: poll_tick,   type: int,      initial_value: '0' }
   - { id: sweep_angle, type: float,    initial_value: '0' }
@@ -701,6 +707,14 @@ script:
               lv_color_hex(id(voice_radio_fx) ? 0x04180C : 0x00E66E), 0);
           lv_obj_set_style_text_color(id(call_fbg_l),
               lv_color_hex(id(voice_flight_bg) ? 0x04180C : 0x00E66E), 0);
+          // 语种钮同步(CALL 面板)
+          if (id(voice_lang_en))
+            lv_obj_add_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
+          else
+            lv_obj_clear_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
+          lv_label_set_text(id(call_lang_l), id(voice_lang_en) ? "EN" : "中");
+          lv_obj_set_style_text_color(id(call_lang_l),
+              lv_color_hex(id(voice_lang_en) ? 0x04180C : 0x00E66E), 0);
           // 新通話清空多輪歷史
           id(voice_hist_role).clear();
           id(voice_hist_text).clear();
@@ -743,11 +757,24 @@ script:
           lv_obj_move_foreground(id(call_kb)->obj);
           #endif
           radar_kb_flush_pending();
+          // 录音钮复位(语种在 CALL 面板切换)
+          id(talk_rec_on) = false;
+          lv_label_set_text(id(call_rec_l), "REC");
+          lv_obj_set_style_bg_color((lv_obj_t *) id(call_rec_btn), lv_color_hex(0x040C08), 0);
 
   - id: close_call_talk
     mode: single
     then:
       - lambda: |-
+          #ifdef TAB5_MIC
+          if (id(talk_rec_on)) {
+            id(talk_rec_on) = false;
+            id(tab5_mic).stop();
+            radar_bg::asr_buf_clear();
+            lv_label_set_text(id(call_rec_l), "REC");
+            lv_obj_set_style_bg_color((lv_obj_t *) id(call_rec_btn), lv_color_hex(0x040C08), 0);
+          }
+          #endif
           id(call_talk_on) = false;
           lv_obj_add_flag((lv_obj_t *) id(call_talk_panel), LV_OBJ_FLAG_HIDDEN);
           lv_obj_add_flag(id(call_kb)->obj, LV_OBJ_FLAG_HIDDEN);
@@ -779,6 +806,149 @@ script:
                 id: voice_tx
                 phrase: !lambda 'return std::string(lv_textarea_get_text((lv_obj_t *) id(ta_call)));'
 
+  - id: talk_rec_toggle        # 自由对话点按录音:再点停止→语音直发对讲
+    mode: single
+    then:
+      - lambda: |-
+          id(talk_rec_cmd) = 0;
+          #ifndef TAB5_MIC
+          lv_label_set_text(id(call_log_l), "TX: mic N/A\nTab5 only");
+          return;
+          #else
+          if (!id(call_talk_on)) return;
+          if (id(talk_rec_on)) {
+            id(talk_rec_cmd) = 2;   // stop+voice send
+            return;
+          }
+          if (radar_bg::g_voice_busy || radar_bg::g_asr_busy) {
+            lv_label_set_text(id(call_log_l), "TX: busy, wait...");
+            return;
+          }
+          id(talk_rec_cmd) = 1;     // start after release I2S
+          #endif
+      - if:
+          condition:
+            lambda: 'return id(talk_rec_cmd) == 1;'
+          then:
+            # 先抢回 I2S:清缓冲 + stop(立即释放,勿用 finish 等播完)
+            - lambda: |-
+                radar_bg::g_voice_playing = false;
+                radar_bg::g_voice_pcm_ready = false;
+                radar_bg::g_voice_pcm.clear();
+                radar_bg::g_voice_pcm_pos = 0;
+                radar_bg::asr_buf_clear();
+                lv_label_set_text(id(call_log_l), "TX: releasing spk...\nRX: --");
+            - speaker.stop:
+                id: local_spk
+            - delay: 500ms
+            - lambda: |-
+                #ifdef TAB5_MIC
+                if (!id(local_spk).is_stopped()) {
+                  id(local_spk).stop();
+                  ESP_LOGW("radar_bg", "spk still busy, mic may retry");
+                }
+                id(talk_rec_on) = true;
+                id(talk_rec_ms) = millis();
+                lv_label_set_text(id(call_rec_l), "STOP");
+                lv_obj_set_style_bg_color((lv_obj_t *) id(call_rec_btn), lv_color_hex(0x00A050), 0);
+                lv_label_set_text(id(call_log_l), "TX: REC...\nRX: --");
+                id(tab5_mic).start();
+                #endif
+      - if:
+          condition:
+            lambda: 'return id(talk_rec_cmd) == 2;'
+          then:
+            - lambda: |-
+                #ifdef TAB5_MIC
+                id(talk_rec_on) = false;
+                id(tab5_mic).stop();
+                lv_label_set_text(id(call_rec_l), "REC");
+                lv_obj_set_style_bg_color((lv_obj_t *) id(call_rec_btn), lv_color_hex(0x040C08), 0);
+                if (id(sel_cs_g).empty()) {
+                  lv_textarea_set_text((lv_obj_t *) id(ta_call), "select aircraft first");
+                  radar_bg::asr_buf_clear();
+                  return;
+                }
+                std::string base = id(voice_atc_url).state;
+                while (!base.empty() && base.back() == '/') base.pop_back();
+                if (base.empty()) {
+                  lv_textarea_set_text((lv_obj_t *) id(ta_call), "Set ATC URL");
+                  lv_label_set_text(id(call_log_l), "Set ATC URL: WiFi icon → ATC");
+                  radar_bg::asr_buf_clear();
+                  return;
+                }
+                int i = -1;
+                for (size_t k = 0; k < id(ac_cs).size(); k++)
+                  if (id(ac_cs)[k] == id(sel_cs_g)) { i = (int) k; break; }
+                auto esc = [](std::string s) {
+                  std::string o; o.reserve(s.size());
+                  for (char c : s) {
+                    if (c == '"' || c == '\\') o.push_back('\\');
+                    if ((unsigned char) c >= 32) o.push_back(c);
+                  }
+                  return o;
+                };
+                char num[64];
+                std::string meta = "{\"want_audio\":true,\"sr\":16000,\"history\":[";
+                size_t n = id(voice_hist_role).size();
+                if (n > id(voice_hist_text).size()) n = id(voice_hist_text).size();
+                size_t start = n > 6 ? n - 6 : 0;
+                for (size_t h = start; h < n; h++) {
+                  if (h > start) meta += ",";
+                  meta += "{\"role\":\"";
+                  meta += esc(id(voice_hist_role)[h]);
+                  meta += "\",\"content\":\"";
+                  meta += esc(id(voice_hist_text)[h]);
+                  meta += "\"}";
+                }
+                meta += "],\"flight\":{";
+                meta += "\"callsign\":\"" + esc(id(sel_cs_g)) + "\"";
+                if (i >= 0) {
+                  if (i < (int) id(ac_ty).size())
+                    meta += ",\"type\":\"" + esc(id(ac_ty)[i]) + "\"";
+                  if (i < (int) id(ac_reg).size())
+                    meta += ",\"registration\":\"" + esc(id(ac_reg)[i]) + "\"";
+                  if (i < (int) id(ac_hex).size()) {
+                    snprintf(num, sizeof(num), "%06X", (unsigned) id(ac_hex)[i]);
+                    meta += ",\"icao24\":\""; meta += num; meta += "\"";
+                  }
+                  snprintf(num, sizeof(num), ",\"altitude_m\":%.1f", id(ac_alt)[i]);
+                  meta += num;
+                  snprintf(num, sizeof(num), ",\"speed_ms\":%.1f", id(ac_vel)[i]);
+                  meta += num;
+                  snprintf(num, sizeof(num), ",\"track_deg\":%.1f", id(ac_trk)[i]);
+                  meta += num;
+                  snprintf(num, sizeof(num), ",\"vs_ms\":%.1f", id(ac_vr)[i]);
+                  meta += num;
+                  if (i < (int) id(ac_sq).size())
+                    meta += ",\"squawk\":\"" + esc(id(ac_sq)[i]) + "\"";
+                }
+                meta += "},\"radio_fx\":";
+                meta += id(voice_radio_fx) ? "true" : "false";
+                meta += ",\"flight_bg\":";
+                meta += id(voice_flight_bg) ? "true" : "false";
+                meta += ",\"lang\":\"";
+                meta += id(voice_lang_en) ? "en" : "zh";
+                meta += "\"}";
+
+                std::string url = base + "/v1/radio/voice_turn";
+                lv_textarea_set_text((lv_obj_t *) id(ta_call), "sending voice...");
+                lv_label_set_text(id(call_log_l), "TX: (voice)\nRX: ...");
+                // 回到 CALL 面板听回复
+                id(call_talk_on) = false;
+                lv_obj_add_flag((lv_obj_t *) id(call_talk_panel), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(call_kb)->obj, LV_OBJ_FLAG_HIDDEN);
+                if (id(call_on)) {
+                  lv_obj_clear_flag((lv_obj_t *) id(call_panel), LV_OBJ_FLAG_HIDDEN);
+                  lv_obj_move_foreground((lv_obj_t *) id(call_panel));
+                }
+                if (!radar_bg::request_voice_pcm(url, meta)) {
+                  lv_label_set_text(id(call_log_l), "TX: voice queue fail\nRX: retry");
+                }
+                #endif
+            # 麦停后再稍等,避免紧接着播 TTS 再抢 I2S
+            - delay: 200ms
+
   - id: voice_tx               # 送一句話給中繼;phrase 為對講內容
     mode: single
     parameters:
@@ -789,7 +959,7 @@ script:
             lv_label_set_text(id(call_log_l), "TX: --\nRX: select aircraft first");
             return;
           }
-          if (radar_bg::g_voice_busy) {
+          if (radar_bg::g_voice_busy || radar_bg::g_asr_busy) {
             lv_label_set_text(id(call_log_l), "TX busy, wait...");
             return;
           }
@@ -854,11 +1024,14 @@ script:
           body += id(voice_radio_fx) ? "true" : "false";
           body += ",\"flight_bg\":";
           body += id(voice_flight_bg) ? "true" : "false";
-          body += "}";
+          body += ",\"lang\":\"";
+          body += id(voice_lang_en) ? "en" : "zh";
+          body += "\"}";
 
           std::string url = base + "/v1/radio/turn";
-          ESP_LOGI("radar_bg", "voice → %s (fx=%d bg=%d)", url.c_str(),
-                   (int) id(voice_radio_fx), (int) id(voice_flight_bg));
+          ESP_LOGI("radar_bg", "voice → %s (fx=%d bg=%d lang=%s)", url.c_str(),
+                   (int) id(voice_radio_fx), (int) id(voice_flight_bg),
+                   id(voice_lang_en) ? "en" : "zh");
           char tx[160];
           snprintf(tx, sizeof(tx), "TX: %s\nRX: ...", phrase.c_str());
           lv_label_set_text(id(call_log_l), tx);
@@ -1127,14 +1300,64 @@ interval:
           }
       # 收背景 task 的結果(非阻塞)
       - lambda: |-
+          if (radar_bg::g_asr_ready) {
+            xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
+            radar_bg::g_asr_ready = false;
+            std::string text = radar_bg::g_asr_text;
+            int st = radar_bg::g_asr_status;
+            xSemaphoreGive(radar_bg::mtx());
+            ESP_LOGI("radar_bg", "asr UI apply st=%d talk=%d call=%d len=%u", st,
+                     (int) id(call_talk_on), (int) id(call_on),
+                     (unsigned) text.size());
+            if (id(call_on) && !text.empty()) {
+              // 勿调 open_call_talk:它会清空 ta_call(异步竞态)
+              if (!id(call_talk_on)) {
+                id(call_talk_on) = true;
+                lv_obj_add_flag((lv_obj_t *) id(call_panel), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag((lv_obj_t *) id(call_talk_panel), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_move_foreground((lv_obj_t *) id(call_talk_panel));
+              }
+              lv_textarea_set_text((lv_obj_t *) id(ta_call), text.c_str());
+              char buf[200];
+              snprintf(buf, sizeof(buf), "TX: %s\nRX: edit then SEND", text.c_str());
+              lv_label_set_text(id(call_log_l), buf);
+            } else if (id(call_on)) {
+              char buf[48];
+              snprintf(buf, sizeof(buf), "ASR fail HTTP %d", st);
+              lv_textarea_set_text((lv_obj_t *) id(ta_call), buf);
+              char log[96];
+              snprintf(log, sizeof(log), "TX: ASR fail HTTP %d\nRX: --", st);
+              lv_label_set_text(id(call_log_l), log);
+            }
+          }
+          // 录音超时 8s 自动停
+          if (id(talk_rec_on) && millis() - id(talk_rec_ms) > 8000) {
+            id(talk_rec_toggle).execute();
+          }
           if (radar_bg::g_voice_ready) {
             xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
             radar_bg::g_voice_ready = false;
             std::string reply = radar_bg::g_voice_reply;
+            std::string user_tx = radar_bg::g_voice_user_text;
+            radar_bg::g_voice_user_text.clear();
             xSemaphoreGive(radar_bg::mtx());
             if (id(call_on)) {
+              // 语音直发回来时确保在 CALL 面板
+              if (id(call_talk_on)) {
+                id(call_talk_on) = false;
+                lv_obj_add_flag((lv_obj_t *) id(call_talk_panel), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(id(call_kb)->obj, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag((lv_obj_t *) id(call_panel), LV_OBJ_FLAG_HIDDEN);
+                lv_obj_move_foreground((lv_obj_t *) id(call_panel));
+              }
               char buf[384];
-              snprintf(buf, sizeof(buf), "RX: %s", reply.c_str());
+              if (!user_tx.empty()) {
+                snprintf(buf, sizeof(buf), "TX: %s\nRX: %s", user_tx.c_str(), reply.c_str());
+                id(voice_hist_role).push_back("user");
+                id(voice_hist_text).push_back(user_tx);
+              } else {
+                snprintf(buf, sizeof(buf), "RX: %s", reply.c_str());
+              }
               lv_label_set_text(id(call_log_l), buf);
               id(voice_hist_role).push_back("assistant");
               id(voice_hist_text).push_back(reply);

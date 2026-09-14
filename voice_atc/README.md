@@ -10,13 +10,14 @@
 | 阶段 | 状态 |
 |------|------|
 | `POST /v1/radio/turn` 文本对讲 + 航班上下文 | ✅ |
+| `lang=zh\|en` 硬锁回复/TTS 语种 | ✅ |
 | 方舟 Chat（`ARK_*`） | ✅ |
 | Duplex TTS / 端到端对话（`VOICE_*`） | ✅ |
 | 无线电干扰 + 飞行背景音（服务端后处理） | ✅ |
 | 浏览器联调页 `/`（WAV 可播） | ✅ |
 | 无 Key 时 MOCK 回复 | ✅ |
 | Docker / Compose | ✅ |
-| 板端麦克风 ASR 上行 | ⏳ 下一阶段 |
+| 板端麦克风 `REC` | ✅ 停录后 **语音直发**（`/v1/radio/voice_turn`：默认 ASR→方舟→TTS；`VOICE_BACKEND=duplex` 可试端到端）；另保留 `/v1/radio/asr` |
 
 ## 后端模式（`VOICE_BACKEND`）
 
@@ -108,13 +109,22 @@ python main.py
   "history": [],
   "want_audio": true,
   "want_pcm_b64": false,
-  "session_id": ""
+  "session_id": "",
+  "lang": "zh"
 }
 ```
 
-返回：`reply_text`、`audio_url`（PCM 16 kHz）、`audio_wav_url`、`backend`、`radio_fx`、`flight_bg`、`latency_ms`。
+返回：`reply_text`、`audio_url`（PCM 16 kHz）、`audio_wav_url`、`backend`、`radio_fx`、`flight_bg`、`lang`、`latency_ms`。
 
-可选请求字段：`radio_fx` / `flight_bg`（bool，覆盖服务端默认开关）。
+可选请求字段：`radio_fx` / `flight_bg`（bool，覆盖服务端默认开关）；`lang`=`zh`|`en`（硬锁回复与 TTS 语种，默认 `zh`）。
+
+`POST /v1/radio/voice_turn`
+
+Body：`application/octet-stream` raw PCM s16le mono。头 `X-Voice-Meta`：航班上下文 / history / lang / fx JSON。返回同 `RadioTurnResponse`（含 `user_text` 转写、`reply_text`、`audio_url`）。板端自由对话 **REC 停录后走此接口直发**，不再先 ASR 填框。
+
+`POST /v1/radio/asr?lang=zh&sr=16000`
+
+Body：`application/octet-stream` raw PCM。返回 `{ ok, text, lang, mock, ... }`（仅转写）。有 Key 时 duplex 真实转写；无 Key / `VOICE_ATC_MOCK=1` 时 MOCK。
 
 ## 音频特效开关
 
@@ -123,7 +133,7 @@ python main.py
 | `RADIO_FX` | `0` | 无线电干扰（带通/噪声/爆音）；板端 CALL「干扰」可覆盖 |
 | `RADIO_FX_LEVEL` | `0.45` | 干扰强度 0~1 |
 | `FLIGHT_BG` | `0` | 舱内轰鸣背景；板端 CALL「背景」可覆盖 |
-| `FLIGHT_BG_LEVEL` | `0.10` | 背景音量 0~1 |
+| `FLIGHT_BG_LEVEL` | `0.35` | 背景音量 0~1（过低在小喇叭上几乎听不见） |
 
 联调页也有勾选框，会按次覆盖环境变量。
 
