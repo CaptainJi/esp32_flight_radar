@@ -4825,12 +4825,12 @@ lvgl:
 
         # ===== 右:資訊欄 =====
         # MAP / ECHO / FADE / ATC / PWR / SYS 文字切換鈕(啟用=反白)
-        # 六鈕須連續定義(寬 60、高 45、font_tiny)。勿把 PWR/SYS/ATC 放到 status_label 之後 —
+        # 六鈕須連續定義(寬 48、高 36、font_tiny)。勿把 PWR/SYS/ATC 放到 status_label 之後 —
         # 合併 map-tiles 後裁剪層/後掛物件會打亂命中,表現為點 SYS 卻觸發 PWR。
         - button:
             id: map_btn
-            x: 619
-            y: 193
+            x: 615
+            y: 125
             width: 60
             height: 45
             radius: 5
@@ -4857,8 +4857,8 @@ lvgl:
                   id(rebuild_base).execute();
         - button:
             id: echo_btn
-            x: 683
-            y: 193
+            x: 680
+            y: 125
             width: 60
             height: 45
             radius: 5
@@ -4887,8 +4887,8 @@ lvgl:
         # FADE:真實雷達餘暉(慢速掃描 + 掃過顯影/淡出);關閉則常亮快掃
         - button:
             id: persist_btn
-            x: 746
-            y: 193
+            x: 745
+            y: 125
             width: 60
             height: 45
             radius: 5
@@ -4919,7 +4919,7 @@ lvgl:
         - button:
             id: atc_btn
             x: 810
-            y: 193
+            y: 125
             width: 60
             height: 45
             radius: 5
@@ -4948,8 +4948,8 @@ lvgl:
         # PWR 鈕:切換螢幕背光(checked=熄滅)
         - button:
             id: pwr_btn
-            x: 874
-            y: 193
+            x: 875
+            y: 125
             width: 60
             height: 45
             radius: 5
@@ -4988,8 +4988,8 @@ lvgl:
         # SYS 鈕:右下面板切換顯示系統資訊(CPU/RAM/PSRAM/FLASH)
         - button:
             id: info_btn
-            x: 938
-            y: 193
+            x: 940
+            y: 125
             width: 60
             height: 45
             radius: 5
@@ -5030,19 +5030,18 @@ lvgl:
               - script.execute: atc_panel_sync
         # 亮度滑桿(僅 SYS 選單顯示,amber 配色):拖動即時調背光,存於 light 的 NVS 狀態
         #
-        # 右下面板的垂直預算(font_mono=18 行高 24、font_small=22 行高 26):
-        #   sel_l4  386..409(字身 391..404)  ← 最後一行天氣/系統資訊
-        #   atc_panel 200..409(height 210)   ← 不透明,必須完整蓋住 sel_l4
-        #   BRT 列  412..438(字身 417..432;滑桿軌 420..429、旋鈕 416..433)
-        #   status_label 446..469(字身 451..467)
-        # 原本 BRT 在 406、面板只到 400,結果 sel_l4 的下半截從面板下緣露出來、
-        # 又跟 BRT/滑桿疊在一起(截圖可見)。改動任一項都要重算這四段。
+        # 右下面板垂直預算(800 基準;改動請同步重算 + scale/fit):
+        #   sys_tabbar    152..192 (取代標題列 SYSTEM;勿再蓋 sel_route/CPU 行)
+        #   atc_panel     152..402 (h=250;頂部 40px 被 tabbar 蓋住)
+        #   ATC 按鈕區    相對 y≥46 (絕對 ≥198;與 tabbar 底留 ≥4px)
+        #   BRT 列        412..438
+        #   status_label  448..
         - label:
             id: wifi_icon
             x: 953
-            y: 15
+            y: 10
             text: "\uF1EB"
-            text_font: montserrat_20
+            text_font: montserrat_18
             text_color: 0x6E8273
             clickable: true
             on_click:
@@ -5056,30 +5055,33 @@ lvgl:
                       id(opensky_client_id).state.c_str());
                   lv_textarea_set_text((lv_obj_t *) id(ta_sec),
                       id(opensky_client_secret).state.c_str());
+                  lv_textarea_set_text((lv_obj_t *) id(ta_atc),
+                      id(voice_atc_url).state.c_str());
                   lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_ssid));
+                  radar_kb_focus((lv_obj_t *) id(ta_ssid));
               - lvgl.page.show: config_page
         - label:
             id: clock_label
             align: TOP_MID
             x: 300
-            y: 20
+            y: 5
             text: "--:--:--"
             text_font: font_clock
             text_color: 0x00E66E
             clickable: true
             on_click:
+              # Tab5 以 RADAR_NO_ALARM 停响铃/巡检;闹钟页仍可进(不响)
               - lvgl.page.show: alarm_page
               - script.execute: alarm_refresh
               - script.execute: spk_dd_refresh
               - lambda: |-
-                  // 首次進鬧鐘頁 → 建清單:有 token 就掃 HA,沒有也要把板載喇叭列出來
                   if (id(spk_ids).empty())
                     id(spk_scan).execute();
         - label:
             id: coords_label
             align: TOP_MID
             x: 300
-            y: 125 #96
+            y: 73
             text: "--.----N  ---.----E"
             text_font: font_small
             text_color: 0x6E8273
@@ -5109,14 +5111,14 @@ lvgl:
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_poll), lv_color_hex(0x006030), 0);
               - lvgl.page.show: settings_page
         - line:
-            points: ["613, 245", "990, 245"]
+            points: ["613, 185", "998, 185"]
             line_color: 0x003820
             line_width: 1
         # 選取航班詳情(點雷達上的飛機後顯示)
         - label:
             id: sel_cs_l
             x: 625
-            y: 265
+            y: 200
             text: "INITIALIZING..."
             text_font: font_mid
             text_color: 0x00E66E
@@ -5128,7 +5130,7 @@ lvgl:
         - label:
             id: sel_type_l
             x: 875
-            y: 260
+            y: 195
             width: 110
             text: ""
             text_align: CENTER
@@ -5142,19 +5144,38 @@ lvgl:
             clickable: true
             on_click:
               - script.execute: toggle_spec
+        # 模擬通話:選機後出現,開 RADIO 面板(文字對講 → voice_atc 中繼)
+        # 與右側機型徽章(sel_type_l)同構:可點 label + 綠底,避免 button 內邊距導致高低不一
+        - label:
+            id: call_btn
+            x: 760
+            y: 195
+            width: 110
+            text: "CALL"
+            text_align: CENTER
+            text_font: font_small
+            text_color: 0x04180C
+            bg_color: 0x00C060
+            bg_opa: COVER
+            radius: 5
+            pad_all: 6
+            hidden: true
+            clickable: true
+            on_click:
+              - script.execute: open_call
         - label:
             id: sel_route_l
             x: 625
-            y: 310
+            y: 245
             text: " "
             text_font: font_mono
             text_color: 0xFFD24A
         # SQUAWK 單獨一列,緊接在 ROUTE 下方(機型已移到上方的徽章)
-        - label: { id: sel_l5, x: 625, y: 343, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-        - label: { id: sel_l1, x: 625, y: 378, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-        - label: { id: sel_l2, x: 625, y: 413, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-        - label: { id: sel_l3, x: 625, y: 448, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
-        - label: { id: sel_l4, x: 625, y: 483, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l5, x: 625, y: 278, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l1, x: 625, y: 310, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l2, x: 625, y: 343, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l3, x: 625, y: 375, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
+        - label: { id: sel_l4, x: 625, y: 408, text: " ", text_font: font_mono, text_color: 0xD2E6D7 }
         # 第 5 行:squawk + ICAO 機型(緊急 squawk 7500/7600/7700 會轉紅)
 
         # 底部狀態列
@@ -5164,7 +5185,7 @@ lvgl:
         - label:
             id: status_label
             x: 625
-            y: 558
+            y: 560
             width: 365
             long_mode: SCROLL
             text: "SET OPENSKY CREDENTIALS"
@@ -5182,7 +5203,10 @@ lvgl:
                       id(opensky_client_id).state.c_str());
                   lv_textarea_set_text((lv_obj_t *) id(ta_sec),
                       id(opensky_client_secret).state.c_str());
-                  lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_cid));
+                  lv_textarea_set_text((lv_obj_t *) id(ta_atc),
+                      id(voice_atc_url).state.c_str());
+                  lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_atc));
+                  radar_kb_focus((lv_obj_t *) id(ta_atc));
               - lvgl.page.show: config_page
         - label:
             id: brt_l
@@ -5234,8 +5258,8 @@ lvgl:
         - obj:
             id: spec_panel
             x: 613
-            y: 308
-            width: 378
+            y: 250
+            width: 385
             height: 250        # 246..446:蓋滿 sel_route_l(248)到 sel_l4(386..404),
                                # 下緣停在 status_label(446)上方。BRT/滑桿(412/420)
                                # 只在 info_on 顯示,而那個模式與本面板共用 sel_* label、
@@ -5325,13 +5349,319 @@ lvgl:
               - label: { id: spec_l5, x: 8, y: 184, width: 363, text: " ", text_font: font_mono, text_color: 0xB6C9BB }
               - label: { id: spec_l6, x: 8, y: 214, width: 363, text: " ", text_font: font_mono, text_color: 0x7E9284 }
 
+        # ===== 模擬通話面板(選機後按 CALL;短語 + 自由對講)=====
+        # 高度對齊右側資訊區(200..446=246);按鈕尺寸對齊 atc_panel asp_btn(138×44)
+        - obj:
+            id: call_panel
+            x: 613
+            y: 190
+            width: 385
+            height: 400
+            bg_color: 0x040C08
+            bg_opa: COVER
+            border_width: 1
+            border_color: 0x00C060
+            pad_all: 0
+            hidden: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - label:
+                  id: call_title_l
+                  x: 13
+                  y: 13
+                  width: 250
+                  text: "RADIO"
+                  text_font: font_mid
+                  text_color: 0x00E66E
+              - button:
+                  id: call_close_btn
+                  x: 280
+                  y: 8
+                  width: 93
+                  height: 40
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  widgets:
+                    - label: { align: CENTER, text: "END", text_font: font_small, text_color: 0x00C060 }
+                  on_click:
+                    - script.execute: close_call
+              - label:
+                  id: call_log_l
+                  x: 10
+                  y: 50
+                  width: 365
+                  height: 90
+                  long_mode: WRAP
+                  text: " "
+                  # 须用 font_small(含 Noto CJK);font_mono 无中文 → 方框
+                  text_font: font_small
+                  text_color: 0xD2E6D7
+              - button:
+                  id: call_p1
+                  x: 10
+                  y: 148
+                  width: 180
+                  height: 50
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  widgets:
+                    - label: { align: CENTER, text: "CHECK", text_font: font_small, text_color: 0x00E66E }
+                  on_click:
+                    - script.execute:
+                        id: voice_tx
+                        phrase: "Radio check, how do you read?"
+              - button:
+                  id: call_p2
+                  x: 195
+                  y: 148
+                  width: 180
+                  height: 50
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  widgets:
+                    - label: { align: CENTER, text: "SAY ALT", text_font: font_small, text_color: 0x00E66E }
+                  on_click:
+                    - script.execute:
+                        id: voice_tx
+                        phrase: "Say your altitude."
+              - button:
+                  id: call_p3
+                  x: 10
+                  y: 203
+                  width: 180
+                  height: 50
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  widgets:
+                    - label: { align: CENTER, text: "IDENT", text_font: font_small, text_color: 0x00E66E }
+                  on_click:
+                    - script.execute:
+                        id: voice_tx
+                        phrase: "Ident, please."
+              - button:
+                  id: call_p4
+                  x: 195
+                  y: 203
+                  width: 180
+                  height: 50
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  widgets:
+                    - label: { align: CENTER, text: "DESCEND", text_font: font_small, text_color: 0x00E66E }
+                  on_click:
+                    - script.execute:
+                        id: voice_tx
+                        phrase: "Request descent to flight level 240."
+              - label:
+                  id: call_vol_l
+                  x: 10
+                  y: 260
+                  text: "VOL"
+                  text_font: font_small
+                  text_color: 0xB07818
+              - slider:
+                  id: call_vol_sl
+                  x: 65
+                  y: 270
+                  width: 310
+                  height: 18
+                  min_value: 5
+                  max_value: 100
+                  value: 70
+                  bg_color: 0x241A08
+                  bg_opa: COVER
+                  radius: 6
+                  indicator:
+                    bg_color: 0xB07818
+                  knob:
+                    bg_color: 0xE8A020
+                    radius: 8
+                    pad_all: 3
+                  on_release:
+                    # 只改 RAM 中的 voice_vol,不寫 NVS(見 core.yaml restore_value: false)
+                    # 播放中音量由 board 的 PCM 泵每拍讀取 voice_vol
+                    - lambda: |-
+                        auto c = id(voice_vol).make_call();
+                        c.set_value(x);
+                        c.perform();
+                    - script.execute: voice_vol_beep
+              # 旁路特效:默认关;开=服务端加无线电干扰/飞行背景
+              - button:
+                  id: call_rfx_btn
+                  x: 10
+                  y: 295
+                  width: 180
+                  height: 43
+                  checkable: true
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  checked: { bg_color: 0x00A050, border_color: 0x00A050 }
+                  widgets:
+                    - label: { id: call_rfx_l, align: CENTER, text: "干扰", text_font: font_small, text_color: 0x00E66E }
+                  on_click:
+                    - lambda: |-
+                        bool on = lv_obj_has_state((lv_obj_t *) id(call_rfx_btn), LV_STATE_CHECKED);
+                        id(voice_radio_fx) = on;
+                        lv_obj_set_style_text_color(id(call_rfx_l),
+                            lv_color_hex(on ? 0x04180C : 0x00E66E), 0);
+                        ESP_LOGI("radar_bg", "radio_fx %s", on ? "ON" : "OFF");
+              - button:
+                  id: call_fbg_btn
+                  x: 195
+                  y: 295
+                  width: 180
+                  height: 43
+                  checkable: true
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  checked: { bg_color: 0x00A050, border_color: 0x00A050 }
+                  widgets:
+                    - label: { id: call_fbg_l, align: CENTER, text: "背景", text_font: font_small, text_color: 0x00E66E }
+                  on_click:
+                    - lambda: |-
+                        bool on = lv_obj_has_state((lv_obj_t *) id(call_fbg_btn), LV_STATE_CHECKED);
+                        id(voice_flight_bg) = on;
+                        lv_obj_set_style_text_color(id(call_fbg_l),
+                            lv_color_hex(on ? 0x04180C : 0x00E66E), 0);
+                        ESP_LOGI("radar_bg", "flight_bg %s", on ? "ON" : "OFF");
+              - button:
+                  id: call_talk_btn
+                  x: 10
+                  y: 343
+                  width: 365
+                  height: 45
+                  radius: 5
+                  bg_color: 0x00C060
+                  border_width: 0
+                  widgets:
+                    - label: { align: CENTER, text: "自由对话", text_font: font_small, text_color: 0x04180C }
+                  on_click:
+                    - script.execute: open_call_talk
+
+        # ===== 自由对讲输入层(CALL → TALK)=====
+        - obj:
+            id: call_talk_panel
+            x: 613
+            y: 190
+            width: 385
+            height: 360
+            bg_color: 0x040C08
+            bg_opa: COVER
+            border_width: 1
+            border_color: 0x00C060
+            pad_all: 0
+            hidden: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - label:
+                  x: 13
+                  y: 15
+                  text: "TALK"
+                  text_font: font_small
+                  text_color: 0x00E66E
+              - button:
+                  x: 280
+                  y: 8
+                  width: 93
+                  height: 40
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  widgets:
+                    - label: { align: CENTER, text: "BACK", text_font: font_small, text_color: 0x00C060 }
+                  on_click:
+                    - script.execute: close_call_talk
+              - textarea:
+                  id: ta_call
+                  x: 10
+                  y: 60
+                  width: 365
+                  height: 163
+                  one_line: false
+                  max_length: 240
+                  text_font: font_small
+                  text_color: 0xD2E6D7
+                  bg_color: 0x0A2416
+                  border_color: 0x00A050
+                  border_width: 1
+                  radius: 5
+                  on_click:
+                    - lambda: |-
+                        lv_keyboard_set_textarea(id(call_kb)->obj, (lv_obj_t *) id(ta_call));
+                        radar_kb_focus((lv_obj_t *) id(ta_call));
+                        #ifndef TAB5_KB
+                        lv_obj_clear_flag(id(call_kb)->obj, LV_OBJ_FLAG_HIDDEN);
+                        #endif
+              - button:
+                  x: 10
+                  y: 235
+                  width: 180
+                  height: 50
+                  radius: 5
+                  bg_color: 0x00C060
+                  border_width: 0
+                  widgets:
+                    - label: { align: CENTER, text: "SEND", text_font: font_small, text_color: 0x04180C }
+                  on_click:
+                    - script.execute: send_call_talk
+              - button:
+                  x: 195
+                  y: 235
+                  width: 180
+                  height: 50
+                  radius: 5
+                  bg_color: 0x040C08
+                  border_width: 1
+                  border_color: 0x00A050
+                  widgets:
+                    - label: { align: CENTER, text: "CLEAR", text_font: font_small, text_color: 0x00C060 }
+                  on_click:
+                    - lambda: 'lv_textarea_set_text((lv_obj_t *) id(ta_call), "");'
+
+        - keyboard:
+            id: call_kb
+            align: BOTTOM_MID
+            y: 0
+            width: 1000
+            height: 275
+            mode: TEXT_LOWER
+            text_font: montserrat_18
+            bg_color: 0x0A1810
+            pad_all: 4
+            hidden: true
+            items:
+              bg_color: 0x0A2416
+              text_color: 0x00C060
+              text_font: montserrat_18
+              border_color: 0x00A050
+              border_width: 1
+              radius: 5
+              pressed:
+                bg_color: 0x00C060
+                text_color: 0x04180C
+
         # ===== ATC 圖層設定面板(ATC 模式且未選機時取代右下天氣;不透明,直接蓋住底下文字)=====
         - obj:
             id: atc_panel
             x: 613
-            y: 250
-            width: 378
-            height: 263          # 200..409:要蓋滿 sel_l4(386..409),見 bl_slider 上方的垂直預算
+            y: 190
+            width: 385
+            height: 313          # 152..402;頂部給 sys_tabbar,按鈕相對 y≥46
             bg_color: 0x040C08
             bg_opa: COVER
             border_width: 0
@@ -5339,10 +5669,11 @@ lvgl:
             hidden: true
             scrollbar_mode: "OFF"
             widgets:
+              # 相對座標:sys_tabbar 絕對 152..192 → 首行須 y≥46,否則與分頁鈕互擋
               - button:
                   id: asp_btn
                   x: 13
-                  y: 70
+                  y: 58
                   width: 173
                   height: 55
                   radius: 5
@@ -5362,7 +5693,7 @@ lvgl:
               - button:
                   id: rwy_btn
                   x: 193
-                  y: 70
+                  y: 58
                   width: 173
                   height: 55
                   radius: 5
@@ -5382,7 +5713,7 @@ lvgl:
               - button:
                   id: apt_btn
                   x: 13
-                  y: 140
+                  y: 128
                   width: 173
                   height: 55
                   radius: 5
@@ -5402,7 +5733,7 @@ lvgl:
               - button:
                   id: fix_btn
                   x: 193
-                  y: 140
+                  y: 128
                   width: 173
                   height: 55
                   radius: 5
@@ -5422,7 +5753,7 @@ lvgl:
               - button:
                   id: route_btn
                   x: 13
-                  y: 203
+                  y: 198
                   width: 353
                   height: 43
                   radius: 5
@@ -5440,11 +5771,12 @@ lvgl:
                         lv_obj_set_style_text_color(id(route_btn_l),
                             lv_color_hex(id(atc_route_on) ? 0x201200 : 0xE8A020), 0);
 
-        # ===== SYS 面板分頁列(SYS 開啟時顯示;蓋住底下的標題列)=====
+        # ===== SYS 面板分頁列(SYS 開啟時顯示;蓋住標題列,不蓋 CPU/MAP 資訊行)=====
+        # y=152 對齊詳情區頂;sel_route_l(196)/sel_l5(222) 留給系統資訊
         - obj:
             id: sys_tabbar
             x: 613
-            y: 248
+            y: 190
             width: 378
             height: 50
             bg_color: 0x040C08
@@ -5561,6 +5893,7 @@ lvgl:
             on_click:
               - lambda: |-
                   id(kb_target) = 0;
+                  radar_kb_focus((lv_obj_t *) id(ta_lat));
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lat), lv_color_hex(0x00E66E), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
@@ -5572,6 +5905,7 @@ lvgl:
             on_click:
               - lambda: |-
                   id(kb_target) = 1;
+                  radar_kb_focus((lv_obj_t *) id(ta_lon));
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lat), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x00E66E), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
@@ -5583,6 +5917,7 @@ lvgl:
             on_click:
               - lambda: |-
                   id(kb_target) = 2;
+                  radar_kb_focus((lv_obj_t *) id(ta_rng));
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lat), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x00E66E), 0);
@@ -5606,6 +5941,7 @@ lvgl:
             on_click:
               - lambda: |-
                   id(kb_target) = 3;
+                  radar_kb_focus((lv_obj_t *) id(ta_poll));
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lat), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_lon), lv_color_hex(0x006030), 0);
                   lv_obj_set_style_border_color((lv_obj_t *) id(ta_rng), lv_color_hex(0x006030), 0);
@@ -6046,11 +6382,12 @@ lvgl:
       scrollable: false
       scrollbar_mode: "OFF"
       widgets:
-        - label: { x: 25, y: 10, text: "NETWORK / OPENSKY API", text_font: font_small, text_color: 0x00E66E }
+        - label: { x: 25, y: 10, text: "NETWORK / API / ATC", text_font: font_small, text_color: 0x00E66E }
         - label: { x: 25, y: 55,  text: "SSID",   text_font: font_tiny, text_color: 0x9AE6B4 }
         - label: { x: 25, y: 108,  text: "PASS",   text_font: font_tiny, text_color: 0x9AE6B4 }
         - label: { x: 25, y: 160, text: "API ID", text_font: font_tiny, text_color: 0x9AE6B4 }
         - label: { x: 25, y: 213, text: "SECRET", text_font: font_tiny, text_color: 0x9AE6B4 }
+        - label: { x: 25, y: 265, text: "ATC",    text_font: font_tiny, text_color: 0x9AE6B4 }
         - textarea:
             id: ta_ssid
             x: 115
@@ -6066,7 +6403,9 @@ lvgl:
             border_width: 1
             radius: 5
             on_click:
-              - lambda: 'lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_ssid));'
+              - lambda: |-
+                  lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_ssid));
+                  radar_kb_focus((lv_obj_t *) id(ta_ssid));
         - textarea:
             id: ta_pass
             x: 115
@@ -6082,7 +6421,9 @@ lvgl:
             border_width: 1
             radius: 5
             on_click:
-              - lambda: 'lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_pass));'
+              - lambda: |-
+                  lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_pass));
+                  radar_kb_focus((lv_obj_t *) id(ta_pass));
         - textarea:
             id: ta_cid
             x: 115
@@ -6098,7 +6439,9 @@ lvgl:
             border_width: 1
             radius: 5
             on_click:
-              - lambda: 'lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_cid));'
+              - lambda: |-
+                  lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_cid));
+                  radar_kb_focus((lv_obj_t *) id(ta_cid));
         - textarea:
             id: ta_sec
             x: 115
@@ -6114,7 +6457,27 @@ lvgl:
             border_width: 1
             radius: 5
             on_click:
-              - lambda: 'lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_sec));'
+              - lambda: |-
+                  lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_sec));
+                  radar_kb_focus((lv_obj_t *) id(ta_sec));
+        - textarea:
+            id: ta_atc
+            x: 115
+            y: 255
+            width: 525
+            height: 43
+            one_line: true
+            max_length: 96
+            text_font: font_tiny
+            text_color: 0xD2E6D7
+            bg_color: 0x0A2416
+            border_color: 0x00A050
+            border_width: 1
+            radius: 5
+            on_click:
+              - lambda: |-
+                  lv_keyboard_set_textarea(id(cfg_kb)->obj, (lv_obj_t *) id(ta_atc));
+                  radar_kb_focus((lv_obj_t *) id(ta_atc));
         - button:
             x: 675
             y: 50
@@ -6130,11 +6493,21 @@ lvgl:
                   const char *ps = lv_textarea_get_text((lv_obj_t *) id(ta_pass));
                   const char *ci = lv_textarea_get_text((lv_obj_t *) id(ta_cid));
                   const char *se = lv_textarea_get_text((lv_obj_t *) id(ta_sec));
+                  const char *at = lv_textarea_get_text((lv_obj_t *) id(ta_atc));
                   if (strlen(ci) > 0) {
                     auto c = id(opensky_client_id).make_call(); c.set_value(ci); c.perform();
                   }
                   if (strlen(se) > 0) {
                     auto c = id(opensky_client_secret).make_call(); c.set_value(se); c.perform();
+                  }
+                  if (at != nullptr) {
+                    // 允許清空後寫回預設,避免殘留舊位址
+                    std::string url = at;
+                    while (!url.empty() && (url.back() == ' ' || url.back() == '/'))
+                      url.pop_back();
+                    auto c = id(voice_atc_url).make_call();
+                    c.set_value(url.empty() ? "http://192.168.12.59:18650" : url);
+                    c.perform();
                   }
                   if (strlen(ss) > 0 && strlen(ps) > 0)
                     wifi::global_wifi_component->save_wifi_sta(ss, ps);

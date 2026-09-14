@@ -1,0 +1,13 @@
+# 本地构建上下文外的噪音
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+.git/
+*.md
+check_syntax.py
+smoke_test.py
+run_smoke.sh
+.dockerignore
+docker-compose.yml

@@ -207,3 +207,9 @@ script:
   - id: local_ring_stop
     then:
       - lambda: '// Speak 座未接線,尚無板載發聲'
+  - id: voice_spk_stop
+    then:
+      - lambda: '// Speak 座未接線,尚無板載發聲'
+  - id: voice_vol_beep
+    then:
+      - lambda: '// Speak 座未接線,尚無板載發聲'

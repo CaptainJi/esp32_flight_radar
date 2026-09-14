@@ -1,0 +1,25 @@
+# Voice ATC 旁路 — Docker Compose
+# 用法:
+#   cp .env.example .env   # 填 ARK_* 与 VOICE_API_KEY
+#   docker compose up -d --build
+# 浏览器: http://<主机IP>:18650/
+# Tab5 Voice ATC URL: http://<主机IP>:18650
+
+services:
+  voice-atc:
+    image: esp32-flight-radar/voice-atc:18650
+    build: .
+    container_name: voice-atc
+    ports:
+      - "18650:18650"
+    env_file:
+      - .env
+    environment:
+      VOICE_ATC_HOST: "0.0.0.0"
+      VOICE_ATC_PORT: "18650"
+    volumes:
+      - voice_atc_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  voice_atc_data:

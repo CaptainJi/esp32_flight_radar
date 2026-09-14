@@ -294,3 +294,9 @@ script:
   - id: local_ring_stop
     then:
       - lambda: '// 無板載喇叭'
+  - id: voice_spk_stop
+    then:
+      - lambda: '// 無板載喇叭'
+  - id: voice_vol_beep
+    then:
+      - lambda: '// 無板載喇叭'

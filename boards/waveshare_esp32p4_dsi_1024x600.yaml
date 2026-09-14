@@ -204,7 +204,11 @@ speaker:
     i2s_dout_pin: GPIO9
     sample_rate: 16000
     bits_per_sample: 16bit
-    channel: mono
+    channel: left
+    use_apll: true
+    buffer_duration: 100ms
+    timeout: 500ms
+    audio_dac: es8311_dac
 
 # 功放致能:只有響鈴時才上電,平常不通電免底噪
 switch:
@@ -234,6 +238,31 @@ script:
     then:
       - rtttl.stop:
       - switch.turn_off: spk_pa
+  - id: voice_spk_stop
+    mode: single
+    then:
+      - lambda: |-
+          radar_bg::g_voice_playing = false;
+          radar_bg::g_voice_pcm_ready = false;
+          radar_bg::g_voice_pcm.clear();
+          radar_bg::g_voice_pcm_pos = 0;
+      - speaker.finish:
+          id: local_spk
+      - switch.turn_off: spk_pa
+  - id: voice_vol_beep
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return radar_bg::g_voice_playing;'
+          then: []
+          else:
+            - switch.turn_on: spk_pa
+            - lambda: |-
+                float vol = id(voice_vol).state / 100.0f;
+                if (vol < 0.05f) vol = 0.05f;
+                id(local_spk).set_volume(vol);
+            - rtttl.play: "beep:d=16,o=5,b=200:e6,g6"
 
 touchscreen:
   - platform: gt911
@@ -339,3 +368,81 @@ display:
 lvgl:
   rotation: 180°
   byte_order: little_endian
+
+# Voice ATC PCM → 板载喇叭
+# ESP32-P4 + ESPHome 2026.5+:长音频持续播会 ISR overflow,分段续播规避
+interval:
+  - interval: 40ms
+    then:
+      - lambda: |-
+          static size_t voice_seg_end = 0;
+          static bool voice_seg_flush = false;
+          static float voice_vol_applied = -1.0f;
+          if (radar_bg::g_voice_pcm_ready) {
+            xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
+            radar_bg::g_voice_pcm_ready = false;
+            bool has = !radar_bg::g_voice_pcm.empty();
+            radar_bg::g_voice_pcm_pos = 0;
+            xSemaphoreGive(radar_bg::mtx());
+            if (has) {
+              id(local_ring_stop).execute();
+              id(spk_pa).turn_on();
+              float vol = id(voice_vol).state / 100.0f;
+              id(local_spk).set_volume(vol);
+              voice_vol_applied = vol;
+              radar_bg::g_voice_playing = true;
+              voice_seg_end = 0;
+              voice_seg_flush = false;
+            }
+          }
+          if (radar_bg::g_voice_playing) {
+            float vol = id(voice_vol).state / 100.0f;
+            if (vol != voice_vol_applied) {
+              id(local_spk).set_volume(vol);
+              voice_vol_applied = vol;
+            }
+            auto &pcm = radar_bg::g_voice_pcm;
+            size_t &pos = radar_bg::g_voice_pcm_pos;
+            const size_t k_seg = 48000;
+            const size_t k_chunk = 2048;
+            if (pos >= pcm.size()) {
+              if (!id(local_spk).has_buffered_data()) {
+                id(local_spk).finish();
+                if (id(local_spk).is_stopped()) {
+                  radar_bg::g_voice_playing = false;
+                  voice_seg_flush = false;
+                  pcm.clear();
+                  pcm.shrink_to_fit();
+                  id(spk_pa).turn_off();
+                }
+              }
+            } else if (voice_seg_flush) {
+              if (id(local_spk).is_stopped()) {
+                voice_seg_flush = false;
+                voice_seg_end = pos + k_seg;
+                if (voice_seg_end > pcm.size()) voice_seg_end = pcm.size();
+              } else if (!id(local_spk).has_buffered_data()) {
+                id(local_spk).finish();
+              }
+            } else {
+              if (voice_seg_end <= pos) {
+                voice_seg_end = pos + k_seg;
+                if (voice_seg_end > pcm.size()) voice_seg_end = pcm.size();
+              }
+              size_t room = voice_seg_end - pos;
+              if (room == 0) {
+                if (pos < pcm.size()) {
+                  id(local_spk).finish();
+                  voice_seg_flush = true;
+                }
+              } else {
+                size_t want = room < k_chunk ? room : k_chunk;
+                size_t n = id(local_spk).play(pcm.data() + pos, want, 0);
+                pos += n;
+                if (pos >= voice_seg_end && pos < pcm.size() && n == 0) {
+                  id(local_spk).finish();
+                  voice_seg_flush = true;
+                }
+              }
+            }
+          }

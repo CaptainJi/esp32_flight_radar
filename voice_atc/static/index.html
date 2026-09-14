@@ -76,7 +76,7 @@
 <body>
 <main>
   <h1>VOICE ATC BRIDGE</h1>
-  <p class="sub">先在此页用文本验证「选机上下文 → MiniMax 机组回复 → TTS」。雷达固件稍后对接同一 <code>/v1/radio/turn</code>。</p>
+  <p class="sub">先在此页用文本验证「选机上下文 → 火山方舟/智能对话 → TTS」。雷达固件对接同一 <code>/v1/radio/turn</code>。</p>
 
   <div class="grid">
     <section>
@@ -106,6 +106,14 @@
     <section>
       <h2>Radio</h2>
       <div id="status" class="meta">checking /health …</div>
+      <div class="row" style="margin-top:8px">
+        <label style="display:flex;align-items:center;gap:6px;opacity:1;margin:0">
+          <input id="fxRadio" type="checkbox" /> 无线电干扰
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;opacity:1;margin:0">
+          <input id="fxBg" type="checkbox" /> 飞行背景音
+        </label>
+      </div>
       <label>ATC / 你说</label>
       <textarea id="msg">CPA123, Beijing Control, say altitude.</textarea>
       <div class="row">
@@ -129,22 +137,50 @@
 
   const logEl = document.getElementById("log");
   const statusEl = document.getElementById("status");
+  const fxRadio = document.getElementById("fxRadio");
+  const fxBg = document.getElementById("fxBg");
 
   function append(role, text) {
-    const cls = role === "user" ? "bubble-user" : "bubble-crew";
     const who = role === "user" ? "YOU" : "CREW";
     logEl.textContent += `${who}: ${text}\n\n`;
     logEl.scrollTop = logEl.scrollHeight;
   }
 
+  async function readJson(r) {
+    const text = await r.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      const snip = text.replace(/\s+/g, " ").slice(0, 180);
+      throw new Error(`HTTP ${r.status} 非 JSON 响应: ${snip}`);
+    }
+  }
+
+  function errText(j, fallback) {
+    if (!j) return fallback;
+    if (typeof j.detail === "string") return j.detail;
+    if (typeof j.error === "string") return j.error;
+    if (Array.isArray(j.detail)) {
+      return j.detail.map((e) => e.msg || JSON.stringify(e)).join("; ");
+    }
+    return fallback;
+  }
+
   async function refreshHealth() {
     try {
       const r = await fetch("/health");
-      const j = await r.json();
+      const j = await readJson(r);
+      if (!r.ok) throw new Error(errText(j, r.statusText));
+      if (typeof j.radio_fx === "boolean") fxRadio.checked = j.radio_fx;
+      if (typeof j.flight_bg === "boolean") fxBg.checked = j.flight_bg;
       statusEl.innerHTML =
         `<span class="pill">${j.mock ? "MOCK" : "LIVE"}</span>` +
-        `<span class="pill">${j.has_key ? "KEY OK" : "NO KEY"}</span>` +
-        `<span class="pill">${j.base || ""}</span>`;
+        `<span class="pill">${j.backend || ""}</span>` +
+        `<span class="pill">${j.has_ark ? "ARK OK" : "NO ARK"}</span>` +
+        `<span class="pill">${j.has_voice ? "VOICE OK" : "NO VOICE"}</span>` +
+        `<span class="pill">FX ${j.radio_fx ? "ON" : "OFF"}</span>` +
+        `<span class="pill">BG ${j.flight_bg ? "ON" : "OFF"}</span>`;
     } catch (e) {
       statusEl.textContent = "health failed: " + e;
     }
@@ -169,34 +205,62 @@
     if (!userText) return;
     sendBtn.disabled = true;
     append("user", userText);
+    const t0 = Date.now();
+    const waitPill = setInterval(() => {
+      const sec = Math.round((Date.now() - t0) / 1000);
+      statusEl.innerHTML =
+        (statusEl.dataset.base || statusEl.innerHTML) +
+        ` <span class="pill">等待上游 ${sec}s…</span>`;
+    }, 1000);
+    statusEl.dataset.base = statusEl.innerHTML;
+    const ac = new AbortController();
+    const kill = setTimeout(() => ac.abort(), 180000);
     try {
       const r = await fetch("/v1/radio/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ac.signal,
         body: JSON.stringify({
           flight: flight(),
           user_text: userText,
           history,
           want_audio: true,
           session_id: sessionId,
+          radio_fx: fxRadio.checked,
+          flight_bg: fxBg.checked,
         }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.detail || r.statusText);
+      const j = await readJson(r);
+      if (!r.ok) throw new Error(errText(j, r.statusText));
       sessionId = j.session_id;
       history.push({ role: "user", content: userText });
       history.push({ role: "assistant", content: j.reply_text });
       append("crew", j.reply_text);
-      statusEl.innerHTML += ` <span class="pill">${j.latency_ms} ms</span>`;
-      if (j.audio_url) {
-        // 浏览器不能直接播 raw PCM；用 MediaSource 太重 → 提示用 ffplay
-        // 若后续改 mp3 可直接 player.src = j.audio_url
-        player.removeAttribute("src");
-        statusEl.innerHTML += ` <span class="pill">PCM ${j.sample_rate}Hz → ${j.audio_url}</span>`;
+      statusEl.innerHTML =
+        (statusEl.dataset.base || "") +
+        ` <span class="pill">${j.latency_ms} ms</span>` +
+        ` <span class="pill">FX ${j.radio_fx ? "ON" : "OFF"}</span>` +
+        ` <span class="pill">BG ${j.flight_bg ? "ON" : "OFF"}</span>`;
+      const playUrl = j.audio_wav_url || j.audio_url;
+      if (playUrl) {
+        if (player._blobUrl) URL.revokeObjectURL(player._blobUrl);
+        player.src = playUrl + (playUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+        player._blobUrl = null;
+        try {
+          await player.play();
+        } catch (_) {}
+        statusEl.innerHTML +=
+          ` <span class="pill">${j.sample_rate}Hz</span>` +
+          ` <span class="pill">${playUrl}</span>`;
       }
     } catch (e) {
-      append("crew", "[error] " + e);
+      const msg = (e && e.name === "AbortError")
+        ? "等待超过 180 秒已取消，请再试一次"
+        : String(e.message || e);
+      append("crew", "[error] " + msg);
     } finally {
+      clearInterval(waitPill);
+      clearTimeout(kill);
       sendBtn.disabled = false;
     }
   }

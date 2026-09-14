@@ -30,6 +30,20 @@ substitutions:
   tab5_display_model: "M5STACK-TAB5"
 
 esphome:
+  includes:
+    - tab5_kb.h
+    - tab5_audio.h
+  on_boot:
+    # M5Unified Tab5:完整写 ES8388 后再开功放。ESPHome es8388::setup() 不够。
+    # devices.esphome.io:板载喇叭需 DAC→LINE1/BOTH;SPK_EN 建议常开。
+    - priority: -100
+      then:
+        - lambda: |-
+            id(es8388_dac).set_mute_off();
+            // M5 序列最后写:含 DACPOWER=0x3C / mixer / OUT vol(勿再被 set_dac_output 覆盖)
+            tab5_audio::es8388_speaker_on(id(i2c_sys));
+            ESP_LOGI("radar_bg", "es8388 DAC enabled (M5Unified seq)");
+        - switch.turn_on: spk_pa
   platformio_options:
     build_flags:
       - "-DSCREEN_W=${disp_w}"
@@ -42,13 +56,16 @@ esphome:
       - "-DRADAR_SHOT_ROT180=0"
       - "-DRADAR_LOCAL_SPK=1"
       - "-DRADAR_SD_EXT=1"
+      - "-DTAB5_KB=1"           # Tab5 Keyboard(A164) Ext.Port1
+      - "-DRADAR_NO_ALARM=1"    # 暂关闹钟:省 RAM/CPU,优先稳住喇叭播放
 
 external_components:
   - source:
       type: local
       path: components
     # st7123: vendored from ESPHome dev (PR #12075); 2026.6.5 尚未内建
-    components: [storage, sd_storage, st7123]
+    # tab5_i2s_fix: 编译期软补丁 stock i2s_audio(勿整包 vendor i2s_audio→DRAM 耗尽黑屏)
+    components: [storage, sd_storage, st7123, tab5_i2s_fix]
 
 esp32:
   board: esp32-p4-evboard
@@ -67,6 +84,10 @@ esp32:
       CONFIG_FATFS_MAX_LFN: "255"
       CONFIG_SPIRAM_USE_MALLOC: "y"
       CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: "y"
+      # 预留更多内部 DRAM 给 FreeRTOS Timer/DMA(避免 vApplicationGetTimerTaskMemory 断言黑屏)
+      CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL: "65536"
+      # I2S ISR 进 IRAM 会挤占 P4 内部 SRAM;Tab5+LVGL 上改为关闭
+      CONFIG_I2S_ISR_IRAM_SAFE: "n"
       CONFIG_MBEDTLS_DYNAMIC_BUFFER: "y"
       CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN: "y"
 
@@ -105,23 +126,31 @@ sd_storage:
   slot: 0
   mount_path: /sdcard
 
-# ---- 系統 I²C:觸控 / PI4IOE / ES8388 / INA226 / RTC 共用 ----
+# ---- 系统 I²C:触控 / PI4IOE / ES8388 / INA226 / RTC 共用 ----
+# Ext.Port1 另开一路给 Tab5 Keyboard(A164):SDA=G0 SCL=G1 INT=G50
 i2c:
-  sda: GPIO31
-  scl: GPIO32
-  frequency: 400kHz
+  - id: i2c_sys
+    sda: GPIO31
+    scl: GPIO32
+    frequency: 400kHz
+  - id: i2c_kb
+    sda: GPIO0
+    scl: GPIO1
+    frequency: 100kHz
 
-# DSI PHY 電源
+# DSI PHY 电源
 esp_ldo:
   - channel: 3
     voltage: 2.5V
 
-# ---- PI4IOE5V6408:只開雷達需要的腳,其餘電源/充電/相機不掛 HA 實體 ----
+# ---- PI4IOE5V6408:只开雷達需要的腳,其餘電源/充電/相機不掛 HA 實體 ----
 pi4ioe5v6408:
   - id: pi4ioe1
+    i2c_id: i2c_sys
     address: 0x43
     # P1 SPK_EN / P4 LCD_RST / P5 TP_RST
   - id: pi4ioe2
+    i2c_id: i2c_sys
     address: 0x44
     # P0 WLAN_PWR_EN — C6 供電,必須開著 Wi-Fi 才活
 
@@ -138,7 +167,8 @@ switch:
     pin:
       pi4ioe5v6408: pi4ioe1
       number: 1
-    restore_mode: ALWAYS_OFF
+    # 官方 Tab5 ESPHome:speaker_enable ALWAYS_ON;高电平开 NS4150
+    restore_mode: ALWAYS_ON
     internal: true
   # ST7121 顯示/觸控同 die:勿在 touchscreen.reset_pin 再脈衝復位(會沖掉已初始化狀態)。
   # 只保持 TP_RST 釋放(高電平);LCD 復位仍由 display.reset_pin 負責。
@@ -164,7 +194,10 @@ light:
     name: Backlight
     restore_mode: RESTORE_DEFAULT_ON
 
-# ---- 板載喇叭(鬧鐘 LOCAL SPEAKER):ES8388 + NS4150B ----
+# ---- 板載喇叭:ES8388 + NS4150B(对齐 devices.esphome.io/M5Stack-Tab5 + M5Unified)----
+# HPOUT_L → NS4150;I2S:MCLK30 BCLK27 LRCK29 DOUT26;codec I2C 0x10
+tab5_i2s_fix:
+
 i2s_audio:
   - id: i2s_out
     i2s_mclk_pin: GPIO30
@@ -174,6 +207,7 @@ i2s_audio:
 audio_dac:
   - platform: es8388
     id: es8388_dac
+    i2c_id: i2c_sys
 
 speaker:
   - platform: i2s_audio
@@ -182,28 +216,63 @@ speaker:
     dac_type: external
     i2s_dout_pin: GPIO26
     audio_dac: es8388_dac
+    # 与 voice_atc / RTTTL beep 同为 16k;连续喂入,减少分段 finish 卡顿
     sample_rate: 16000
     bits_per_sample: 16bit
     channel: mono
+    # ES8388 single-speed 合法比:256(见 datasheet Table1);codec reg24=0x02
+    mclk_multiple: 256
+    use_apll: false
+    buffer_duration: 800ms
+    timeout: 1500ms
 
 rtttl:
   id: alarm_tone
   speaker: local_spk
   gain: 0.6
-  on_finished_playback:
-    - switch.turn_off: spk_pa
 
 script:
+  - id: tab5_codec_ready
+    mode: single
+    then:
+      - lambda: |-
+          id(es8388_dac).set_mute_off();
+          tab5_audio::es8388_speaker_on(id(i2c_sys));
+      - switch.turn_on: spk_pa
+  # 闹钟已用 RADAR_NO_ALARM 关闭;保留 stub 供 core.yaml 调用
   - id: local_ring_start
     mode: single
     then:
-      - switch.turn_on: spk_pa
-      - rtttl.play: "radar:d=8,o=6,b=180:c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c,4p,c,p,c,p,c"
+      - lambda: 'ESP_LOGD("radar_bg", "alarm ring skipped (RADAR_NO_ALARM)");'
   - id: local_ring_stop
     mode: single
+    then: []
+  - id: voice_vol_beep
+    mode: restart
     then:
-      - rtttl.stop:
-      - switch.turn_off: spk_pa
+      - if:
+          condition:
+            lambda: 'return radar_bg::g_voice_playing;'
+          then:
+            - lambda: 'ESP_LOGD("radar_bg", "vol beep skipped (voice playing)");'
+          else:
+            - script.execute: tab5_codec_ready
+            - lambda: |-
+                float vol = id(voice_vol).state / 100.0f;
+                if (vol < 0.05f) vol = 0.05f;
+                id(local_spk).set_volume(vol);
+                ESP_LOGI("radar_bg", "vol beep %.0f%%", id(voice_vol).state);
+            - rtttl.play: "beep:d=16,o=5,b=200:e6,g6"
+  - id: voice_spk_stop
+    mode: single
+    then:
+      - lambda: |-
+          radar_bg::g_voice_playing = false;
+          radar_bg::g_voice_pcm_ready = false;
+          radar_bg::g_voice_pcm.clear();
+          radar_bg::g_voice_pcm_pos = 0;
+      - speaker.finish:
+          id: local_spk
 
 # ---- 顯示:原生直向,橫向由下方 lvgl.rotation 處理(須在 touchscreen 之前) ----
 display:
@@ -232,6 +301,7 @@ lvgl:
 touchscreen:
   - platform: st7123
     id: my_touch
+    i2c_id: i2c_sys
     display: main_display
     update_interval: 50ms
     calibration:
@@ -268,3 +338,86 @@ touchscreen:
           }
     on_release:
       - lambda: 'id(shot_armed) = false;'
+
+# Tab5 Keyboard (A164) + Voice ATC PCM 播放泵
+interval:
+  - interval: 40ms
+    then:
+      - lambda: |-
+          static uint8_t kb_phase = 0;
+          if (kb_phase == 0) {
+            tab5_kb::setup(id(i2c_kb));
+            kb_phase = 1;
+          } else if (kb_phase == 1 || kb_phase == 2) {
+            // 重试直到软键盘对象就绪
+            if (id(call_kb)->obj != nullptr && id(cfg_kb)->obj != nullptr) {
+              tab5_kb::bind_soft_kbs(id(call_kb)->obj, id(cfg_kb)->obj);
+              kb_phase = 3;
+            } else {
+              kb_phase = 2;
+            }
+          }
+          tab5_kb::poll();
+          if (radar_kb_want_talk() && id(call_on) && !id(call_talk_on))
+            id(open_call_talk).execute();
+
+          // ---- Voice ATC PCM → 板载喇叭(16k 原生连续喂入)----
+          static float voice_vol_applied = -1.0f;
+          static bool voice_dac_ok = false;
+
+          if (!voice_dac_ok) {
+            id(es8388_dac).set_mute_off();
+            tab5_audio::es8388_speaker_on(id(i2c_sys));
+            id(spk_pa).turn_on();
+            voice_dac_ok = true;
+          }
+
+          if (radar_bg::g_voice_pcm_ready) {
+            xSemaphoreTake(radar_bg::mtx(), portMAX_DELAY);
+            radar_bg::g_voice_pcm_ready = false;
+            bool has = !radar_bg::g_voice_pcm.empty();
+            radar_bg::g_voice_pcm_pos = 0;
+            xSemaphoreGive(radar_bg::mtx());
+            if (has) {
+              id(local_ring_stop).execute();
+              id(spk_pa).turn_on();
+              float vol = id(voice_vol).state / 100.0f;
+              if (vol < 0.05f) vol = 0.05f;
+              id(local_spk).set_volume(vol);
+              voice_vol_applied = vol;
+              radar_bg::g_voice_playing = true;
+              ESP_LOGI("radar_bg", "voice play %u bytes vol=%.0f%% @16k",
+                       (unsigned) radar_bg::g_voice_pcm.size(),
+                       id(voice_vol).state);
+            }
+          }
+          if (radar_bg::g_voice_playing) {
+            float vol = id(voice_vol).state / 100.0f;
+            if (vol < 0.05f) vol = 0.05f;
+            if (vol != voice_vol_applied) {
+              id(local_spk).set_volume(vol);
+              voice_vol_applied = vol;
+            }
+            auto &pcm = radar_bg::g_voice_pcm;
+            size_t &pos = radar_bg::g_voice_pcm_pos;
+            // 连续灌环缓;短等避免空转,减少分段 finish 造成的卡顿
+            const size_t k_chunk = 4096;
+            if (pos >= pcm.size()) {
+              if (!id(local_spk).has_buffered_data()) {
+                id(local_spk).finish();
+                if (id(local_spk).is_stopped()) {
+                  radar_bg::g_voice_playing = false;
+                  pcm.clear();
+                  pcm.shrink_to_fit();
+                }
+              }
+            } else {
+              size_t room = pcm.size() - pos;
+              size_t want = room < k_chunk ? room : k_chunk;
+              want &= ~1u;
+              if (want >= 2) {
+                size_t n = id(local_spk).play(pcm.data() + pos, want, pdMS_TO_TICKS(40));
+                pos += n;
+              }
+            }
+          }

@@ -17,12 +17,12 @@ substitutions:
   disp_w: "1280"
   disp_h: "720"
   radar_canvas: "684"    # 456 * 1.5 — matches ui/ui_1280x720.yaml
-  # fonts ×1.5 from the 800×480 layout
-  f_small: "33"
-  f_mid: "42"
-  f_clock: "96"
-  f_mono: "27"
-  f_tiny: "21"
+  # fonts:略小于严格 ×1.5,右侧栏更疏、时钟/坐标不过分抢眼
+  f_small: "24"
+  f_mid: "32"
+  f_clock: "56"
+  f_mono: "22"
+  f_tiny: "18"
   # 本機貼紙 ST7121
   tab5_display_model: "M5STACK-TAB5-ST7121"
 
