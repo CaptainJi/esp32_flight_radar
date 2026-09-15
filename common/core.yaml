@@ -55,6 +55,7 @@ esphome:
     - aircraft_db.h        # 產生器:tools/make_aircraft_db.py(機型輪廓 + 規格表)
     - radar_fetch.h
     - kb_focus.h           # 物理鍵盤焦点(Tab5 A164;其他板为空操作)
+    - ui_text.h            # RADIO 中英混排空格/换行
     - alarm.h
   on_boot:
     priority: -100
@@ -712,7 +713,7 @@ script:
             lv_obj_add_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
           else
             lv_obj_clear_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
-          lv_label_set_text(id(call_lang_l), id(voice_lang_en) ? "EN" : "中");
+          lv_label_set_text(id(call_lang_l), id(voice_lang_en) ? "EN" : "ZH");
           lv_obj_set_style_text_color(id(call_lang_l),
               lv_color_hex(id(voice_lang_en) ? 0x201200 : 0x00E66E), 0);
           // 新通話清空多輪歷史
@@ -1350,13 +1351,16 @@ interval:
                 lv_obj_clear_flag((lv_obj_t *) id(call_panel), LV_OBJ_FLAG_HIDDEN);
                 lv_obj_move_foreground((lv_obj_t *) id(call_panel));
               }
+              // 中英/数字混排加空格、句号后换行,避免 Noto+Roboto 基线参差
+              std::string rx_s = radar_ui::pretty_mixed(reply);
               char buf[384];
               if (!user_tx.empty()) {
-                snprintf(buf, sizeof(buf), "TX: %s\nRX: %s", user_tx.c_str(), reply.c_str());
+                std::string tx_s = radar_ui::pretty_mixed(user_tx);
+                snprintf(buf, sizeof(buf), "TX: %s\nRX: %s", tx_s.c_str(), rx_s.c_str());
                 id(voice_hist_role).push_back("user");
                 id(voice_hist_text).push_back(user_tx);
               } else {
-                snprintf(buf, sizeof(buf), "RX: %s", reply.c_str());
+                snprintf(buf, sizeof(buf), "RX: %s", rx_s.c_str());
               }
               lv_label_set_text(id(call_log_l), buf);
               id(voice_hist_role).push_back("assistant");

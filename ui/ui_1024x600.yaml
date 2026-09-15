@@ -5389,12 +5389,12 @@ lvgl:
                   pad_all: 0
                   checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
                   widgets:
-                    - label: { id: call_lang_l, align: CENTER, text: "中", text_font: font_small, text_color: 0x00E66E }
+                    - label: { id: call_lang_l, align: CENTER, text: "ZH", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         bool en = lv_obj_has_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
                         id(voice_lang_en) = en;
-                        lv_label_set_text(id(call_lang_l), en ? "EN" : "中");
+                        lv_label_set_text(id(call_lang_l), en ? "EN" : "ZH");
                         lv_obj_set_style_text_color(id(call_lang_l),
                             lv_color_hex(en ? 0x201200 : 0x00E66E), 0);
                         ESP_LOGI("radar_bg", "voice_lang %s", en ? "en" : "zh");
@@ -5536,7 +5536,7 @@ lvgl:
                   pad_all: 0
                   checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
                   widgets:
-                    - label: { id: call_rfx_l, align: CENTER, text: "干扰", text_font: font_small, text_color: 0x00E66E }
+                    - label: { id: call_rfx_l, align: CENTER, text: "STATIC", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         bool on = lv_obj_has_state((lv_obj_t *) id(call_rfx_btn), LV_STATE_CHECKED);
@@ -5558,7 +5558,7 @@ lvgl:
                   pad_all: 0
                   checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
                   widgets:
-                    - label: { id: call_fbg_l, align: CENTER, text: "背景", text_font: font_small, text_color: 0x00E66E }
+                    - label: { id: call_fbg_l, align: CENTER, text: "CABIN", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         bool on = lv_obj_has_state((lv_obj_t *) id(call_fbg_btn), LV_STATE_CHECKED);
@@ -5577,7 +5577,7 @@ lvgl:
                   border_width: 0
                   pad_all: 0
                   widgets:
-                    - label: { align: CENTER, text: "自由对话", text_font: font_small, text_color: 0x04180C }
+                    - label: { align: CENTER, text: "TALK", text_font: font_small, text_color: 0x04180C }
                   on_click:
                     - script.execute: open_call_talk
 
