@@ -104,22 +104,22 @@ esphome:
       - delay: 3s
       - lambda: |-
           lv_obj_add_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
-          lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x04180C), 0);
+          lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x201200), 0);
           if (id(map_on)) {
             lv_obj_add_state((lv_obj_t *) id(map_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(map_btn_l), lv_color_hex(0x04180C), 0);
+            lv_obj_set_style_text_color(id(map_btn_l), lv_color_hex(0x201200), 0);
           }
           if (id(echo_on)) {
             lv_obj_add_state((lv_obj_t *) id(echo_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(echo_btn_l), lv_color_hex(0x04180C), 0);
+            lv_obj_set_style_text_color(id(echo_btn_l), lv_color_hex(0x201200), 0);
           }
           if (id(persist_on)) {
             lv_obj_add_state((lv_obj_t *) id(persist_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(persist_btn_l), lv_color_hex(0x04180C), 0);
+            lv_obj_set_style_text_color(id(persist_btn_l), lv_color_hex(0x201200), 0);
           }
           if (id(atc_on)) {
             lv_obj_add_state((lv_obj_t *) id(atc_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(atc_btn_l), lv_color_hex(0x04180C), 0);
+            lv_obj_set_style_text_color(id(atc_btn_l), lv_color_hex(0x201200), 0);
           }
           // 工具列置頂:map-tiles 裁剪層/後掛物件會蓋住右上角,SYS 易被 PWR 誤觸
           {
@@ -155,7 +155,7 @@ esphome:
           }
           if (id(poll_when_off)) {
             lv_obj_add_state((lv_obj_t *) id(poff_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(poff_btn_l), lv_color_hex(0x04180C), 0);
+            lv_obj_set_style_text_color(id(poff_btn_l), lv_color_hex(0x201200), 0);
           }
           // SRC / UNIT 下拉:同步到 NVS 還原的值(設定頁未開過也要正確)
           lv_dropdown_set_selected(id(src_dd)->obj, id(data_src));
@@ -704,9 +704,9 @@ script:
           else
             lv_obj_clear_state((lv_obj_t *) id(call_fbg_btn), LV_STATE_CHECKED);
           lv_obj_set_style_text_color(id(call_rfx_l),
-              lv_color_hex(id(voice_radio_fx) ? 0x04180C : 0x00E66E), 0);
+              lv_color_hex(id(voice_radio_fx) ? 0x201200 : 0x00E66E), 0);
           lv_obj_set_style_text_color(id(call_fbg_l),
-              lv_color_hex(id(voice_flight_bg) ? 0x04180C : 0x00E66E), 0);
+              lv_color_hex(id(voice_flight_bg) ? 0x201200 : 0x00E66E), 0);
           // 语种钮同步(CALL 面板)
           if (id(voice_lang_en))
             lv_obj_add_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
@@ -714,7 +714,7 @@ script:
             lv_obj_clear_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
           lv_label_set_text(id(call_lang_l), id(voice_lang_en) ? "EN" : "中");
           lv_obj_set_style_text_color(id(call_lang_l),
-              lv_color_hex(id(voice_lang_en) ? 0x04180C : 0x00E66E), 0);
+              lv_color_hex(id(voice_lang_en) ? 0x201200 : 0x00E66E), 0);
           // 新通話清空多輪歷史
           id(voice_hist_role).clear();
           id(voice_hist_text).clear();
@@ -1183,8 +1183,8 @@ script:
           else
             lv_obj_add_flag((lv_obj_t *) id(call_btn), LV_OBJ_FLAG_HIDDEN);
           // 徽章按下時反白,當作按鈕的按下狀態
-          lv_obj_set_style_bg_color(id(sel_type_l), lv_color_hex(spec ? 0xFFEE00 : 0x00C060), 0);
-          lv_obj_set_style_text_color(id(sel_type_l), lv_color_hex(spec ? 0x181400 : 0x04180C), 0);
+          lv_obj_set_style_bg_color(id(sel_type_l), lv_color_hex(spec ? 0xFFEE00 : 0xE8A020), 0);
+          lv_obj_set_style_text_color(id(sel_type_l), lv_color_hex(spec ? 0x181400 : 0x201200), 0);
           // 分頁列與分頁鈕高亮(amber 航管配色)
           if (tab_mode) {
             lv_obj_clear_flag(id(sys_tabbar), LV_OBJ_FLAG_HIDDEN);
@@ -1748,7 +1748,7 @@ interval:
               uint8_t sg = selg ? 1 : 0;
               if (slot_ch || last_sel[shown] != sg) {
                 last_sel[shown] = sg;
-                lv_obj_set_style_img_recolor(imgs[shown], lv_color_hex(selg ? 0xFFD24A : 0x40FF9A), 0);
+                lv_obj_set_style_img_recolor(imgs[shown], lv_color_hex(selg ? 0xE8A020 : 0x40FF9A), 0);
                 lv_obj_set_style_img_recolor_opa(imgs[shown], LV_OPA_COVER, 0);
                 lv_obj_set_style_opa(marks[shown], LV_OPA_COVER, 0);
               }
@@ -1764,7 +1764,7 @@ interval:
             if (atc) {
               lv_obj_add_flag(imgs[shown], LV_OBJ_FLAG_HIDDEN);
               lv_obj_clear_flag(sqs[shown], LV_OBJ_FLAG_HIDDEN);
-              uint32_t basecol = selg ? 0xFFFFFF : (stale ? 0xFFCC00 : 0x00FF41);
+              uint32_t basecol = selg ? 0xE8A020 : (stale ? 0xFFCC00 : 0x00FF41);
               lv_obj_set_style_bg_color(sqs[shown], lv_color_hex(basecol), 0);
               lv_obj_set_style_text_color(dbs[shown], lv_color_hex(basecol), 0);
               // 速度向量線:未來 120 秒推算位置,超出雷達圈就沿方向 clamp 回圓周上
@@ -1883,7 +1883,7 @@ interval:
             for (int a = 0; a < shown; a++) {
               if (!id(conflict_slot)[a]) continue;
               bool blink = (millis() / 1000) % 2 == 0;
-              uint32_t col = (selarr[a] && !blink) ? 0xFFFFFF : 0xFF0033;
+              uint32_t col = (selarr[a] && !blink) ? 0xE8A020 : 0xFF0033;
               lv_obj_set_style_bg_color(sqs[a], lv_color_hex(col), 0);
               lv_obj_set_style_text_color(dbs[a], lv_color_hex(col), 0);
             }
@@ -2030,7 +2030,7 @@ interval:
                 lv_obj_set_style_img_recolor(imgs[i], lv_color_make(0xFF, 0xFF, 0xFF), 0);
                 lv_obj_set_style_img_recolor_opa(imgs[i], LV_OPA_COVER, 0);
               } else if (g0 >= 0.98f && g < 0.98f) {
-                uint8_t br = selg ? 0xFF : 0x40, bg = selg ? 0xD2 : 0xFF, bb = selg ? 0x4A : 0x9A;
+                uint8_t br = selg ? 0xE8 : 0x40, bg = selg ? 0xA0 : 0xFF, bb = selg ? 0x20 : 0x9A;
                 lv_obj_set_style_img_recolor(imgs[i], lv_color_make(br, bg, bb), 0);
               }
             } else {
@@ -2044,7 +2044,7 @@ interval:
                 if (!crossed && budget <= 0) continue;
                 if (!crossed) budget--;
                 last_gq[i] = gq;
-                uint8_t br = selg ? 0xFF : 0x40, bg = selg ? 0xD2 : 0xFF, bb = selg ? 0x4A : 0x9A;
+                uint8_t br = selg ? 0xE8 : 0x40, bg = selg ? 0xA0 : 0xFF, bb = selg ? 0x20 : 0x9A;
                 uint8_t r = br + (uint8_t) ((255 - br) * g);
                 uint8_t gg = bg + (uint8_t) ((255 - bg) * g);
                 uint8_t b = bb + (uint8_t) ((255 - bb) * g);

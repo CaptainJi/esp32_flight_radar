@@ -430,7 +430,7 @@ touchscreen:
             auto call = id(backlight).turn_on();
             call.perform();
             lv_obj_add_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x04180C), 0);
+            lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x201200), 0);
           }
     on_update:
       - lambda: |-
@@ -546,7 +546,7 @@ interval:
             }
           }
 
-  # 右上角电量/充电状态(bat_label 仅 Tab5 UI)
+  # 右上角电量/充电状态(bat_icon + bat_label 仅 Tab5 UI)
   - interval: 5s
     then:
       - lambda: |-
@@ -556,23 +556,33 @@ interval:
           bool chg = id(bat_charging).state;
           // 电流为负也视为充电中(USB 供电时 STAT 偶发不准)
           if (!isnan(cur) && cur < -0.05f) chg = true;
-          char buf[24];
+          char buf[16];
+          const char *icon = "\uF244";  // battery-empty
           uint32_t color = 0x6E8273;
           if (isnan(pct)) {
-            snprintf(buf, sizeof(buf), "BAT --");
+            snprintf(buf, sizeof(buf), "--%%");
+            icon = "\uF244";
           } else {
             int p = (int) (pct + 0.5f);
             if (p < 0) p = 0;
             if (p > 100) p = 100;
+            snprintf(buf, sizeof(buf), "%d%%", p);
+            // FontAwesome: F240 full … F244 empty
+            if (p >= 90) icon = "\uF240";
+            else if (p >= 65) icon = "\uF241";
+            else if (p >= 40) icon = "\uF242";
+            else if (p >= 15) icon = "\uF243";
+            else icon = "\uF244";
             if (chg) {
-              snprintf(buf, sizeof(buf), "CHG %d%%", p);
-              color = 0x00E66E;
-            } else {
-              snprintf(buf, sizeof(buf), "BAT %d%%", p);
-              if (p <= 15) color = 0xE04040;
-              else if (p <= 30) color = 0xE8A020;
+              color = 0x00E66E;  // 充电中：保留电量档位图标，绿色区分
+            } else if (p <= 15) {
+              color = 0xE04040;
+            } else if (p <= 30) {
+              color = 0xE8A020;
             }
           }
+          lv_label_set_text(id(bat_icon), icon);
+          lv_obj_set_style_text_color(id(bat_icon), lv_color_hex(color), 0);
           lv_label_set_text(id(bat_label), buf);
           lv_obj_set_style_text_color(id(bat_label), lv_color_hex(color), 0);
           if (!isnan(v))
