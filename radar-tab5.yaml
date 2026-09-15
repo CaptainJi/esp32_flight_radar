@@ -25,8 +25,8 @@ substitutions:
   f_tiny: "18"
   # 本機貼紙 ST7121
   tab5_display_model: "M5STACK-TAB5-ST7121"
-  # 扫描线降频:省 CPU,触控/语音更顺
-  sweep_interval: "33ms"
+  # 扫描线降频:省 CPU/flush,触控更跟手(原 33ms)
+  sweep_interval: "50ms"
 
 packages:
   # Tab5:不装 common/alarm.yaml(无闹钟页);板档提供 script stub

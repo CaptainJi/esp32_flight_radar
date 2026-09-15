@@ -417,7 +417,7 @@ touchscreen:
     id: my_touch
     i2c_id: i2c_sys
     display: main_display
-    update_interval: 66ms
+    update_interval: 33ms
     calibration:
       x_min: 0
       x_max: 720
@@ -430,7 +430,7 @@ touchscreen:
             auto call = id(backlight).turn_on();
             call.perform();
             lv_obj_add_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x201200), 0);
+            lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x04180C), 0);
           }
     on_update:
       - lambda: |-
@@ -472,8 +472,9 @@ interval:
             }
           }
           tab5_kb::poll();
-          if (radar_kb_want_talk() && id(call_on) && !id(call_talk_on))
-            id(open_call_talk).execute();
+          // 无按键时不跑 kb_drain(省 script/lambda 开销)
+          if (tab5_kb::cmd_n_ > 0)
+            id(kb_drain).execute();
 
   # Voice ATC PCM → 板载喇叭(16k 原生连续喂入);独立 10ms 泵减少欠载
   - interval: 10ms

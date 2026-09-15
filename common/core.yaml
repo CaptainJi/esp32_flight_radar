@@ -55,6 +55,7 @@ esphome:
     - aircraft_db.h        # 產生器:tools/make_aircraft_db.py(機型輪廓 + 規格表)
     - radar_fetch.h
     - kb_focus.h           # 物理鍵盤焦点(Tab5 A164;其他板为空操作)
+    - kb_router.h          # A164 命令分类 + 工具/CALL 焦点环
     - ui_text.h            # RADIO 中英混排空格/换行
     - alarm.h
   on_boot:
@@ -102,32 +103,15 @@ esphome:
                              id(home_lon).state, id(radar_range).state,
                              id(map_on), id(echo_on),
                              atc_layer_mask(id(atc_on), id(atc_asp_on), id(atc_rwy_on), id(atc_apt_on), id(atc_fix_on)));
-      - delay: 3s
+      # 工具钮同步:立即一次 + 延迟再校正(LVGL 早期样式未稳)
+      - script.execute: sync_toolbar
       - lambda: |-
-          lv_obj_add_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
-          lv_obj_set_style_text_color(id(pwr_btn_l), lv_color_hex(0x201200), 0);
-          if (id(map_on)) {
-            lv_obj_add_state((lv_obj_t *) id(map_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(map_btn_l), lv_color_hex(0x201200), 0);
-          }
-          if (id(echo_on)) {
-            lv_obj_add_state((lv_obj_t *) id(echo_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(echo_btn_l), lv_color_hex(0x201200), 0);
-          }
-          if (id(persist_on)) {
-            lv_obj_add_state((lv_obj_t *) id(persist_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(persist_btn_l), lv_color_hex(0x201200), 0);
-          }
-          if (id(atc_on)) {
-            lv_obj_add_state((lv_obj_t *) id(atc_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(atc_btn_l), lv_color_hex(0x201200), 0);
-          }
           // 工具列置頂:map-tiles 裁剪層/後掛物件會蓋住右上角,SYS 易被 PWR 誤觸
           {
             lv_obj_t *tb[] = {
               (lv_obj_t *) id(map_btn), (lv_obj_t *) id(echo_btn),
-              (lv_obj_t *) id(atc_btn), (lv_obj_t *) id(pwr_btn),
-              (lv_obj_t *) id(info_btn),
+              (lv_obj_t *) id(persist_btn), (lv_obj_t *) id(atc_btn),
+              (lv_obj_t *) id(pwr_btn), (lv_obj_t *) id(info_btn),
             };
             for (auto *b : tb) {
               if (!b) continue;
@@ -140,28 +124,14 @@ esphome:
             lv_obj_set_ext_click_area((lv_obj_t *) id(info_btn), 12);
             lv_obj_set_ext_click_area((lv_obj_t *) id(pwr_btn), 8);
           }
-          // ATC 圖層開關按鈕:還原 NVS 儲存的勾選狀態
-          struct { bool on; lv_obj_t *btn, *lbl; } lay[5] = {
-            { id(atc_asp_on), (lv_obj_t *) id(asp_btn), id(asp_btn_l) },
-            { id(atc_rwy_on), (lv_obj_t *) id(rwy_btn), id(rwy_btn_l) },
-            { id(atc_apt_on), (lv_obj_t *) id(apt_btn), id(apt_btn_l) },
-            { id(atc_fix_on), (lv_obj_t *) id(fix_btn), id(fix_btn_l) },
-            { id(atc_route_on), (lv_obj_t *) id(route_btn), id(route_btn_l) },
-          };
-          for (auto &l : lay) {
-            if (l.on) {
-              lv_obj_add_state(l.btn, LV_STATE_CHECKED);
-              lv_obj_set_style_text_color(l.lbl, lv_color_hex(0x201200), 0);   // amber 反白
-            }
-          }
-          if (id(poll_when_off)) {
-            lv_obj_add_state((lv_obj_t *) id(poff_btn), LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(id(poff_btn_l), lv_color_hex(0x201200), 0);
-          }
           // SRC / UNIT 下拉:同步到 NVS 還原的值(設定頁未開過也要正確)
           lv_dropdown_set_selected(id(src_dd)->obj, id(data_src));
           lv_dropdown_set_selected(id(unit_dd)->obj, id(units_imperial) ? 1 : 0);
       - script.execute: atc_panel_sync
+      - delay: 1s
+      - script.execute: sync_toolbar
+      - delay: 2s
+      - script.execute: sync_toolbar
       - lambda: |-
           #if !RADAR_BL_PWM
           // 背光無 PWM(CH422G 擴充腳,只能開/關)→ 用 LVGL top layer 的全螢幕
@@ -549,6 +519,13 @@ globals:
   - { id: ring_last_ms, type: uint32_t, initial_value: '0' }   # 上次向喇叭發聲的 millis
   - { id: wake_ms,   type: uint32_t, initial_value: '0' }
   - { id: kb_target, type: int,      initial_value: '0' }   # 0=lat 1=lon 2=rng 3=poll
+  # 实体键盘导航(Windows 风格焦点):0=飞机 1..6=工具 7=CALL
+  - { id: kb_focus_tool, type: bool, initial_value: 'false' }
+  - { id: kb_tool_idx, type: int, initial_value: '0' }       # 0..5 MAP..SYS(与 kb_nav_idx 同步)
+  - { id: kb_nav_idx, type: int, initial_value: '0' }        # 0=AC 1..6=tools 7=CALL
+  - { id: kb_pick_ac, type: int, initial_value: '-1' }       # >=0 时 select_slot 强制选该航班索引
+  - { id: kb_call_idx, type: int, initial_value: '0' }       # CALL 层焦点 0..8
+  - { id: kb_help_on, type: bool, initial_value: 'false' }   # 帮助层
   - { id: wx_last_ms, type: uint32_t, initial_value: '0' }  # 上次抓天氣的 millis,0=立即抓
   - { id: maps_key, type: std::string }                     # 上次**成功**下載的「座標,層級」;相同就不重抓
   - { id: maps_key_try, type: std::string }                 # 進行中那次的 key,成功才寫進 maps_key
@@ -570,6 +547,45 @@ script:
             lv_dropdown_set_symbol(d->obj, nullptr);
           }
 
+  # NVS/背光 → LVGL 工具钮 checked + 字色(开=黑字,关=绿字)
+  # 仅在开机/触摸改状态时调用;勿每秒执行(会触发大量 STYLE invalidate)
+  - id: sync_toolbar
+    mode: single
+    then:
+      - lambda: |-
+          // 开机/校正:必须写满 checked+字色(勿 early-return,否则字色会与底色脱节)
+          auto sync = [](lv_obj_t *btn, lv_obj_t *lbl, bool on) {
+            if (btn == nullptr) return;
+            if (on)
+              lv_obj_add_state(btn, LV_STATE_CHECKED);
+            else
+              lv_obj_clear_state(btn, LV_STATE_CHECKED);
+            lv_obj_set_user_data(btn, nullptr);  // 强制焦点环按新 checked 重算
+            if (lbl)
+              lv_obj_set_style_text_color(lbl,
+                  lv_color_hex(on ? 0x04180C : 0x00C060), 0);
+          };
+          sync((lv_obj_t *) id(map_btn), id(map_btn_l), id(map_on));
+          sync((lv_obj_t *) id(echo_btn), id(echo_btn_l), id(echo_on));
+          sync((lv_obj_t *) id(persist_btn), id(persist_btn_l), id(persist_on));
+          sync((lv_obj_t *) id(atc_btn), id(atc_btn_l), id(atc_on));
+          sync((lv_obj_t *) id(pwr_btn), id(pwr_btn_l),
+               id(backlight).current_values.is_on());
+          sync((lv_obj_t *) id(info_btn), id(info_btn_l), id(info_on));
+          struct { bool on; lv_obj_t *btn; lv_obj_t *lbl; } lay[6] = {
+            { id(atc_asp_on), (lv_obj_t *) id(asp_btn), id(asp_btn_l) },
+            { id(atc_rwy_on), (lv_obj_t *) id(rwy_btn), id(rwy_btn_l) },
+            { id(atc_apt_on), (lv_obj_t *) id(apt_btn), id(apt_btn_l) },
+            { id(atc_fix_on), (lv_obj_t *) id(fix_btn), id(fix_btn_l) },
+            { id(atc_route_on), (lv_obj_t *) id(route_btn), id(route_btn_l) },
+            { id(poll_when_off), (lv_obj_t *) id(poff_btn), id(poff_btn_l) },
+          };
+          for (auto &l : lay) sync(l.btn, l.lbl, l.on);
+          // 开机校正时清掉误留的键盘焦点(避免 SYS 等出现琥珀环)
+          id(kb_nav_idx) = kb_router::NAV_AC;
+          id(kb_focus_tool) = false;
+      - script.execute: kb_nav_rings
+
   - id: fetch_flights            # 丟給 core 1 背景 task,UI 不阻塞
     mode: single
     then:
@@ -588,8 +604,14 @@ script:
           // 兩機靠得近時常常是鄰機的標籤壓在上面,只信被點到的 slot 就會選錯。改成
           // 拿觸點對所有圈內航機算距離取最近者(超過 RS(48) 才退回 slot,例如點在
           // 呼號的遠端)。外插算法與畫面同一套,選取才不會跟眼睛看到的差一拍。
+          // 键盘选机:kb_pick_ac>=0 时跳过触点判定,且不再次点同一机取消。
           int i = -1;
-          {
+          bool from_kb = false;
+          if (id(kb_pick_ac) >= 0) {
+            i = id(kb_pick_ac);
+            id(kb_pick_ac) = -1;
+            from_kb = true;
+          } else {
             lv_indev_t *indev = lv_indev_get_act();
             lv_point_t pt{0, 0};
             if (indev) lv_indev_get_point(indev, &pt);
@@ -598,17 +620,43 @@ script:
             float coslat = cosf(lat0 * 3.14159265f / 180.0f);
             float dt = (id(fetch_ms) > 0) ? (millis() - id(fetch_ms)) / 1000.0f : 0.0f;
             if (dt > 180.0f) dt = 180.0f;
-            int best_d2 = RS(48) * RS(48) + 1;
-            for (int k = 0; k < (int) id(ac_lat).size(); k++) {
-              float rad = id(ac_trk)[k] * 3.14159265f / 180.0f;
-              float vkm = id(ac_vel)[k] * dt / 1000.0f;
-              float e  = (id(ac_lon)[k] - lon0) * 111.320f * coslat + vkm * sinf(rad);
-              float no = (id(ac_lat)[k] - lat0) * 110.574f          + vkm * cosf(rad);
-              if (e * e + no * no > rng * rng) continue;
-              int dx = RS(240) + (int) (e / rng * (float) RADAR_R) - (int) pt.x;
-              int dy = RS(240) - (int) (no / rng * (float) RADAR_R) - (int) pt.y;
-              int d2 = dx * dx + dy * dy;
-              if (d2 < best_d2) { best_d2 = d2; i = k; }
+            const int near2 = RS(36) * RS(36);
+            const int lim2 = RS(48) * RS(48) + 1;
+            int best_d2 = lim2;
+            // 快路径:点中的 slot 对应飞机若足够近,跳过全量搜索
+            if (slot >= 0 && slot < (int) id(slot_map).size()) {
+              int k0 = id(slot_map)[slot];
+              if (k0 >= 0 && k0 < (int) id(ac_lat).size()) {
+                float rad = id(ac_trk)[k0] * 3.14159265f / 180.0f;
+                float vkm = id(ac_vel)[k0] * dt / 1000.0f;
+                float e  = (id(ac_lon)[k0] - lon0) * 111.320f * coslat + vkm * sinf(rad);
+                float no = (id(ac_lat)[k0] - lat0) * 110.574f          + vkm * cosf(rad);
+                if (e * e + no * no <= rng * rng) {
+                  int dx = RADAR_CX + (int) (e / rng * (float) RADAR_R) - (int) pt.x;
+                  int dy = RADAR_CX - (int) (no / rng * (float) RADAR_R) - (int) pt.y;
+                  int d2 = dx * dx + dy * dy;
+                  best_d2 = d2;
+                  i = k0;
+                }
+              }
+            }
+            // 未近距命中:只扫当前上屏的 slot(最多 AC_SLOTS),避免遍历全部 ac_lat
+            if (i < 0 || best_d2 > near2) {
+              for (int s = 0; s < (int) id(slot_map).size(); s++) {
+                int k = id(slot_map)[s];
+                if (k < 0 || k >= (int) id(ac_lat).size()) continue;
+                if (i >= 0 && k == i && best_d2 <= near2) continue;
+                float rad = id(ac_trk)[k] * 3.14159265f / 180.0f;
+                float vkm = id(ac_vel)[k] * dt / 1000.0f;
+                float e  = (id(ac_lon)[k] - lon0) * 111.320f * coslat + vkm * sinf(rad);
+                float no = (id(ac_lat)[k] - lat0) * 110.574f          + vkm * cosf(rad);
+                if (e * e + no * no > rng * rng) continue;
+                int dx = RADAR_CX + (int) (e / rng * (float) RADAR_R) - (int) pt.x;
+                int dy = RADAR_CX - (int) (no / rng * (float) RADAR_R) - (int) pt.y;
+                int d2 = dx * dx + dy * dy;
+                if (d2 < best_d2) { best_d2 = d2; i = k; }
+              }
+              if (best_d2 > RS(48) * RS(48)) i = -1;
             }
           }
           if (i < 0) {
@@ -627,7 +675,7 @@ script:
             lv_obj_clear_state((lv_obj_t *) id(info_btn), LV_STATE_CHECKED);
             lv_obj_set_style_text_color(id(info_btn_l), lv_color_hex(0x00C060), 0);
           }
-          if (!id(sel_cs_g).empty() && id(ac_cs)[i] == id(sel_cs_g)) {
+          if (!from_kb && !id(sel_cs_g).empty() && id(ac_cs)[i] == id(sel_cs_g)) {
             // 再點一次同一台 → 取消選取,右下角換回天氣
             id(sel_cs_g).clear();
             id(call_on) = false;
@@ -674,6 +722,598 @@ script:
       - script.execute: fetch_route
       - script.execute: atc_panel_sync   # 選機→藏圖層面板;取消選取→ATC 模式下重新顯示
 
+  # ---- Tab5 A164 实体键盘(Windows 风格焦点) ----
+  - id: kb_tool_rings
+    mode: single
+    then:
+      - lambda: |-
+          lv_obj_t *tb[] = {
+            (lv_obj_t *) id(map_btn), (lv_obj_t *) id(echo_btn),
+            (lv_obj_t *) id(persist_btn), (lv_obj_t *) id(atc_btn),
+            (lv_obj_t *) id(pwr_btn), (lv_obj_t *) id(info_btn),
+          };
+          lv_obj_t *tl[] = {
+            id(map_btn_l), id(echo_btn_l), id(persist_btn_l),
+            id(atc_btn_l), id(pwr_btn_l), id(info_btn_l),
+          };
+          kb_router::apply_tool_rings(tb, tl, 6, id(kb_tool_idx), id(kb_focus_tool));
+
+  - id: kb_nav_rings
+    mode: single
+    then:
+      - lambda: |-
+          // 由 kb_nav_idx 同步工具焦点 + CALL 徽章环
+          int nav = id(kb_nav_idx);
+          bool call_vis = !lv_obj_has_flag((lv_obj_t *) id(call_btn), LV_OBJ_FLAG_HIDDEN);
+          if (nav == kb_router::NAV_CALL && !call_vis) nav = kb_router::NAV_AC;
+          if (nav < 0) nav = 0;
+          if (nav > (call_vis ? kb_router::NAV_CALL : kb_router::NAV_CALL - 1))
+            nav = kb_router::NAV_AC;
+          id(kb_nav_idx) = nav;
+          if (nav >= kb_router::NAV_TOOL0 && nav <= kb_router::NAV_TOOL0 + 5) {
+            id(kb_focus_tool) = true;
+            id(kb_tool_idx) = nav - kb_router::NAV_TOOL0;
+          } else {
+            id(kb_focus_tool) = false;
+          }
+          lv_obj_t *tb[] = {
+            (lv_obj_t *) id(map_btn), (lv_obj_t *) id(echo_btn),
+            (lv_obj_t *) id(persist_btn), (lv_obj_t *) id(atc_btn),
+            (lv_obj_t *) id(pwr_btn), (lv_obj_t *) id(info_btn),
+          };
+          lv_obj_t *tl[] = {
+            id(map_btn_l), id(echo_btn_l), id(persist_btn_l),
+            id(atc_btn_l), id(pwr_btn_l), id(info_btn_l),
+          };
+          kb_router::apply_tool_rings(tb, tl, 6, id(kb_tool_idx), id(kb_focus_tool));
+          // CALL 徽章:选中=琥珀边+琥珀字;否则恢复绿底黑字
+          lv_obj_t *cbtn = (lv_obj_t *) id(call_btn);
+          if (call_vis) {
+            if (nav == kb_router::NAV_CALL) {
+              lv_obj_set_style_border_width(cbtn, 3, 0);
+              lv_obj_set_style_border_color(cbtn, lv_color_hex(kb_router::FOCUS_BORDER), 0);
+              lv_obj_set_style_text_color(cbtn, lv_color_hex(kb_router::FOCUS_TEXT), 0);
+            } else {
+              lv_obj_set_style_border_width(cbtn, 0, 0);
+              lv_obj_set_style_text_color(cbtn, lv_color_hex(kb_router::ON_TEXT), 0);
+            }
+          }
+
+  - id: kb_nav_tab
+    parameters:
+      delta: int
+    then:
+      - lambda: |-
+          bool call_vis = !lv_obj_has_flag((lv_obj_t *) id(call_btn), LV_OBJ_FLAG_HIDDEN);
+          id(kb_nav_idx) = kb_router::nav_tab(id(kb_nav_idx), delta, call_vis);
+      - script.execute: kb_nav_rings
+
+  - id: kb_nav_arrow
+    parameters:
+      dir: int
+    then:
+      - lambda: |-
+          // dir: 1=Up 2=Down 3=Left 4=Right
+          kb_router::Key k = kb_router::Key::None;
+          if (dir == 1) k = kb_router::Key::Up;
+          else if (dir == 2) k = kb_router::Key::Down;
+          else if (dir == 3) k = kb_router::Key::Left;
+          else if (dir == 4) k = kb_router::Key::Right;
+          else return;
+          int nav = id(kb_nav_idx);
+          bool call_vis = !lv_obj_has_flag((lv_obj_t *) id(call_btn), LV_OBJ_FLAG_HIDDEN);
+          // 飞机区:↑↓ 换机(列表);←→/↓ 进入工具栏
+          if (nav == kb_router::NAV_AC) {
+            if (k == kb_router::Key::Up) {
+              id(kb_select_delta).execute(-1);
+              return;
+            }
+            if (k == kb_router::Key::Down) {
+              // 已有选机时 Down=下一架;无选机时进入工具(Windows:离开列表)
+              if (!id(sel_cs_g).empty()) {
+                id(kb_select_delta).execute(1);
+                return;
+              }
+            }
+          }
+          id(kb_nav_idx) = kb_router::nav_move(nav, k, call_vis);
+      - script.execute: kb_nav_rings
+
+  - id: kb_nav_activate
+    mode: single
+    then:
+      - lambda: |-
+          int nav = id(kb_nav_idx);
+          if (nav >= kb_router::NAV_TOOL0 && nav <= kb_router::NAV_TOOL0 + 5) {
+            id(kb_activate_tool).execute(nav - kb_router::NAV_TOOL0);
+            return;
+          }
+          if (nav == kb_router::NAV_CALL) {
+            if (!id(sel_cs_g).empty()) id(open_call).execute();
+            return;
+          }
+          // 飞机区 Enter:进入下一级 CALL
+          if (nav == kb_router::NAV_AC && !id(sel_cs_g).empty())
+            id(open_call).execute();
+
+  - id: kb_call_rings
+    mode: single
+    then:
+      - lambda: |-
+          if (!id(call_on) || id(call_talk_on)) return;
+          lv_obj_t *cb[] = {
+            (lv_obj_t *) id(call_p1), (lv_obj_t *) id(call_p2),
+            (lv_obj_t *) id(call_p3), (lv_obj_t *) id(call_p4),
+            (lv_obj_t *) id(call_lang_btn), (lv_obj_t *) id(call_rfx_btn),
+            (lv_obj_t *) id(call_fbg_btn), (lv_obj_t *) id(call_talk_btn),
+            (lv_obj_t *) id(call_close_btn),
+          };
+          auto child_lbl = [](lv_obj_t *btn) -> lv_obj_t * {
+            if (btn == nullptr || lv_obj_get_child_cnt(btn) == 0) return nullptr;
+            return lv_obj_get_child(btn, 0);
+          };
+          lv_obj_t *cl[] = {
+            child_lbl(cb[0]), child_lbl(cb[1]), child_lbl(cb[2]), child_lbl(cb[3]),
+            id(call_lang_l), id(call_rfx_l), id(call_fbg_l),
+            child_lbl(cb[7]), child_lbl(cb[8]),
+          };
+          int i = id(kb_call_idx);
+          if (i < 0) i = 0;
+          if (i >= kb_router::CALL_FOCUS_N) i = kb_router::CALL_FOCUS_N - 1;
+          id(kb_call_idx) = i;
+          kb_router::apply_call_rings(cb, cl, i, true);
+
+  - id: kb_call_focus_delta
+    parameters:
+      delta: int
+    then:
+      - lambda: |-
+          if (!id(call_on) || id(call_talk_on)) return;
+          int n = kb_router::CALL_FOCUS_N;
+          int i = (id(kb_call_idx) + delta % n + n) % n;
+          id(kb_call_idx) = i;
+      - script.execute: kb_call_rings
+
+  - id: kb_call_arrow
+    parameters:
+      dir: int
+    then:
+      - lambda: |-
+          if (!id(call_on) || id(call_talk_on)) return;
+          kb_router::Key k = kb_router::Key::None;
+          if (dir == 1) k = kb_router::Key::Up;
+          else if (dir == 2) k = kb_router::Key::Down;
+          else if (dir == 3) k = kb_router::Key::Left;
+          else if (dir == 4) k = kb_router::Key::Right;
+          else return;
+          id(kb_call_idx) = kb_router::call_move(id(kb_call_idx), k);
+      - script.execute: kb_call_rings
+
+  - id: kb_call_activate
+    mode: single
+    then:
+      - lambda: |-
+          if (!id(call_on) || id(call_talk_on)) return;
+          lv_obj_t *cb[] = {
+            (lv_obj_t *) id(call_p1), (lv_obj_t *) id(call_p2),
+            (lv_obj_t *) id(call_p3), (lv_obj_t *) id(call_p4),
+            (lv_obj_t *) id(call_lang_btn), (lv_obj_t *) id(call_rfx_btn),
+            (lv_obj_t *) id(call_fbg_btn), (lv_obj_t *) id(call_talk_btn),
+            (lv_obj_t *) id(call_close_btn),
+          };
+          int i = id(kb_call_idx);
+          if (i < 0 || i >= kb_router::CALL_FOCUS_N || cb[i] == nullptr) return;
+          // 可勾选钮:先翻转 CHECKED 再点(与工具栏一致)
+          if (i >= 4 && i <= 6) {
+            if (lv_obj_has_state(cb[i], LV_STATE_CHECKED))
+              lv_obj_clear_state(cb[i], LV_STATE_CHECKED);
+            else
+              lv_obj_add_state(cb[i], LV_STATE_CHECKED);
+          }
+          lv_obj_send_event(cb[i], LV_EVENT_CLICKED, nullptr);
+      - script.execute: kb_call_rings
+
+  - id: kb_vol_delta
+    parameters:
+      delta: int
+    then:
+      - lambda: |-
+          float v = id(voice_vol).state + (float) delta * 5.0f;
+          if (v < 5.0f) v = 5.0f;
+          if (v > 100.0f) v = 100.0f;
+          if (fabsf(v - id(voice_vol).state) < 0.1f) return;
+          auto c = id(voice_vol).make_call();
+          c.set_value(v);
+          c.perform();
+          lv_slider_set_value(id(call_vol_sl), (int32_t) v, LV_ANIM_OFF);
+      - script.execute: voice_vol_beep
+
+  - id: kb_led_sync
+    mode: single
+    then:
+      - lambda: |-
+          radar_kb_led_sync(id(call_on), id(call_talk_on), id(kb_help_on));
+
+  - id: kb_help_toggle
+    mode: single
+    then:
+      - lambda: |-
+          #ifndef TAB5_KB
+          return;
+          #else
+          id(kb_help_on) = !id(kb_help_on);
+          if (id(kb_help_on)) {
+            const char *body =
+                id(call_on)
+                    ? "CALL (Windows-like)\n"
+                      "Tab          Next control\n"
+                      "Arrows       Move focus\n"
+                      "Enter/Space  Activate\n"
+                      "+/-          Volume\n"
+                      "1-4          Phrases\n"
+                      "Esc          Back / End\n"
+                      "H            Close help"
+                    : "RADAR (Windows-like)\n"
+                      "Tab          Next focus\n"
+                      "Arrows       Move focus\n"
+                      "  (AC: Up/Down = aircraft)\n"
+                      "Enter/Space  Activate / Open CALL\n"
+                      "Esc          Back / Clear\n"
+                      "+/-          Range\n"
+                      "1-6          Jump tools\n"
+                      "R/W/C/H      Refresh/Config/Call/Help";
+            lv_label_set_text(id(help_title_l),
+                              id(call_on) ? "CALL KEYS" : "RADAR KEYS");
+            lv_label_set_text(id(help_body_l), body);
+            lv_obj_clear_flag((lv_obj_t *) id(help_panel), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground((lv_obj_t *) id(help_panel));
+          } else {
+            lv_obj_add_flag((lv_obj_t *) id(help_panel), LV_OBJ_FLAG_HIDDEN);
+          }
+          #endif
+      - script.execute: kb_led_sync
+
+  - id: kb_help_hide
+    mode: single
+    then:
+      - lambda: |-
+          #ifndef TAB5_KB
+          return;
+          #else
+          if (!id(kb_help_on)) return;
+          id(kb_help_on) = false;
+          lv_obj_add_flag((lv_obj_t *) id(help_panel), LV_OBJ_FLAG_HIDDEN);
+          #endif
+      - script.execute: kb_led_sync
+
+  - id: kb_range_delta
+    parameters:
+      delta: int
+    then:
+      - lambda: |-
+          float v = id(radar_range).state + (float) delta * 5.0f;
+          if (v < 10.0f) v = 10.0f;
+          if (v > 500.0f) v = 500.0f;
+          if (fabsf(v - id(radar_range).state) < 0.1f) return;
+          auto c = id(radar_range).make_call();
+          c.set_value(v);
+          c.perform();
+          char buf[48];
+          snprintf(buf, sizeof(buf),
+                   id(units_imperial) ? "%.4fN  %.4fE  R%.0fmi" : "%.4fN  %.4fE  R%.0fkm",
+                   id(home_lat).state, id(home_lon).state,
+                   v * (id(units_imperial) ? 0.6214f : 1.0f));
+          lv_label_set_text(id(coords_label), buf);
+
+  - id: kb_select_delta
+    parameters:
+      delta: int
+    then:
+      - lambda: |-
+          // 圈内飞机按距离排序,↑↓ 循环选中
+          struct Item { int idx; float d2; };
+          Item items[64];
+          int n = 0;
+          float lat0 = id(home_lat).state, lon0 = id(home_lon).state;
+          float rng = id(radar_range).state;
+          float coslat = cosf(lat0 * 3.14159265f / 180.0f);
+          float dt = (id(fetch_ms) > 0) ? (millis() - id(fetch_ms)) / 1000.0f : 0.0f;
+          if (dt > 180.0f) dt = 180.0f;
+          for (int k = 0; k < (int) id(ac_lat).size() && n < 64; k++) {
+            float rad = id(ac_trk)[k] * 3.14159265f / 180.0f;
+            float vkm = id(ac_vel)[k] * dt / 1000.0f;
+            float e = (id(ac_lon)[k] - lon0) * 111.320f * coslat + vkm * sinf(rad);
+            float no = (id(ac_lat)[k] - lat0) * 110.574f + vkm * cosf(rad);
+            float d2 = e * e + no * no;
+            if (d2 > rng * rng) continue;
+            items[n++] = {k, d2};
+          }
+          if (n == 0) return;
+          for (int a = 1; a < n; a++) {
+            Item t = items[a];
+            int b = a - 1;
+            while (b >= 0 && items[b].d2 > t.d2) {
+              items[b + 1] = items[b];
+              b--;
+            }
+            items[b + 1] = t;
+          }
+          int cur = -1;
+          if (!id(sel_cs_g).empty()) {
+            for (int j = 0; j < n; j++) {
+              if (id(ac_cs)[items[j].idx] == id(sel_cs_g)) {
+                cur = j;
+                break;
+              }
+            }
+          }
+          int next;
+          if (cur < 0)
+            next = (delta >= 0) ? 0 : (n - 1);
+          else
+            next = (cur + delta % n + n) % n;
+          id(kb_pick_ac) = items[next].idx;
+          id(kb_focus_tool) = false;
+          id(kb_nav_idx) = kb_router::NAV_AC;
+      - script.execute:
+          id: select_slot
+          slot: 0
+      - script.execute: kb_nav_rings
+
+  - id: kb_activate_tool
+    parameters:
+      idx: int
+    then:
+      - lambda: |-
+          lv_obj_t *tb[] = {
+            (lv_obj_t *) id(map_btn), (lv_obj_t *) id(echo_btn),
+            (lv_obj_t *) id(persist_btn), (lv_obj_t *) id(atc_btn),
+            (lv_obj_t *) id(pwr_btn), (lv_obj_t *) id(info_btn),
+          };
+          lv_obj_t *tl[] = {
+            id(map_btn_l), id(echo_btn_l), id(persist_btn_l),
+            id(atc_btn_l), id(pwr_btn_l), id(info_btn_l),
+          };
+          int i = idx;
+          if (i < 0 || i > 5 || tb[i] == nullptr) return;
+          id(kb_tool_idx) = i;
+          id(kb_focus_tool) = true;
+          id(kb_nav_idx) = kb_router::NAV_TOOL0 + i;
+          // send_event(CLICKED) 不会自动翻转 CHECKABLE,需先切换再触发 on_click
+          if (lv_obj_has_state(tb[i], LV_STATE_CHECKED))
+            lv_obj_clear_state(tb[i], LV_STATE_CHECKED);
+          else
+            lv_obj_add_state(tb[i], LV_STATE_CHECKED);
+          lv_obj_send_event(tb[i], LV_EVENT_CLICKED, nullptr);
+          // on_click 会写成绿字/黑字;若仍有键盘选中,再盖回琥珀边+琥珀字
+          kb_router::apply_tool_rings(tb, tl, 6, i, true);
+      - script.execute: kb_nav_rings
+
+  - id: kb_clear_sel
+    mode: single
+    then:
+      - lambda: |-
+          id(sel_cs_g).clear();
+          id(call_on) = false;
+          id(call_talk_on) = false;
+          id(spec_on) = false;
+          lv_obj_add_flag((lv_obj_t *) id(call_panel), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag((lv_obj_t *) id(call_talk_panel), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag(id(call_kb)->obj, LV_OBJ_FLAG_HIDDEN);
+          lv_obj_add_flag((lv_obj_t *) id(call_btn), LV_OBJ_FLAG_HIDDEN);
+          radar_kb_clear_focus();
+          id(kb_help_on) = false;
+          id(kb_nav_idx) = kb_router::NAV_AC;
+          id(kb_focus_tool) = false;
+          #ifdef TAB5_KB
+          lv_obj_add_flag((lv_obj_t *) id(help_panel), LV_OBJ_FLAG_HIDDEN);
+          #endif
+      - script.execute: show_weather
+      - script.execute: atc_panel_sync
+      - script.execute: kb_nav_rings
+      - script.execute: kb_led_sync
+
+  - id: kb_show_main
+    mode: single
+    then:
+      - lvgl.page.show: main_page
+      - lambda: 'radar_kb_clear_focus();'
+
+  - id: kb_show_config
+    mode: single
+    then:
+      - lvgl.page.show: config_page
+
+  - id: kb_drain
+    mode: single
+    then:
+      - lambda: |-
+          #ifndef TAB5_KB
+          return;
+          #else
+          char raw[16];
+          while (tab5_kb::pop_cmd(raw, sizeof(raw))) {
+            auto ev = kb_router::classify(raw);
+            if (ev.key == kb_router::Key::None) continue;
+
+            // 帮助层优先:H 开关,Esc 关闭,其余吞掉
+            if (id(kb_help_on)) {
+              if (ev.key == kb_router::Key::Char && ev.ch == 'h') {
+                id(kb_help_toggle).execute();
+              } else if (ev.key == kb_router::Key::Esc) {
+                id(kb_help_hide).execute();
+              }
+              continue;
+            }
+
+            // 配置/设置页:Esc 回主界面
+            if (id(config_page)->is_showing() || id(settings_page)->is_showing()) {
+              if (ev.key == kb_router::Key::Esc)
+                id(kb_show_main).execute();
+              continue;
+            }
+
+            // ---- CALL / TALK 层(Phase 2) ----
+            if (id(call_on)) {
+              if (ev.key == kb_router::Key::Esc) {
+                if (id(call_talk_on))
+                  id(close_call_talk).execute();
+                else
+                  id(close_call).execute();
+                continue;
+              }
+              if (ev.key == kb_router::Key::Char && ev.ch == 'h') {
+                id(kb_help_toggle).execute();
+                continue;
+              }
+              // TALK 输入层:Space=REC, Enter=SEND;方向键不抢文本(仅 +/- 调音量)
+              if (id(call_talk_on)) {
+                if (ev.key == kb_router::Key::Space ||
+                    (ev.key == kb_router::Key::Char && ev.ch == 't')) {
+                  id(talk_rec_toggle).execute();
+                  continue;
+                }
+                if (ev.key == kb_router::Key::Enter) {
+                  id(send_call_talk).execute();
+                  continue;
+                }
+                if (ev.key == kb_router::Key::Plus) {
+                  id(kb_vol_delta).execute(1);
+                  continue;
+                }
+                if (ev.key == kb_router::Key::Minus) {
+                  id(kb_vol_delta).execute(-1);
+                  continue;
+                }
+                continue;
+              }
+              // CALL 主面板:Tab/方向键移焦点,Enter/Space 激活(接近 Windows)
+              if (ev.key == kb_router::Key::Tab) {
+                id(kb_call_focus_delta).execute(1);
+                continue;
+              }
+              if (ev.key == kb_router::Key::Up) {
+                id(kb_call_arrow).execute(1);
+                continue;
+              }
+              if (ev.key == kb_router::Key::Down) {
+                id(kb_call_arrow).execute(2);
+                continue;
+              }
+              if (ev.key == kb_router::Key::Left) {
+                id(kb_call_arrow).execute(3);
+                continue;
+              }
+              if (ev.key == kb_router::Key::Right) {
+                id(kb_call_arrow).execute(4);
+                continue;
+              }
+              if (ev.key == kb_router::Key::Enter || ev.key == kb_router::Key::Space) {
+                id(kb_call_activate).execute();
+                continue;
+              }
+              if (ev.key == kb_router::Key::Plus) {
+                id(kb_vol_delta).execute(1);
+                continue;
+              }
+              if (ev.key == kb_router::Key::Minus) {
+                id(kb_vol_delta).execute(-1);
+                continue;
+              }
+              if (ev.key == kb_router::Key::Char && ev.ch == 't') {
+                id(open_call_talk).execute();
+                continue;
+              }
+              if (ev.key == kb_router::Key::Digit && ev.ch >= '1' && ev.ch <= '4') {
+                lv_obj_t *pb[] = {
+                  (lv_obj_t *) id(call_p1), (lv_obj_t *) id(call_p2),
+                  (lv_obj_t *) id(call_p3), (lv_obj_t *) id(call_p4),
+                };
+                int pi = ev.ch - '1';
+                id(kb_call_idx) = pi;
+                if (pb[pi]) lv_obj_send_event(pb[pi], LV_EVENT_CLICKED, nullptr);
+                id(kb_call_rings).execute();
+                continue;
+              }
+              if (ev.key == kb_router::Key::Char) {
+                if (ev.ch == 'l') {
+                  id(kb_call_idx) = 4;
+                  id(kb_call_activate).execute();
+                } else if (ev.ch == 's') {
+                  id(kb_call_idx) = 5;
+                  id(kb_call_activate).execute();
+                } else if (ev.ch == 'b') {
+                  id(kb_call_idx) = 6;
+                  id(kb_call_activate).execute();
+                } else if (ev.ch == 'e') {
+                  id(close_call).execute();
+                }
+                continue;
+              }
+              continue;
+            }
+
+            // ---- 主雷达:Tab/方向键移焦点,Enter/Space 激活或进入 CALL ----
+            if (ev.key == kb_router::Key::Tab) {
+              id(kb_nav_tab).execute(1);
+              continue;
+            }
+            if (ev.key == kb_router::Key::Up) {
+              id(kb_nav_arrow).execute(1);
+              continue;
+            }
+            if (ev.key == kb_router::Key::Down) {
+              id(kb_nav_arrow).execute(2);
+              continue;
+            }
+            if (ev.key == kb_router::Key::Left) {
+              id(kb_nav_arrow).execute(3);
+              continue;
+            }
+            if (ev.key == kb_router::Key::Right) {
+              id(kb_nav_arrow).execute(4);
+              continue;
+            }
+            if (ev.key == kb_router::Key::Plus) {
+              id(kb_range_delta).execute(1);
+              continue;
+            }
+            if (ev.key == kb_router::Key::Minus) {
+              id(kb_range_delta).execute(-1);
+              continue;
+            }
+            if (ev.key == kb_router::Key::Digit && ev.ch >= '1' && ev.ch <= '6') {
+              id(kb_activate_tool).execute((int) (ev.ch - '1'));
+              continue;
+            }
+            if (ev.key == kb_router::Key::Enter || ev.key == kb_router::Key::Space) {
+              id(kb_nav_activate).execute();
+              continue;
+            }
+            if (ev.key == kb_router::Key::Esc) {
+              if (id(kb_nav_idx) != kb_router::NAV_AC) {
+                id(kb_nav_idx) = kb_router::NAV_AC;
+                id(kb_nav_rings).execute();
+              } else if (!id(sel_cs_g).empty()) {
+                id(kb_clear_sel).execute();
+              }
+              continue;
+            }
+            if (ev.key == kb_router::Key::Char) {
+              if (ev.ch == 'r') {
+                id(fetch_flights).execute();
+              } else if (ev.ch == 'w') {
+                id(kb_show_config).execute();
+              } else if (ev.ch == 'c') {
+                if (!id(sel_cs_g).empty()) id(open_call).execute();
+              } else if (ev.ch == 'h') {
+                id(kb_help_toggle).execute();
+              }
+              continue;
+            }
+          }
+          #endif
+
   - id: open_call              # 開啟模擬通話面板(文字對講 → voice_atc 中繼)
     mode: single
     then:
@@ -705,9 +1345,9 @@ script:
           else
             lv_obj_clear_state((lv_obj_t *) id(call_fbg_btn), LV_STATE_CHECKED);
           lv_obj_set_style_text_color(id(call_rfx_l),
-              lv_color_hex(id(voice_radio_fx) ? 0x201200 : 0x00E66E), 0);
+              lv_color_hex(id(voice_radio_fx) ? 0x04180C : 0x00E66E), 0);
           lv_obj_set_style_text_color(id(call_fbg_l),
-              lv_color_hex(id(voice_flight_bg) ? 0x201200 : 0x00E66E), 0);
+              lv_color_hex(id(voice_flight_bg) ? 0x04180C : 0x00E66E), 0);
           // 语种钮同步(CALL 面板)
           if (id(voice_lang_en))
             lv_obj_add_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
@@ -715,11 +1355,18 @@ script:
             lv_obj_clear_state((lv_obj_t *) id(call_lang_btn), LV_STATE_CHECKED);
           lv_label_set_text(id(call_lang_l), id(voice_lang_en) ? "EN" : "ZH");
           lv_obj_set_style_text_color(id(call_lang_l),
-              lv_color_hex(id(voice_lang_en) ? 0x201200 : 0x00E66E), 0);
+              lv_color_hex(id(voice_lang_en) ? 0x04180C : 0x00E66E), 0);
           // 新通話清空多輪歷史
           id(voice_hist_role).clear();
           id(voice_hist_text).clear();
+          id(kb_call_idx) = 0;
+          id(kb_help_on) = false;
+          #ifdef TAB5_KB
+          lv_obj_add_flag((lv_obj_t *) id(help_panel), LV_OBJ_FLAG_HIDDEN);
+          #endif
       - script.execute: atc_panel_sync
+      - script.execute: kb_call_rings
+      - script.execute: kb_led_sync
 
   - id: close_call
     mode: single
@@ -733,8 +1380,11 @@ script:
           id(voice_hist_role).clear();
           id(voice_hist_text).clear();
           radar_kb_clear_focus();
+          id(kb_nav_idx) = kb_router::NAV_AC;
       - script.execute: atc_panel_sync
       - script.execute: voice_spk_stop
+      - script.execute: kb_nav_rings
+      - script.execute: kb_led_sync
 
   - id: open_call_talk         # 自由对讲输入
     mode: single
@@ -762,6 +1412,7 @@ script:
           id(talk_rec_on) = false;
           lv_label_set_text(id(call_rec_l), "REC");
           lv_obj_set_style_bg_color((lv_obj_t *) id(call_rec_btn), lv_color_hex(0x040C08), 0);
+      - script.execute: kb_led_sync
 
   - id: close_call_talk
     mode: single
@@ -784,6 +1435,8 @@ script:
             lv_obj_clear_flag((lv_obj_t *) id(call_panel), LV_OBJ_FLAG_HIDDEN);
             lv_obj_move_foreground((lv_obj_t *) id(call_panel));
           }
+      - script.execute: kb_call_rings
+      - script.execute: kb_led_sync
 
   - id: send_call_talk
     mode: single
@@ -797,6 +1450,7 @@ script:
           id(call_talk_on) = false;
           lv_obj_add_flag((lv_obj_t *) id(call_talk_panel), LV_OBJ_FLAG_HIDDEN);
           lv_obj_add_flag(id(call_kb)->obj, LV_OBJ_FLAG_HIDDEN);
+          radar_kb_clear_focus();
           if (id(call_on))
             lv_obj_clear_flag((lv_obj_t *) id(call_panel), LV_OBJ_FLAG_HIDDEN);
       - if:
@@ -806,6 +1460,8 @@ script:
             - script.execute:
                 id: voice_tx
                 phrase: !lambda 'return std::string(lv_textarea_get_text((lv_obj_t *) id(ta_call)));'
+      - script.execute: kb_call_rings
+      - script.execute: kb_led_sync
 
   - id: talk_rec_toggle        # 自由对话点按录音:再点停止→语音直发对讲
     mode: single
@@ -1183,17 +1839,19 @@ script:
             lv_obj_clear_flag((lv_obj_t *) id(call_btn), LV_OBJ_FLAG_HIDDEN);
           else
             lv_obj_add_flag((lv_obj_t *) id(call_btn), LV_OBJ_FLAG_HIDDEN);
-          // 徽章按下時反白,當作按鈕的按下狀態
-          lv_obj_set_style_bg_color(id(sel_type_l), lv_color_hex(spec ? 0xFFEE00 : 0xE8A020), 0);
-          lv_obj_set_style_text_color(id(sel_type_l), lv_color_hex(spec ? 0x181400 : 0x201200), 0);
-          // 分頁列與分頁鈕高亮(amber 航管配色)
+          // 徽章:开启绿底黑字;规格展开亮黄
+          lv_obj_set_style_bg_color(id(sel_type_l), lv_color_hex(spec ? 0xFFEE00 : 0x00C060), 0);
+          lv_obj_set_style_text_color(id(sel_type_l), lv_color_hex(spec ? 0x181400 : 0x04180C), 0);
+          // 分页:当前页=开启(绿底黑字);另一页=关闭(绿边绿字)
           if (tab_mode) {
             lv_obj_clear_flag(id(sys_tabbar), LV_OBJ_FLAG_HIDDEN);
             bool t1 = id(sys_tab) == 1;
-            lv_obj_set_style_bg_color((lv_obj_t *) id(tab_sys_btn), lv_color_hex(t1 ? 0x040C08 : 0xE8A020), 0);
-            lv_obj_set_style_text_color(id(tab_sys_l), lv_color_hex(t1 ? 0xE8A020 : 0x201200), 0);
-            lv_obj_set_style_bg_color((lv_obj_t *) id(tab_atc_btn), lv_color_hex(t1 ? 0xE8A020 : 0x040C08), 0);
-            lv_obj_set_style_text_color(id(tab_atc_l), lv_color_hex(t1 ? 0x201200 : 0xE8A020), 0);
+            lv_obj_set_style_bg_color((lv_obj_t *) id(tab_sys_btn), lv_color_hex(t1 ? 0x040C08 : 0x00C060), 0);
+            lv_obj_set_style_border_color((lv_obj_t *) id(tab_sys_btn), lv_color_hex(t1 ? 0x00A050 : 0x00C060), 0);
+            lv_obj_set_style_text_color(id(tab_sys_l), lv_color_hex(t1 ? 0x00E66E : 0x04180C), 0);
+            lv_obj_set_style_bg_color((lv_obj_t *) id(tab_atc_btn), lv_color_hex(t1 ? 0x00C060 : 0x040C08), 0);
+            lv_obj_set_style_border_color((lv_obj_t *) id(tab_atc_btn), lv_color_hex(t1 ? 0x00C060 : 0x00A050), 0);
+            lv_obj_set_style_text_color(id(tab_atc_l), lv_color_hex(t1 ? 0x04180C : 0x00E66E), 0);
           } else {
             lv_obj_add_flag(id(sys_tabbar), LV_OBJ_FLAG_HIDDEN);
           }
@@ -1239,10 +1897,11 @@ interval:
   - interval: 1s
     then:
       - lambda: |-
-          // i 鈕開啟中 → 每秒刷新系統資訊(RAM/PSRAM/運行時間會變)
+          // 工具列每 2s 置顶一次(原每秒;减 LVGL 层级操作)
+          static uint8_t fg_div;
+          bool do_fg = ((++fg_div) & 1) == 0;
           if (id(info_on)) id(show_sysinfo).execute();
-          // 工具列每秒置頂一次:航班 mark 顯隱/set_pos 後偶發搶上層,SYS 就點不到
-          // 通話面板開啟時改置頂通話層,避免蓋住 CHECK/TALK
+          if (do_fg) {
           if (id(call_on)) {
             if (id(call_talk_on)) {
               lv_obj_move_foreground((lv_obj_t *) id(call_talk_panel));
@@ -1262,6 +1921,9 @@ interval:
             for (auto *b : tb) {
               if (b) lv_obj_move_foreground(b);
             }
+            // 轻量校正焦点环(有脏检查;勿 sync_toolbar 全量重写)
+            id(kb_tool_rings).execute();
+          }
           }
           // 響鈴中 → 每 15 秒重播一次,直到使用者按 DISMISS
           #ifndef RADAR_NO_ALARM
@@ -1576,9 +2238,9 @@ interval:
       # 航班點外插移動(每秒,依航向+地速推算目前位置)
       - lambda: |-
           #ifdef RADAR_NO_ALARM
-          // Tab5:外插 2s 一拍,减轻与音频/触控争用
+          // Tab5:外插 3s 一拍,减轻与音频/触控争用
           static uint8_t ac_div;
-          if ((++ac_div) & 1) return;
+          if ((++ac_div) % 3) return;
           #endif
           lv_obj_t *marks[AC_SLOTS] = {
             id(ac0), id(ac1), id(ac2), id(ac3), id(ac4), id(ac5), id(ac6), id(ac7),
@@ -1747,14 +2409,16 @@ interval:
               lv_img_set_angle(imgs[shown], ang10);
               last_ang[shown] = ang10;
             }
-            // persist 開啟時顏色/透明度由掃描餘暉迴圈負責;關閉時只在選取變化時寫
-            if (!id(persist_on)) {
+            // 选中色始终写入(含 FADE/persist);透明度仍由余晖循环控制
+            {
               uint8_t sg = selg ? 1 : 0;
               if (slot_ch || last_sel[shown] != sg) {
                 last_sel[shown] = sg;
-                lv_obj_set_style_img_recolor(imgs[shown], lv_color_hex(selg ? 0xE8A020 : 0x40FF9A), 0);
+                lv_obj_set_style_img_recolor(imgs[shown],
+                    lv_color_hex(selg ? 0xE8A020 : 0x40FF9A), 0);
                 lv_obj_set_style_img_recolor_opa(imgs[shown], LV_OPA_COVER, 0);
-                lv_obj_set_style_opa(marks[shown], LV_OPA_COVER, 0);
+                if (!id(persist_on))
+                  lv_obj_set_style_opa(marks[shown], LV_OPA_COVER, 0);
               }
             }
             earr[shown] = e; noarr[shown] = no; selarr[shown] = selg;
@@ -1969,13 +2633,18 @@ interval:
           }
           static uint8_t last_opa[AC_SLOTS];
           static uint8_t last_gq[AC_SLOTS];
+          static uint8_t last_selg[AC_SLOTS];
           static bool last_opa_init = false;
           if (!last_opa_init) {
-            for (int i = 0; i < AC_SLOTS; i++) { last_opa[i] = 255; last_gq[i] = 255; }
+            for (int i = 0; i < AC_SLOTS; i++) {
+              last_opa[i] = 255;
+              last_gq[i] = 255;
+              last_selg[i] = 255;
+            }
             last_opa_init = true;
           }
           // 每拍最多 N 次非「剛掃過」的樣式寫入,其餘只更新數值下拍補
-          int budget = (id(ac_shown_n) > 20) ? 6 : 10;
+          int budget = (id(ac_shown_n) > 20) ? 4 : 8;
           for (int i = 0; i < AC_SLOTS; i++) {
             float ang = id(slot_angle)[i];
             if (ang < 0) continue;
@@ -1995,6 +2664,9 @@ interval:
             int idx = (i < (int) id(slot_map).size()) ? id(slot_map)[i] : -1;
             bool selg = (idx >= 0 && !id(sel_cs_g).empty() &&
                          idx < (int) id(ac_cs).size() && id(ac_cs)[idx] == id(sel_cs_g));
+            uint8_t sg = selg ? 1 : 0;
+            bool sel_ch = (last_selg[i] != sg);
+            if (sel_ch) last_selg[i] = sg;
             if (g < 0.02f && g0 < 0.02f && !selg) {
               if (persist && !dark && last_opa[i] != 0) {
                 lv_obj_add_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
@@ -2018,24 +2690,23 @@ interval:
               uint8_t opa = (uint8_t) (go * 255.0f);
               opa = (uint8_t) ((opa / 32) * 32);
               if (opa < 32) opa = 32;
-              bool need_show = (last_opa[i] == 0) || crossed;
+              bool need_show = (last_opa[i] == 0) || crossed || sel_ch;
               bool opa_ch = (opa != last_opa[i]) || crossed;
-              if (!crossed && opa_ch && budget <= 0) continue;  // 數值已寫,樣式下拍再補
+              if (!crossed && !sel_ch && opa_ch && budget <= 0) continue;  // 數值已寫,樣式下拍再補
               if (need_show) {
                 lv_obj_clear_flag(marks[i], LV_OBJ_FLAG_HIDDEN);
                 if (id(atc_on)) lv_obj_clear_flag(vecs[i], LV_OBJ_FLAG_HIDDEN);
               }
               if (opa_ch) {
-                if (!crossed) budget--;
+                if (!crossed && !sel_ch) budget--;
                 last_opa[i] = opa;
                 lv_obj_set_style_opa(marks[i], (lv_opa_t) opa, 0);
               }
-              if (crossed) {
-                lv_obj_set_style_img_recolor(imgs[i], lv_color_make(0xFF, 0xFF, 0xFF), 0);
+              // 选中=琥珀;扫过未选中=白高亮;选中变化立即上色
+              if (crossed || sel_ch || (g0 >= 0.98f && g < 0.98f)) {
+                uint32_t col = selg ? 0xE8A020 : (crossed ? 0xFFFFFF : 0x40FF9A);
+                lv_obj_set_style_img_recolor(imgs[i], lv_color_hex(col), 0);
                 lv_obj_set_style_img_recolor_opa(imgs[i], LV_OPA_COVER, 0);
-              } else if (g0 >= 0.98f && g < 0.98f) {
-                uint8_t br = selg ? 0xE8 : 0x40, bg = selg ? 0xA0 : 0xFF, bb = selg ? 0x20 : 0x9A;
-                lv_obj_set_style_img_recolor(imgs[i], lv_color_make(br, bg, bb), 0);
               }
             } else {
               if (last_opa[i] != 254) {
@@ -2044,9 +2715,9 @@ interval:
                 last_opa[i] = 254;
               }
               uint8_t gq = (uint8_t) (g * 8.0f);   // 更粗的高亮階
-              if (crossed || gq != last_gq[i]) {
-                if (!crossed && budget <= 0) continue;
-                if (!crossed) budget--;
+              if (crossed || sel_ch || gq != last_gq[i]) {
+                if (!crossed && !sel_ch && budget <= 0) continue;
+                if (!crossed && !sel_ch) budget--;
                 last_gq[i] = gq;
                 uint8_t br = selg ? 0xE8 : 0x40, bg = selg ? 0xA0 : 0xFF, bb = selg ? 0x20 : 0x9A;
                 uint8_t r = br + (uint8_t) ((255 - br) * g);
@@ -2110,6 +2781,20 @@ font:
       - file: "gfonts://Noto Sans SC"
         glyphs:
           - !include ../cjk_punct.yaml
+  # RADIO 通话混排专用:主字用 Noto SC(自带拉丁),中英数字同一套 metrics
+  # font_small 是 Roboto+Noto extras → 英文/数字基线明显高于汉字
+  - file: "gfonts://Noto Sans SC"
+    id: font_call
+    size: ${f_small}
+    glyphsets:
+      - GF_Latin_Kernel
+    glyphs:
+      - !include ../cjk_glyphs_sc.yaml
+      - !include ../cjk_punct.yaml
+    extras:
+      - file: "gfonts://Noto Sans TC"
+        glyphs:
+          - !include ../cjk_glyphs.yaml
   - file: "gfonts://Roboto Condensed"
     id: font_mid
     size: ${f_mid}

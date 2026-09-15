@@ -2444,10 +2444,30 @@ inline void radar_fill_spec(lv_obj_t *img, lv_obj_t *l0, lv_obj_t *l1, lv_obj_t 
   // ---- 營運者:呼號前三碼查 ICAO Doc 8585 三字代碼 ----
   const AcOperator *op = ac_operator_find(cs);
   if (op) {
-    // 電台呼號常常就等於公司名(EMIRATES / RYANAIR),那就只印一次
+    // 电台呼号常与公司名重复/互相包含 → 只印公司名,避免长串换行被面板裁切
+    // 例: name="JUNEYAO AIRLINES CO., LTD" radio="AIR JUNEYAO"
     const bool same = strcasecmp(op->name, op->radio) == 0;
-    if (*op->radio && !same) snprintf(b, sizeof(b), "%s  -  %s", op->name, op->radio);
-    else                     snprintf(b, sizeof(b), "%s", op->name);
+    bool nest = false;
+    if (*op->radio && *op->name) {
+      auto has = [](const char *hay, const char *needle) -> bool {
+        if (!hay || !needle || !*needle) return false;
+        size_t n = strlen(needle);
+        for (const char *p = hay; *p; ++p) {
+          if (strncasecmp(p, needle, n) == 0) return true;
+        }
+        return false;
+      };
+      nest = has(op->name, op->radio) || has(op->radio, op->name);
+      if (!nest) {
+        const char *w = strrchr(op->radio, ' ');
+        w = w ? w + 1 : op->radio;
+        if (strlen(w) >= 4) nest = has(op->name, w);
+      }
+    }
+    if (*op->radio && !same && !nest)
+      snprintf(b, sizeof(b), "%s  -  %s", op->name, op->radio);
+    else
+      snprintf(b, sizeof(b), "%s", op->name);
     lv_label_set_text(l6, b);
   } else {
     lv_label_set_text(l6, " ");

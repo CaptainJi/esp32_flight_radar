@@ -1,5 +1,6 @@
 #pragma once
-// Tab5 Keyboard (SKU A164) — Ext.Port1 I2C 字符模式 → LVGL textarea
+// Tab5 Keyboard (SKU A164) — Ext.Port1 I2C 字符模式
+// 有 textarea 焦点 → 注入文字;无焦点 → 命令队列(kb_drain / Phase 0+)
 // 协议见官方 I2C Protocol;引脚 SDA=G0 SCL=G1 INT=G50;地址 0x6D
 #include "esphome/components/i2c/i2c_bus.h"
 #include "esphome/core/log.h"
@@ -13,20 +14,33 @@ static constexpr uint8_t ADDR = 0x6D;
 static constexpr uint8_t REG_INT_CFG = 0x00;
 static constexpr uint8_t REG_INT_STA = 0x01;
 static constexpr uint8_t REG_EVENT_NUM = 0x02;
+static constexpr uint8_t REG_BRIGHT = 0x03;
 static constexpr uint8_t REG_MODE = 0x10;
+static constexpr uint8_t REG_RGB_MODE = 0x11;
 static constexpr uint8_t REG_CHAR_LEN = 0x40;
 static constexpr uint8_t REG_CHAR_BASE = 0x50;
+static constexpr uint8_t REG_RGB = 0x60;
 static constexpr uint8_t REG_VERSION = 0xFE;
 static constexpr uint8_t MODE_STRING = 2;
+static constexpr uint8_t RGB_CUSTOM = 1;
+
+// LED 主题:导航绿 / 通话红 / 输入蓝 / 帮助琥珀
+enum class LedTheme : uint8_t { Nav = 0, Call, Input, Help };
 
 inline esphome::i2c::I2CBus *bus_ = nullptr;
 inline lv_obj_t *ta_ = nullptr;
 inline lv_obj_t *soft_kb_a_ = nullptr;
 inline lv_obj_t *soft_kb_b_ = nullptr;
 inline bool ready_ = false;
-inline volatile bool want_talk_ = false;
 inline char pending_[48];
 inline uint8_t pending_len_ = 0;
+
+// 无 textarea 时的命令队列(供 kb_handle_key 消费)
+static constexpr uint8_t CMD_Q = 8;
+inline char cmd_q_[CMD_Q][16];
+inline uint8_t cmd_r_ = 0;
+inline uint8_t cmd_w_ = 0;
+inline uint8_t cmd_n_ = 0;
 
 inline void focus(lv_obj_t *ta) { ta_ = ta; }
 inline void clear_focus() { ta_ = nullptr; }
@@ -34,12 +48,6 @@ inline void clear_focus() { ta_ = nullptr; }
 inline void bind_soft_kbs(lv_obj_t *a, lv_obj_t *b) {
   soft_kb_a_ = a;
   soft_kb_b_ = b;
-}
-
-inline bool consume_want_talk() {
-  if (!want_talk_) return false;
-  want_talk_ = false;
-  return true;
 }
 
 inline int icmp(const char *a, const char *b) {
@@ -71,6 +79,31 @@ inline char named_to_ctrl(const char *s) {
       icmp(s, "alt") == 0)
     return 0x1B;
   return 0;
+}
+
+inline void push_cmd(const char *val) {
+  if (val == nullptr || val[0] == '\0' || cmd_n_ >= CMD_Q) return;
+  char ctrl = named_to_ctrl(val);
+  if (ctrl != 0) {
+    cmd_q_[cmd_w_][0] = ctrl;
+    cmd_q_[cmd_w_][1] = '\0';
+  } else {
+    size_t n = strlen(val);
+    if (n >= sizeof(cmd_q_[0])) n = sizeof(cmd_q_[0]) - 1;
+    memcpy(cmd_q_[cmd_w_], val, n);
+    cmd_q_[cmd_w_][n] = '\0';
+  }
+  cmd_w_ = (uint8_t) ((cmd_w_ + 1) % CMD_Q);
+  cmd_n_++;
+}
+
+inline bool pop_cmd(char *out, size_t out_n) {
+  if (cmd_n_ == 0 || out == nullptr || out_n == 0) return false;
+  strncpy(out, cmd_q_[cmd_r_], out_n - 1);
+  out[out_n - 1] = '\0';
+  cmd_r_ = (uint8_t) ((cmd_r_ + 1) % CMD_Q);
+  cmd_n_--;
+  return true;
 }
 
 inline void inject_ctrl(lv_obj_t *ta, char c) {
@@ -169,9 +202,57 @@ inline bool wr(uint8_t reg, uint8_t val) {
   return bus_->write(ADDR, buf, 2) == esphome::i2c::ERROR_OK;
 }
 
+inline bool wr_n(uint8_t reg, const uint8_t *data, size_t n) {
+  if (bus_ == nullptr || data == nullptr || n == 0 || n > 8) return false;
+  uint8_t buf[9];
+  buf[0] = reg;
+  memcpy(buf + 1, data, n);
+  return bus_->write(ADDR, buf, n + 1) == esphome::i2c::ERROR_OK;
+}
+
 inline bool rd(uint8_t reg, uint8_t *out, size_t n) {
   if (bus_ == nullptr || out == nullptr || n == 0) return false;
   return bus_->write_readv(ADDR, &reg, 1, out, n) == esphome::i2c::ERROR_OK;
+}
+
+// A164 双灯自定义 RGB(寄存器 0x60 起 BGR×2);无键盘时 no-op
+inline void set_led_rgb(uint8_t r, uint8_t g, uint8_t b, uint8_t bright = 28) {
+  if (!ready_ || bus_ == nullptr) return;
+  if (bright > 100) bright = 100;
+  wr(REG_RGB_MODE, RGB_CUSTOM);
+  wr(REG_BRIGHT, bright);
+  const uint8_t bgr[6] = {b, g, r, b, g, r};
+  wr_n(REG_RGB, bgr, 6);
+}
+
+inline void set_led_theme(LedTheme theme) {
+  switch (theme) {
+    case LedTheme::Call:
+      set_led_rgb(220, 48, 48, 32);
+      break;
+    case LedTheme::Input:
+      set_led_rgb(40, 140, 255, 30);
+      break;
+    case LedTheme::Help:
+      set_led_rgb(232, 160, 32, 34);
+      break;
+    case LedTheme::Nav:
+    default:
+      set_led_rgb(0, 192, 96, 26);
+      break;
+  }
+}
+
+// help > 输入框焦点/对讲 > CALL > 导航
+inline void led_sync(bool call_on, bool talk_on, bool help_on) {
+  if (help_on)
+    set_led_theme(LedTheme::Help);
+  else if (talk_on || ta_ != nullptr)
+    set_led_theme(LedTheme::Input);
+  else if (call_on)
+    set_led_theme(LedTheme::Call);
+  else
+    set_led_theme(LedTheme::Nav);
 }
 
 inline lv_obj_t *resolve_ta() {
@@ -200,6 +281,7 @@ inline void setup(esphome::i2c::I2CBus *bus) {
   wr(REG_EVENT_NUM, 0);    // 清队列
   wr(REG_INT_STA, 0);
   ready_ = true;
+  set_led_theme(LedTheme::Nav);
   ESP_LOGI(TAG, "A164 ready fw=0x%02X STRING mode", ver);
 }
 
@@ -225,14 +307,21 @@ inline void poll() {
     char s[16];
     memcpy(s, &buf[1], len);
     s[len] = '\0';
-    // modifier: bit0=Ctrl bit2=Alt — 普通输入才写入文本框
-    if ((buf[0] & 0x05) != 0) continue;
+    // modifier: bit0=Ctrl bit2=Alt — 导航层仍可收(push_cmd);文本框忽略
+    const bool mod = (buf[0] & 0x05) != 0;
     if (ta != nullptr) {
+      if (mod) continue;
+      const char ctrl = named_to_ctrl(s);
+      // Esc / Enter:交命令层(退出输入 / SEND),不写入文本
+      if (ctrl == 0x1B || ctrl == '\n') {
+        clear_focus();
+        push_cmd(s);
+        continue;
+      }
       inject(ta, s);
     } else {
-      // RADIO 面板无输入框:缓存首键并请求打开 TALK
-      queue_pending(s);
-      want_talk_ = true;
+      if (mod) continue;
+      push_cmd(s);
     }
   }
   wr(REG_INT_STA, 0);

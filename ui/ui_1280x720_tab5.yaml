@@ -4842,8 +4842,8 @@ lvgl:
             border_width: 2
             border_color: 0x00A050
             checked:
-              bg_color: 0xE8A020
-              border_color: 0xE8A020
+              bg_color: 0x00C060
+              border_color: 0x00C060
             widgets:
               - label:
                   id: map_btn_l
@@ -4856,7 +4856,7 @@ lvgl:
                   bool on = lv_obj_has_state((lv_obj_t *) id(map_btn), LV_STATE_CHECKED);
                   id(map_on) = on;
                   lv_obj_set_style_text_color(id(map_btn_l),
-                      lv_color_hex(on ? 0x201200 : 0x00C060), 0);
+                      lv_color_hex(on ? 0x04180C : 0x00C060), 0);
                   id(rebuild_base).execute();
         - button:
             id: echo_btn
@@ -4870,8 +4870,8 @@ lvgl:
             border_width: 2
             border_color: 0x00A050
             checked:
-              bg_color: 0xE8A020
-              border_color: 0xE8A020
+              bg_color: 0x00C060
+              border_color: 0x00C060
             widgets:
               - label:
                   id: echo_btn_l
@@ -4884,7 +4884,7 @@ lvgl:
                   bool on = lv_obj_has_state((lv_obj_t *) id(echo_btn), LV_STATE_CHECKED);
                   id(echo_on) = on;
                   lv_obj_set_style_text_color(id(echo_btn_l),
-                      lv_color_hex(on ? 0x201200 : 0x00C060), 0);
+                      lv_color_hex(on ? 0x04180C : 0x00C060), 0);
                   id(rebuild_base).execute();   // 有舊回波幀就立即疊回顯示
                   if (on) id(echo_refresh).execute();   // 並排一次新抓取
         # FADE:真實雷達餘暉(慢速掃描 + 掃過顯影/淡出);關閉則常亮快掃
@@ -4900,8 +4900,8 @@ lvgl:
             border_width: 2
             border_color: 0x00A050
             checked:
-              bg_color: 0xE8A020
-              border_color: 0xE8A020
+              bg_color: 0x00C060
+              border_color: 0x00C060
             widgets:
               - label:
                   id: persist_btn_l
@@ -4914,7 +4914,7 @@ lvgl:
                   bool on = lv_obj_has_state((lv_obj_t *) id(persist_btn), LV_STATE_CHECKED);
                   id(persist_on) = on;
                   lv_obj_set_style_text_color(id(persist_btn_l),
-                      lv_color_hex(on ? 0x201200 : 0x00C060), 0);
+                      lv_color_hex(on ? 0x04180C : 0x00C060), 0);
                   // 切換時重置餘暉:開→等下次掃過再顯影;關→立刻常亮
                   if (id(slot_glow).size() != AC_SLOTS) id(slot_glow).assign(AC_SLOTS, 0.0f);
                   for (int i = 0; i < AC_SLOTS; i++) id(slot_glow)[i] = on ? 0.0f : 1.0f;
@@ -4931,8 +4931,8 @@ lvgl:
             border_width: 2
             border_color: 0x00A050
             checked:
-              bg_color: 0xE8A020
-              border_color: 0xE8A020
+              bg_color: 0x00C060
+              border_color: 0x00C060
             widgets:
               - label:
                   id: atc_btn_l
@@ -4945,7 +4945,7 @@ lvgl:
                   bool on = lv_obj_has_state((lv_obj_t *) id(atc_btn), LV_STATE_CHECKED);
                   id(atc_on) = on;
                   lv_obj_set_style_text_color(id(atc_btn_l),
-                      lv_color_hex(on ? 0x201200 : 0x00C060), 0);
+                      lv_color_hex(on ? 0x04180C : 0x00C060), 0);
               - script.execute: rebuild_base   # 底圖切換 ATC 靜態圖層(空域/跑道/機場/導航點)
               - script.execute: atc_panel_sync
         # PWR 鈕:切換螢幕背光(checked=熄滅)
@@ -4961,8 +4961,8 @@ lvgl:
             border_width: 2
             border_color: 0x00A050
             checked:
-              bg_color: 0xE8A020
-              border_color: 0xE8A020
+              bg_color: 0x00C060
+              border_color: 0x00C060
             widgets:
               - label:
                   id: pwr_btn_l
@@ -4980,7 +4980,7 @@ lvgl:
                   }
                   bool on = lv_obj_has_state((lv_obj_t *) id(pwr_btn), LV_STATE_CHECKED);
                   lv_obj_set_style_text_color(id(pwr_btn_l),
-                      lv_color_hex(on ? 0x201200 : 0x00C060), 0);
+                      lv_color_hex(on ? 0x04180C : 0x00C060), 0);
                   if (on) {
                     auto call = id(backlight).turn_on();
                     call.perform();
@@ -5001,8 +5001,8 @@ lvgl:
             border_width: 2
             border_color: 0x00A050
             checked:
-              bg_color: 0xE8A020
-              border_color: 0xE8A020
+              bg_color: 0x00C060
+              border_color: 0x00C060
             widgets:
               - label:
                   id: info_btn_l
@@ -5015,7 +5015,7 @@ lvgl:
                   bool on = lv_obj_has_state((lv_obj_t *) id(info_btn), LV_STATE_CHECKED);
                   id(info_on) = on;
                   lv_obj_set_style_text_color(id(info_btn_l),
-                      lv_color_hex(on ? 0x201200 : 0x00C060), 0);
+                      lv_color_hex(on ? 0x04180C : 0x00C060), 0);
                   if (on) {
                     id(show_sysinfo).execute();
                   } else if (id(sel_cs_g).empty()) {
@@ -5150,8 +5150,8 @@ lvgl:
             text: ""
             text_align: CENTER
             text_font: font_small
-            text_color: 0x201200
-            bg_color: 0xE8A020
+            text_color: 0x04180C
+            bg_color: 0x00C060
             bg_opa: COVER
             radius: 6
             pad_all: 8
@@ -5275,10 +5275,7 @@ lvgl:
             x: 735
             y: 300
             width: 541
-            height: 300        # 246..446:蓋滿 sel_route_l(248)到 sel_l4(386..404),
-                               # 下緣停在 status_label(446)上方。BRT/滑桿(412/420)
-                               # 只在 info_on 顯示,而那個模式與本面板共用 sel_* label、
-                               # 兩者互斥,所以蓋過去沒有問題。
+            height: 360        # 加高:营运者长名可换行两行,下缘仍在 status(672)之上
             bg_color: 0x040C08
             bg_opa: COVER
             border_width: 0
@@ -5360,9 +5357,18 @@ lvgl:
                   border_width: 0
                   pad_all: 0
                   scrollbar_mode: "OFF"
-              # 下面兩行是「這一台」而不是「這個機型」:註冊號/註冊國/發動機、營運者
+              # 下面兩行是「這一台」而不是「這個機型」:註冊號/註冊國、營運者
               - label: { id: spec_l5, x: 11, y: 221, width: 510, text: " ", text_font: font_mono, text_color: 0xB6C9BB }
-              - label: { id: spec_l6, x: 11, y: 257, width: 510, text: " ", text_font: font_mono, text_color: 0x7E9284 }
+              - label:
+                  id: spec_l6
+                  x: 11
+                  y: 257
+                  width: 510
+                  height: 90
+                  long_mode: WRAP
+                  text: " "
+                  text_font: font_mono
+                  text_color: 0x7E9284
 
         # ===== 模擬通話面板(選機後按 CALL;短語 + 自由對講)=====
         # 底部 VOL / STATIC / CABIN / TALK 留行距,避免挤成一团
@@ -5400,7 +5406,7 @@ lvgl:
                   border_width: 2
                   border_color: 0x00A050
                   pad_all: 0
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
                     - label: { id: call_lang_l, align: CENTER, text: "ZH", text_font: font_small, text_color: 0x00E66E }
                   on_click:
@@ -5409,7 +5415,7 @@ lvgl:
                         id(voice_lang_en) = en;
                         lv_label_set_text(id(call_lang_l), en ? "EN" : "ZH");
                         lv_obj_set_style_text_color(id(call_lang_l),
-                            lv_color_hex(en ? 0x201200 : 0x00E66E), 0);
+                            lv_color_hex(en ? 0x04180C : 0x00E66E), 0);
                         ESP_LOGI("radar_bg", "voice_lang %s", en ? "en" : "zh");
               - button:
                   id: call_close_btn
@@ -5433,8 +5439,8 @@ lvgl:
                   height: 81
                   long_mode: WRAP
                   text: " "
-                  # 须用 font_small(含 Noto CJK);font_mono 无中文 → 方框
-                  text_font: font_small
+                  # font_call=Noto 主字,中英数字基线一致;font_small 混排会错位
+                  text_font: font_call
                   text_color: 0xD2E6D7
               - button:
                   id: call_p1
@@ -5547,7 +5553,7 @@ lvgl:
                   border_width: 2
                   border_color: 0x00A050
                   pad_all: 0
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
                     - label: { id: call_rfx_l, align: CENTER, text: "STATIC", text_font: font_small, text_color: 0x00E66E }
                   on_click:
@@ -5555,7 +5561,7 @@ lvgl:
                         bool on = lv_obj_has_state((lv_obj_t *) id(call_rfx_btn), LV_STATE_CHECKED);
                         id(voice_radio_fx) = on;
                         lv_obj_set_style_text_color(id(call_rfx_l),
-                            lv_color_hex(on ? 0x201200 : 0x00E66E), 0);
+                            lv_color_hex(on ? 0x04180C : 0x00E66E), 0);
                         ESP_LOGI("radar_bg", "radio_fx %s", on ? "ON" : "OFF");
               - button:
                   id: call_fbg_btn
@@ -5569,7 +5575,7 @@ lvgl:
                   border_width: 2
                   border_color: 0x00A050
                   pad_all: 0
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
                     - label: { id: call_fbg_l, align: CENTER, text: "CABIN", text_font: font_small, text_color: 0x00E66E }
                   on_click:
@@ -5577,7 +5583,7 @@ lvgl:
                         bool on = lv_obj_has_state((lv_obj_t *) id(call_fbg_btn), LV_STATE_CHECKED);
                         id(voice_flight_bg) = on;
                         lv_obj_set_style_text_color(id(call_fbg_l),
-                            lv_color_hex(on ? 0x201200 : 0x00E66E), 0);
+                            lv_color_hex(on ? 0x04180C : 0x00E66E), 0);
                         ESP_LOGI("radar_bg", "flight_bg %s", on ? "ON" : "OFF");
               - button:
                   id: call_talk_btn
@@ -5636,7 +5642,7 @@ lvgl:
                   height: 162
                   one_line: false
                   max_length: 240
-                  text_font: font_small
+                  text_font: font_call
                   text_color: 0xD2E6D7
                   bg_color: 0x0A2416
                   border_color: 0x00A050
@@ -5713,6 +5719,41 @@ lvgl:
                 bg_color: 0x00C060
                 text_color: 0x04180C
 
+        # ===== A164 键盘帮助层(H 开关;仅 Tab5 有实体键盘时使用)=====
+        - obj:
+            id: help_panel
+            x: 220
+            y: 90
+            width: 840
+            height: 540
+            bg_color: 0x04180C
+            bg_opa: 95%
+            border_width: 2
+            border_color: 0xE8A020
+            radius: 8
+            pad_all: 0
+            hidden: true
+            scrollbar_mode: "OFF"
+            widgets:
+              - label:
+                  id: help_title_l
+                  x: 28
+                  y: 22
+                  width: 780
+                  text: "KEYBOARD HELP"
+                  text_font: font_mid
+                  text_color: 0xE8A020
+              - label:
+                  id: help_body_l
+                  x: 28
+                  y: 78
+                  width: 780
+                  height: 430
+                  long_mode: WRAP
+                  text: " "
+                  text_font: font_call
+                  text_color: 0xD2E6D7
+
         # ===== ATC 圖層設定面板(ATC 模式且未選機時取代右下天氣;不透明,直接蓋住底下文字)=====
         - obj:
             id: atc_panel
@@ -5738,15 +5779,15 @@ lvgl:
                   checkable: true
                   bg_color: 0x040C08
                   border_width: 2
-                  border_color: 0xB07818
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  border_color: 0x00A050
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
-                    - label: { id: asp_btn_l, align: CENTER, text: "AIRSPACE", text_font: font_small, text_color: 0xE8A020 }
+                    - label: { id: asp_btn_l, align: CENTER, text: "AIRSPACE", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         id(atc_asp_on) = lv_obj_has_state((lv_obj_t *) id(asp_btn), LV_STATE_CHECKED);
                         lv_obj_set_style_text_color(id(asp_btn_l),
-                            lv_color_hex(id(atc_asp_on) ? 0x201200 : 0xE8A020), 0);
+                            lv_color_hex(id(atc_asp_on) ? 0x04180C : 0x00E66E), 0);
                     - script.execute: rebuild_base
               - button:
                   id: rwy_btn
@@ -5758,15 +5799,15 @@ lvgl:
                   checkable: true
                   bg_color: 0x040C08
                   border_width: 2
-                  border_color: 0xB07818
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  border_color: 0x00A050
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
-                    - label: { id: rwy_btn_l, align: CENTER, text: "RUNWAY", text_font: font_small, text_color: 0xE8A020 }
+                    - label: { id: rwy_btn_l, align: CENTER, text: "RUNWAY", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         id(atc_rwy_on) = lv_obj_has_state((lv_obj_t *) id(rwy_btn), LV_STATE_CHECKED);
                         lv_obj_set_style_text_color(id(rwy_btn_l),
-                            lv_color_hex(id(atc_rwy_on) ? 0x201200 : 0xE8A020), 0);
+                            lv_color_hex(id(atc_rwy_on) ? 0x04180C : 0x00E66E), 0);
                     - script.execute: rebuild_base
               - button:
                   id: apt_btn
@@ -5778,15 +5819,15 @@ lvgl:
                   checkable: true
                   bg_color: 0x040C08
                   border_width: 2
-                  border_color: 0xB07818
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  border_color: 0x00A050
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
-                    - label: { id: apt_btn_l, align: CENTER, text: "AIRPORT", text_font: font_small, text_color: 0xE8A020 }
+                    - label: { id: apt_btn_l, align: CENTER, text: "AIRPORT", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         id(atc_apt_on) = lv_obj_has_state((lv_obj_t *) id(apt_btn), LV_STATE_CHECKED);
                         lv_obj_set_style_text_color(id(apt_btn_l),
-                            lv_color_hex(id(atc_apt_on) ? 0x201200 : 0xE8A020), 0);
+                            lv_color_hex(id(atc_apt_on) ? 0x04180C : 0x00E66E), 0);
                     - script.execute: rebuild_base
               - button:
                   id: fix_btn
@@ -5798,15 +5839,15 @@ lvgl:
                   checkable: true
                   bg_color: 0x040C08
                   border_width: 2
-                  border_color: 0xB07818
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  border_color: 0x00A050
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
-                    - label: { id: fix_btn_l, align: CENTER, text: "FIXES", text_font: font_small, text_color: 0xE8A020 }
+                    - label: { id: fix_btn_l, align: CENTER, text: "FIXES", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         id(atc_fix_on) = lv_obj_has_state((lv_obj_t *) id(fix_btn), LV_STATE_CHECKED);
                         lv_obj_set_style_text_color(id(fix_btn_l),
-                            lv_color_hex(id(atc_fix_on) ? 0x201200 : 0xE8A020), 0);
+                            lv_color_hex(id(atc_fix_on) ? 0x04180C : 0x00E66E), 0);
                     - script.execute: rebuild_base
               - button:
                   id: route_btn
@@ -5818,16 +5859,16 @@ lvgl:
                   checkable: true
                   bg_color: 0x040C08
                   border_width: 2
-                  border_color: 0xB07818
-                  checked: { bg_color: 0xE8A020, border_color: 0xE8A020 }
+                  border_color: 0x00A050
+                  checked: { bg_color: 0x00C060, border_color: 0x00C060 }
                   widgets:
-                    - label: { id: route_btn_l, align: CENTER, text: "ROUTE", text_font: font_small, text_color: 0xE8A020 }
+                    - label: { id: route_btn_l, align: CENTER, text: "ROUTE", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: |-
                         // 標籤起訖站行(逐架背景查 adsbdb 並快取);只動標籤,不需重建底圖
                         id(atc_route_on) = lv_obj_has_state((lv_obj_t *) id(route_btn), LV_STATE_CHECKED);
                         lv_obj_set_style_text_color(id(route_btn_l),
-                            lv_color_hex(id(atc_route_on) ? 0x201200 : 0xE8A020), 0);
+                            lv_color_hex(id(atc_route_on) ? 0x04180C : 0x00E66E), 0);
 
         # ===== SYS 面板分頁列(SYS 開啟時顯示;蓋住標題列,不蓋 CPU/MAP 資訊行)=====
         # y=152 對齊詳情區頂;sel_route_l(196)/sel_l5(222) 留給系統資訊
@@ -5853,9 +5894,9 @@ lvgl:
                   radius: 6
                   bg_color: 0x040C08
                   border_width: 2
-                  border_color: 0xB07818
+                  border_color: 0x00A050
                   widgets:
-                    - label: { id: tab_sys_l, align: CENTER, text: "SYSTEM", text_font: font_small, text_color: 0xE8A020 }
+                    - label: { id: tab_sys_l, align: CENTER, text: "SYSTEM", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: 'id(sys_tab) = 0;'
                     - script.execute: atc_panel_sync
@@ -5868,9 +5909,9 @@ lvgl:
                   radius: 6
                   bg_color: 0x040C08
                   border_width: 2
-                  border_color: 0xB07818
+                  border_color: 0x00A050
                   widgets:
-                    - label: { id: tab_atc_l, align: CENTER, text: "ATC CONF", text_font: font_small, text_color: 0xE8A020 }
+                    - label: { id: tab_atc_l, align: CENTER, text: "ATC CONF", text_font: font_small, text_color: 0x00E66E }
                   on_click:
                     - lambda: 'id(sys_tab) = 1;'
                     - script.execute: atc_panel_sync
@@ -6027,8 +6068,8 @@ lvgl:
             border_width: 2
             border_color: 0x00A050
             checked:
-              bg_color: 0xE8A020
-              border_color: 0xE8A020
+              bg_color: 0x00C060
+              border_color: 0x00C060
             widgets:
               - label:
                   id: poff_btn_l
@@ -6040,7 +6081,7 @@ lvgl:
               - lambda: |-
                   id(poll_when_off) = lv_obj_has_state((lv_obj_t *) id(poff_btn), LV_STATE_CHECKED);
                   lv_obj_set_style_text_color(id(poff_btn_l),
-                      lv_color_hex(id(poll_when_off) ? 0x201200 : 0x00C060), 0);
+                      lv_color_hex(id(poll_when_off) ? 0x04180C : 0x00C060), 0);
         # 顯示單位(下拉;公制/英制,影響溫度/速度/距離/高度/範圍顯示)
         # options 的 index 對齊 units_imperial:0=METRIC 1=IMPERIAL
         - label: { x: 45, y: 510, text: "UNIT", text_font: font_small, text_color: 0x9AE6B4 }
